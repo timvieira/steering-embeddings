@@ -1,0 +1,14 @@
+*.elc
+*.pyc
+*.class
+*.log
+log/
+tmp/
+*~
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+__pycache__/
+data/
+vecs.npz
