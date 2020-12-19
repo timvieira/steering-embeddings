@@ -165,19 +165,35 @@ def groups(s):
 
 def test():
     from arsenal import timers, timeit
+    from path import Path
+
+    if not Path('vecs.npz').exists():
+
+        if not Path('data/glove.6B.100d.txt').exists():
+            print('Download glove.6B.100d.zip from https://nlp.stanford.edu/projects/glove/')
+            print('and unzip it')
+            return
+
+        with timeit('load'):
+            glove_ix, glove_vecs = load_vecs('data/glove.6B.100d.txt')
+        np.savez_compressed('vecs', vec = emb.vec, voc = np.array(list(emb.dom), dtype=str))
 
     with timeit('load-numpy'):
         with np.load('vecs.npz') as data:
             glove_vecs = data['vec']
             glove_ix = data['voc']
 
-    #with timeit('load'):
-    #    glove_ix, glove_vecs = load_vecs('data/glove.6B.100d.txt')
-    #np.savez_compressed('vecs', vec = emb.vec, voc = np.array(list(emb.dom), dtype=str))
-
     emb = Embeddings(normalize_rows(glove_vecs), Alphabet(glove_ix))
 
-    from IPython import embed; embed()
+    from argparse import ArgumentParser
+    p = ArgumentParser()
+    p.add_argument('-i', '--interactive', action='store_true', help='open interactive shell')
+    args = p.parse_args()
+    if args.interactive:
+        print()
+        print('use object `emb`')
+        from IPython import embed; embed()
+        return
 
     gendered = """
     man   woman
