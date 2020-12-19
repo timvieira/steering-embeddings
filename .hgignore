@@ -1,0 +1,18 @@
+# globs:
+syntax: glob
+
+*.elc
+*.pyc
+*.class
+*.log
+log/*
+tmp/*
+*~
+.ipynb_checkpoints/
+
+build/*
+dist/*
+arsenal.egg-info/*
+
+# regex:
+syntax: regexp
