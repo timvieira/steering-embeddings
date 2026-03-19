@@ -479,6 +479,7 @@ function renderHero3D(container, wordData, options = {}) {
   controls.enableDamping = true;
   controls.autoRotate = true;
   controls.autoRotateSpeed = 0.8;
+  controls.enableZoom = false;  // prevent scroll from getting trapped
 
   let pauseTimeout = null;
   function pauseOrbit() {
@@ -487,7 +488,6 @@ function renderHero3D(container, wordData, options = {}) {
     pauseTimeout = setTimeout(() => { controls.autoRotate = true; }, 3000);
   }
   renderer.domElement.addEventListener('pointerdown', pauseOrbit);
-  renderer.domElement.addEventListener('wheel', pauseOrbit);
 
   // Scale coords
   const allCoords = wordData.flatMap(d => [...d.origCoord, ...d.steeredCoord]);
@@ -507,7 +507,7 @@ function renderHero3D(container, wordData, options = {}) {
 
     // Ghost dot (original position, faded)
     const ghostGeo = new THREE.SphereGeometry(0.03, 12, 12);
-    const ghostMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25 });
+    const ghostMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 });
     const ghost = new THREE.Mesh(ghostGeo, ghostMat);
     ghost.position.set(...ox);
     scene.add(ghost);
@@ -516,7 +516,7 @@ function renderHero3D(container, wordData, options = {}) {
     const trailGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(...ox), new THREE.Vector3(...sx)
     ]);
-    const trailMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 });
+    const trailMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.45 });
     scene.add(new THREE.Line(trailGeo, trailMat));
 
     // Steered dot (bright)
