@@ -160,8 +160,19 @@ function render2D(container, words, coords, arrows, options = {}) {
         .attr('orient', 'auto')
         .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', color);
     }
-    g = svg.append('g').attr('class', 'main')
+    // Zoom container wraps the main group so pan/zoom transforms apply to all content
+    const zoomG = svg.append('g').attr('class', 'zoom-container');
+    g = zoomG.append('g').attr('class', 'main')
       .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Pan + zoom via d3.zoom
+    const zoom = d3.zoom()
+      .scaleExtent([0.5, 5])
+      .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
+    svg.call(zoom);
+    svg.style('cursor', 'grab');
+    svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
+    svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
   } else {
     g = svg.select('g.main');
   }
@@ -382,8 +393,17 @@ function render1D(container, words, coords, arrows, options = {}) {
     .attr('class', 'plot')
     .attr('width', width).attr('height', height);
 
-  const g = svg.append('g')
+  const zoomG = svg.append('g').attr('class', 'zoom-container');
+  const g = zoomG.append('g')
     .attr('transform', `translate(${margin.left},${height / 2})`);
+
+  const zoom = d3.zoom()
+    .scaleExtent([0.5, 5])
+    .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
+  svg.call(zoom);
+  svg.style('cursor', 'grab');
+  svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
+  svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
 
   const xs = coords.map(c => c[0]);
   const pad = 0.1;
@@ -689,8 +709,18 @@ function renderSteering2D(container, wordData, options = {}) {
 
   const svg = d3.select(el).append('svg')
     .attr('class', 'plot').attr('width', width).attr('height', height);
-  const g = svg.append('g')
+
+  const zoomG = svg.append('g').attr('class', 'zoom-container');
+  const g = zoomG.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const zoom = d3.zoom()
+    .scaleExtent([0.5, 5])
+    .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
+  svg.call(zoom);
+  svg.style('cursor', 'grab');
+  svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
+  svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
 
   const trails = g.selectAll('line.trail').data(wordData).enter().append('line')
     .attr('class', 'trail')
