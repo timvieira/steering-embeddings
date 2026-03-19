@@ -71,6 +71,11 @@
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
 <dt-byline></dt-byline>
 
+<div id="hero-viz" style="width: 100%; margin: 1em 0;"></div>
+<figcaption style="color: #999; font-size: 13px; margin-bottom: 2em;">
+  Gendered word pairs and professions before (faded) and after (bright) steering. Trails show how each word moved. This visualization is built up throughout the article.
+</figcaption>
+
 <p>
   <span style="font-size: 13px; color: #999;">Vocabulary:</span>
   <span class="vocab-selector" id="vocab-selector">
@@ -225,7 +230,7 @@ $$\vec{w}_{\text{steered}} = \frac{\vec{w} - \vec{w}_{\mathcal{B}}}{\|\vec{w} - 
 
 <script type="module">
 import { Embeddings, mds, loadEmbeddings } from './js/embeddings.js';
-import { EmbeddingViz } from './js/viz.js';
+import { EmbeddingViz, renderHero3D } from './js/viz.js';
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -321,8 +326,68 @@ function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
 }
 
 
+function buildHero() {
+  // Collect all hero words: gendered pairs + professions
+  const heroWords = [];
+  const seen = new Set();
+  function addWord(w, group) {
+    if (!seen.has(w) && emb.has(w) && steered.has(w)) {
+      seen.add(w);
+      heroWords.push({ word: w, group });
+    }
+  }
+  for (const [w1, w2] of GENDERED_WORDS) {
+    addWord(w1, 'gendered'); addWord(w2, 'gendered');
+  }
+  for (const w of PROFESSIONS) {
+    addWord(w, 'profession');
+  }
+
+  if (heroWords.length === 0) return;
+
+  // Compute joint MDS: build a distance matrix using steered positions for
+  // the "steered" dots and original positions for the "ghost" dots,
+  // all in the same coordinate space.
+  // We'll do MDS on just the steered embeddings (they define the layout)
+  // then project originals into that space by computing their MDS coords too.
+  const allWords = heroWords.map(h => h.word);
+  const n = allWords.length;
+
+  // Joint distance matrix over 2n points: [steered_0..steered_n, orig_0..orig_n]
+  const D = new Float64Array(4 * n * n);
+  const nn = 2 * n;
+  for (let i = 0; i < nn; i++) {
+    for (let j = 0; j < i; j++) {
+      const wi = i < n ? steered.vec(allWords[i]) : emb.vec(allWords[i - n]);
+      const wj = j < n ? steered.vec(allWords[j]) : emb.vec(allWords[j - n]);
+      let dist = 0;
+      for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+      dist = Math.sqrt(dist);
+      D[i * nn + j] = dist;
+      D[j * nn + i] = dist;
+    }
+  }
+
+  const { coords } = mds(D, nn, 3);
+
+  const wordData = heroWords.map((h, i) => ({
+    word: h.word,
+    group: h.group,
+    steeredCoord: coords[i],        // first n entries are steered
+    origCoord: coords[n + i],       // next n entries are original
+  }));
+
+  renderHero3D(document.getElementById('hero-viz'), wordData, {
+    width: document.getElementById('hero-viz').clientWidth || 800,
+    height: 500,
+  });
+}
+
 function buildVisualizations() {
   vizInstances = [];
+
+  // Build hero first
+  buildHero();
 
   const supWords = flatWords(SUPERLATIVES);
   if (supWords.length > 0) {

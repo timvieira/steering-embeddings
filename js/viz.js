@@ -286,13 +286,33 @@ function render3D(container, words, coords, arrows, options = {}) {
   camera.position.set(3, 2, 3);
   camera.lookAt(0, 0, 0);
 
+  // Auto-orbit
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 1.0;
+
+  // Pause auto-orbit on interaction, resume after 3s
+  let pauseTimeout = null;
+  function pauseOrbit() {
+    controls.autoRotate = false;
+    clearTimeout(pauseTimeout);
+    pauseTimeout = setTimeout(() => { controls.autoRotate = true; }, 3000);
+  }
+  renderer.domElement.addEventListener('pointerdown', pauseOrbit);
+  renderer.domElement.addEventListener('wheel', pauseOrbit);
+
   // Animate
+  let animId = null;
   function animate() {
-    requestAnimationFrame(animate);
+    animId = requestAnimationFrame(animate);
     controls.update();
     renderer.render(scene, camera);
   }
   animate();
+
+  // Return handle for cleanup and external access
+  return { scene, camera, renderer, controls, el,
+    destroy() { cancelAnimationFrame(animId); renderer.dispose(); clearTimeout(pauseTimeout); }
+  };
 }
 
 
@@ -435,4 +455,107 @@ class EmbeddingViz {
   }
 }
 
-export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D };
+/**
+ * Hero 3D visualization: shows original and steered positions with trails.
+ * Words are shown at their steered positions (bright) with ghost dots at
+ * original positions and thin trails connecting them.
+ *
+ * wordData: array of { word, origCoord: [x,y,z], steeredCoord: [x,y,z], group: string }
+ */
+function renderHero3D(container, wordData, options = {}) {
+  const { width = 800, height = 500 } = options;
+
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
+  el.querySelectorAll('canvas').forEach(c => c.remove());
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xffffff);
+  const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  el.appendChild(renderer.domElement);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.8;
+
+  let pauseTimeout = null;
+  function pauseOrbit() {
+    controls.autoRotate = false;
+    clearTimeout(pauseTimeout);
+    pauseTimeout = setTimeout(() => { controls.autoRotate = true; }, 3000);
+  }
+  renderer.domElement.addEventListener('pointerdown', pauseOrbit);
+  renderer.domElement.addEventListener('wheel', pauseOrbit);
+
+  // Scale coords
+  const allCoords = wordData.flatMap(d => [...d.origCoord, ...d.steeredCoord]);
+  const maxAbs = Math.max(...allCoords.map(Math.abs)) || 1;
+  const scale = 2 / maxAbs;
+
+  // Group colors
+  const groupNames = [...new Set(wordData.map(d => d.group))];
+  const groupPalette = ['#4a7dcc', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c'];
+  const groupColor = {};
+  groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
+
+  for (const d of wordData) {
+    const ox = d.origCoord.map(v => v * scale);
+    const sx = d.steeredCoord.map(v => v * scale);
+    const color = new THREE.Color(groupColor[d.group]);
+
+    // Ghost dot (original position, faded)
+    const ghostGeo = new THREE.SphereGeometry(0.03, 12, 12);
+    const ghostMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25 });
+    const ghost = new THREE.Mesh(ghostGeo, ghostMat);
+    ghost.position.set(...ox);
+    scene.add(ghost);
+
+    // Trail (original → steered)
+    const trailGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(...ox), new THREE.Vector3(...sx)
+    ]);
+    const trailMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 });
+    scene.add(new THREE.Line(trailGeo, trailMat));
+
+    // Steered dot (bright)
+    const dotGeo = new THREE.SphereGeometry(0.04, 16, 16);
+    const dotMat = new THREE.MeshBasicMaterial({ color });
+    const dot = new THREE.Mesh(dotGeo, dotMat);
+    dot.position.set(...sx);
+    scene.add(dot);
+
+    // Label at steered position
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 512; canvas.height = 128;
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillStyle = groupColor[d.group];
+    ctx.textAlign = 'center';
+    ctx.fillText(d.word, 256, 80);
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.position.set(sx[0], sx[1] + 0.14, sx[2]);
+    sprite.scale.set(0.7, 0.175, 1);
+    scene.add(sprite);
+  }
+
+  camera.position.set(3, 2, 3);
+  camera.lookAt(0, 0, 0);
+
+  let animId = null;
+  function animate() {
+    animId = requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  return { scene, camera, renderer, controls, el,
+    destroy() { cancelAnimationFrame(animId); renderer.dispose(); clearTimeout(pauseTimeout); }
+  };
+}
+
+export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D };
