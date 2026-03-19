@@ -16,7 +16,7 @@
 - [x] The ghost of the previous position is too faint.
   - Increased ghost dot opacity from 0.25 to 0.55 and trail opacity from 0.3 to 0.45 in renderHero3D.
 - [x] What do the red/blue colors mean?
-  - Added a color legend below the hero: blue circle = gendered word pairs, red circle = occupations.
+  - Added a color legend below the hero: blue circle = gendered word pairs, orange circle = occupations.
 - [x] Scroll gets trapped by 3D canvas zoom.
   - Re-enabled zoom but added visible border + grab cursor on all 3D canvases so boundary is clear.
 
@@ -32,9 +32,12 @@
 - [x] Content is not correctly centered
   - Fixed alignment of equations (wrapped in `<p>`), analogy input (margin fix), cooccurrence image (changed to `<figure>`), and plots (48px left margin on plot-container). All elements now align with Distill text column.
 - [ ] Remove the "waiting for review" thing (not publishing on Distill)
-- [ ] Pick more attractive colors (the specific red and blue colors we have are yucky)
+  - Could not find this banner in headless testing. May be browser-specific or intermittent.
+- [x] Pick more attractive colors (the specific red and blue colors we have are yucky)
+  - Switched to Tableau-inspired muted palette: steel blue (#5778a4) and warm orange (#e49444).
 - [ ] Initial zoom on the hero plot could be increased on some platforms. Making it big is good.
-- [ ] Reorder gendered pairs to be feminine first.
+- [x] Reorder gendered pairs to be feminine first.
+  - All pairs now feminine first (woman/man, queen/king, etc.)
 
 ## Polish
 - [x] Fix plot horizontal alignment with Distill column
@@ -49,6 +52,8 @@
 
 ## Boo-boos?
 - [x] Are some superlatives missing? (e.g., soft -> softer but missing softest)
-  - Only 3 words missing from 50K vocab (softest, meaner, meanest). User updated export_vectors.py with `must_have` parameter to ensure article words are always included. Need to re-export binaries.
-- [ ] Acknowledgements should be references.
-- [ ] Acknowledge David Mueller https://damueller.com who co-wrote a homework assignment about word embeddings for a machine learning course at JHU.
+  - Re-exported binaries with `must_have` parameter. All 30 superlatives now present.
+- [x] Acknowledgements should be references.
+  - Converted to dt-cite references in dt-appendix.
+- [x] Acknowledge David Mueller https://damueller.com who co-wrote a homework assignment about word embeddings for a machine learning course at JHU.
+  - Added to acknowledgments section.
