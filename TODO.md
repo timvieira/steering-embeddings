@@ -1,6 +1,11 @@
 ## Article interactivity
 - [x] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
   - Clicking a word in 2D/1D plots adds its top-5 nearest neighbors to the data, recomputes MDS, and animates the transition. Neighbors are styled distinctly (gray, smaller text) with dashed lines to their parent. Recursive: clicking neighbors expands them too.
+- [ ] Adaptive neighbor count — avoid adding words that are off-topic for the current plot
+  - Option A: **Relevance filter by distance.** Only add a neighbor if its average distance to the current word set is below a threshold (e.g., below the median pairwise distance). Words far from everything are likely off-topic.
+  - Option B: **Subspace projection.** If the plot's words define a low-rank subspace, only add neighbors whose projection onto that subspace explains a large fraction of their variance. Orthogonal neighbors won't be informative.
+  - Option C: **Similarity dropoff.** Instead of always adding 5, look at the similarity scores and stop at a gap. If top-3 are close but #4 drops off, only add 3.
+  - Option D: **MDS variance impact.** Tentatively add neighbors, check how much MDS variance explained drops. If it drops a lot, the new words introduce dimensions the plot can't represent — add fewer.
 - [ ] Animated steering transition (play button, words slide from original to steered with trails)
 - [ ] Build-your-own word groups explorer (text area → instant MDS plot)
 
