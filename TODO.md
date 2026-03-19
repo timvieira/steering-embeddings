@@ -26,6 +26,7 @@
 - [ ] Remove the "waiting for review" thing (not publishing on Distill)
 - [ ] Pick more attractive colors (the specific red and blue colors we have are yucky)
 - [ ] initial zoom on the hero plot could be increased on some platforms. making it big is good.
+- [ ] reorder gendered pairs to be feminine first.
 
 ## Polish
 - [ ] Fix plot horizontal alignment with Distill column
@@ -43,3 +44,11 @@
 - [ ] are some superlatives missing? (e.g., we have soft -> softer but appear to
   be missing softest).  Please check that all of the data from the notebook was
   carried over correctly.
+
+- [ ] Acknowledgements should be references.
+
+- [ ] Acknowledge David Mueller https://damueller.com who co-wrote a homework
+  assignment with me ages ago about word embeddings for a machine learning
+  course at JHU.
+
+

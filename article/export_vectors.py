@@ -35,10 +35,19 @@ def load_glove(path='data/glove.6B.100d.txt'):
     return words, np.array(vecs, dtype=np.float32)
 
 
-def export(words, vecs, outpath, n=None):
+def export(words, vecs, outpath, n=None, must_have=None):
+    word_to_idx = {w: i for i, w in enumerate(words)}
     if n is not None:
-        words = words[:n]
-        vecs = vecs[:n]
+        selected = list(range(min(n, len(words))))
+        if must_have:
+            in_set = set(selected)
+            for w in must_have:
+                idx = word_to_idx.get(w)
+                if idx is not None and idx not in in_set:
+                    selected.append(idx)
+                    in_set.add(idx)
+        words = [words[i] for i in selected]
+        vecs = vecs[selected]
     num_words = len(words)
     num_dims = vecs.shape[1]
 
@@ -74,10 +83,36 @@ def main():
         print('No vector file found. Need vecs.npz or data/glove.6B.100d.txt')
         return
 
+    # Words used by the article that may fall outside smaller vocabulary cutoffs
+    article_words = {
+        # superlatives
+        'poor', 'poorer', 'poorest', 'rich', 'richer', 'richest',
+        'short', 'shorter', 'shortest', 'slow', 'slower', 'slowest',
+        'fast', 'faster', 'fastest', 'soft', 'softer', 'softest',
+        'strong', 'stronger', 'strongest', 'mean', 'meaner', 'meanest',
+        'dark', 'darker', 'darkest', 'smart', 'smarter', 'smartest',
+        # numbers
+        'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+        'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+        # gendered pairs
+        'she', 'he', 'woman', 'man', 'herself', 'himself', 'her', 'him',
+        'hers', 'his', 'gal', 'guy', 'girl', 'boy', 'girls', 'boys',
+        'female', 'male', 'females', 'males',
+        'king', 'queen', 'actor', 'actress', 'dad', 'mom', 'father', 'mother',
+        'brother', 'sister', 'uncle', 'aunt', 'heir', 'heiress', 'duke',
+        'duchess', 'nephew', 'niece', 'sir', 'madame', 'masculine', 'feminine',
+        # professions
+        'caretaker', 'homemaker', 'doctor', 'nurse', 'programmer', 'teacher',
+        'wife', 'husband', 'soldier', 'salesperson', 'analyst', 'therapist',
+        'trainer', 'instructor', 'ceo', 'assistant', 'telemarketer',
+        'bartender', 'clerk', 'designer', 'scientist', 'manager', 'boss',
+        'employee',
+    }
+
     DATA_DIR.mkdir(exist_ok=True)
 
-    export(words, vecs, DATA_DIR / 'glove-small.bin', n=10_000)
-    export(words, vecs, DATA_DIR / 'glove-medium.bin', n=50_000)
+    export(words, vecs, DATA_DIR / 'glove-small.bin', n=10_000, must_have=article_words)
+    export(words, vecs, DATA_DIR / 'glove-medium.bin', n=50_000, must_have=article_words)
     export(words, vecs, DATA_DIR / 'glove-large.bin', n=len(words))
 
 
