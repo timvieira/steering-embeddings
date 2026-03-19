@@ -139,7 +139,7 @@
 
 <p>These regularities give rise to <b>word analogies</b>. The vector difference between related word pairs is roughly constant:</p>
 
-$$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{queen}}$$
+$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$$
 
 <p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
 
@@ -174,7 +174,7 @@ $$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{q
 
 <p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out:</p>
 
-$$\vec{w}_{\text{steered}} = \frac{\vec{w} - \vec{w}_{\mathcal{B}}}{\|\vec{w} - \vec{w}_{\mathcal{B}}\|} \quad \text{where} \quad \vec{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\vec{w} \cdot \vec{b}_j) \, \vec{b}_j$$
+$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$
 
 <p>This removes each word's component along the chosen subspace while preserving everything else.</p>
 
