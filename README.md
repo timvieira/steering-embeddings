@@ -16,7 +16,7 @@ Exploring word embeddings using GloVe vectors — analogies, visualization, debi
 
 2. Install dependencies:
    ```
-   pip install numpy scipy matplotlib arsenal
+   pip install numpy scipy plotly arsenal
    ```
 
 3. Build the compressed vectors:

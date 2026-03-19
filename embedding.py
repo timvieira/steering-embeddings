@@ -1,20 +1,22 @@
-import pylab as pl
 import numpy as np
 import re
 import scipy.spatial
+import plotly.graph_objects as go
 from numpy.linalg import norm, svd
-from arsenal.viz.mds import mds
 from arsenal import Alphabet
 from arsenal.iterextras import window
 
 
-#def cosine(a, b):
-#    return (a @ b) / (np.linalg.norm(a)*np.linalg.norm(b))
-
-#def least_similar(emb, w):
-#    wv = emb(w)
-#    return list(sorted([(cosine(wv, emb.vec[i]), emb.dom.lookup(i))
-#                        for i in range(emb.vec.shape[0])]))
+def mds(X, dimensions=2):
+    """Multidimensional scaling: given a distance matrix, find low-dimensional
+    points with similar interpoint distances."""
+    E = -0.5 * X * X
+    Er = np.array(np.mean(E, axis=1))
+    Es = np.array(np.mean(E, axis=0))
+    F = np.array(E - Er.T - Es + np.mean(E))
+    U, S, _ = svd(F)
+    Y = U * np.sqrt(S)
+    return Y[:, :dimensions], S
 
 
 class Embeddings:
@@ -57,47 +59,167 @@ class Embeddings:
                 D[i,j] = D[j,i] = norm(self(words[i]) - self(words[j]))
         return D
 
-    def _plot_paths(self, paths):
-        words = Alphabet()
-        words.add_many(y for x in paths for y in x)
-
-        if self.dim == 2:    # visualize 2d embeddings directly
-            Y = np.array([self(w) for w in words])
+    def _mds(self, words, dimensions=2):
+        "Compute MDS coordinates and eigenvalues for a list of words."
+        if self.dim <= dimensions:
+            return np.array([self(w) for w in words]), None
         else:
-            Y, _ = mds(self.distance_matrix(words))
+            return mds(self.distance_matrix(words), dimensions=dimensions)
 
-        pl.figure(figsize=(12, 6))
-        pl.scatter(Y[:,0], Y[:,1], s=20, c='b', marker='o')
-        for label, x, y in zip(words, Y[:,0], Y[:,1]):
-            pl.text(x, y, label, fontsize=12)
-        pl.grid(True)
+    @staticmethod
+    def _add_arrow_3d(fig, start, end, color='rgba(0,0,255,0.4)', width=3, head_scale=0.04):
+        "Add a 3D line with a mesh arrowhead at the endpoint."
+        d = end - start
+        length = norm(d)
+        if length == 0:
+            return
+        d_hat = d / length
+        # find two perpendicular vectors for the arrowhead base
+        if abs(d_hat[0]) < 0.9:
+            perp = np.cross(d_hat, np.array([1, 0, 0]))
+        else:
+            perp = np.cross(d_hat, np.array([0, 1, 0]))
+        perp = perp / norm(perp)
+        perp2 = np.cross(d_hat, perp)
+        # arrowhead: a 4-sided pyramid
+        h = head_scale                   # absolute arrowhead height
+        r = h * 0.35                     # radius of base
+        tip = end
+        base_center = end - h * d_hat
+        # 4 base points
+        b = [base_center + r * (np.cos(a) * perp + np.sin(a) * perp2)
+             for a in [0, np.pi/2, np.pi, 3*np.pi/2]]
+        verts = np.array([tip] + b)      # 0=tip, 1-4=base
+        # shaft stops at the arrowhead base
+        fig.add_trace(go.Scatter3d(
+            x=[start[0], base_center[0]], y=[start[1], base_center[1]],
+            z=[start[2], base_center[2]],
+            mode='lines', line=dict(color=color, width=width),
+            showlegend=False,
+        ))
+        # arrowhead mesh: 4 side triangles + 2 base triangles
+        fig.add_trace(go.Mesh3d(
+            x=verts[:,0], y=verts[:,1], z=verts[:,2],
+            i=[0, 0, 0, 0, 1, 1],
+            j=[1, 2, 3, 4, 2, 3],
+            k=[2, 3, 4, 1, 3, 4],
+            color=color, opacity=0.8,
+            showlegend=False, hoverinfo='skip',
+        ))
 
-        return words, Y
+    @staticmethod
+    def _variance_subtitle(S, dimensions):
+        if S is None:
+            return ''
+        pct = S[:dimensions].sum() / S.sum() * 100
+        return f'MDS: {dimensions}D captures {pct:.1f}% of variance'
 
-    def plot_paths(self, G):
+    def plot_paths(self, G, connect_groups=False, dimensions=2):
         G = groups(G)
-        ix, pos = self._plot_paths(G)
-        for p in G:
-            for x,y in window(p, 2):
-                xs, ys = np.array([pos[ix[x]], pos[ix[y]]]).T
-                pl.arrow(xs[0], ys[0], (xs[1] - xs[0]), (ys[1] - ys[0]),
-                         **arrow_style)
+        words = Alphabet()
+        words.add_many(y for x in G for y in x)
+        Y, S = self._mds(words, dimensions=dimensions)
 
-    def plot_analogy(self, a, b, c, n):
+        fig = go.Figure()
+        if dimensions == 3:
+            fig.add_trace(go.Scatter3d(
+                x=Y[:,0], y=Y[:,1], z=Y[:,2], mode='markers+text',
+                text=list(words), textposition='top center',
+                marker=dict(size=4, color='blue'),
+            ))
+            for p in G:
+                for x, y in window(p, 2):
+                    self._add_arrow_3d(fig, Y[words[x]], Y[words[y]])
+            if connect_groups and len(G) > 1:
+                n = min(len(p) for p in G)
+                for i in range(n):
+                    for g1, g2 in window(G, 2):
+                        if i < len(g1) and i < len(g2):
+                            p0, p1 = Y[words[g1[i]]], Y[words[g2[i]]]
+                            fig.add_trace(go.Scatter3d(
+                                x=[p0[0], p1[0]], y=[p0[1], p1[1]], z=[p0[2], p1[2]],
+                                mode='lines',
+                                line=dict(color='rgba(255,0,0,0.3)', width=2, dash='dot'),
+                                showlegend=False,
+                            ))
+        else:
+            fig.add_trace(go.Scatter(
+                x=Y[:,0], y=Y[:,1], mode='markers+text',
+                text=list(words), textposition='top center',
+                marker=dict(size=6, color='blue'),
+            ))
+            for p in G:
+                for x, y in window(p, 2):
+                    x0, y0 = Y[words[x]]
+                    x1, y1 = Y[words[y]]
+                    fig.add_annotation(
+                        x=x1, y=y1, ax=x0, ay=y0,
+                        xref='x', yref='y', axref='x', ayref='y',
+                        showarrow=True, arrowhead=2, arrowsize=1.5,
+                        arrowwidth=1.5, arrowcolor='rgba(0,0,255,0.4)',
+                    )
+            if connect_groups and len(G) > 1:
+                n = min(len(p) for p in G)
+                for i in range(n):
+                    for g1, g2 in window(G, 2):
+                        if i < len(g1) and i < len(g2):
+                            x0, y0 = Y[words[g1[i]]]
+                            x1, y1 = Y[words[g2[i]]]
+                            fig.add_trace(go.Scatter(
+                                x=[x0, x1], y=[y0, y1], mode='lines',
+                                line=dict(color='rgba(255,0,0,0.3)', width=1, dash='dot'),
+                                showlegend=False,
+                            ))
+        fig.update_layout(
+            width=800, height=500, showlegend=False,
+            title=self._variance_subtitle(S, dimensions),
+        )
+        fig.show()
+
+    def plot_analogy(self, a, b, c, n, dimensions=2):
         ab = self._analogy(a, b, c, n=n)
-        # look at the top words in the reverse direction to get words that
-        # contrast when the relationship is asymmetric
         ba = self._analogy(b, a, c, n=n)
-        words = [a,b,c] + ab + list(set(ba) - set(ab))
-        _, pos = self._plot_paths([words])
+        words = Alphabet()
+        words.add_many([a, b, c] + ab + list(set(ba) - set(ab)))
+        Y, S = self._mds(words, dimensions=dimensions)
 
-        xs, ys = pos[:4].T
-        pl.scatter(xs, ys, c='r')
-
-        pl.arrow(xs[0], ys[0], (xs[1] - xs[0]), (ys[1] - ys[0]),
-                 color='r', **arrow_style)
-        pl.arrow(xs[2], ys[2], (xs[3] - xs[2]), (ys[3] - ys[2]),
-                 color='r', **arrow_style)
+        fig = go.Figure()
+        if dimensions == 3:
+            fig.add_trace(go.Scatter3d(
+                x=Y[:,0], y=Y[:,1], z=Y[:,2], mode='markers+text',
+                text=list(words), textposition='top center',
+                marker=dict(size=4, color='blue'),
+            ))
+            quad = Y[:4]
+            fig.add_trace(go.Scatter3d(
+                x=quad[:,0], y=quad[:,1], z=quad[:,2], mode='markers',
+                marker=dict(size=8, color='red'),
+            ))
+            for i, j in [(0, 1), (2, 3)]:
+                self._add_arrow_3d(fig, Y[i], Y[j], color='red', width=4)
+        else:
+            fig.add_trace(go.Scatter(
+                x=Y[:,0], y=Y[:,1], mode='markers+text',
+                text=list(words), textposition='top center',
+                marker=dict(size=6, color='blue'),
+            ))
+            quad = Y[:4]
+            fig.add_trace(go.Scatter(
+                x=quad[:,0], y=quad[:,1], mode='markers',
+                marker=dict(size=10, color='red'),
+            ))
+            for i, j in [(0, 1), (2, 3)]:
+                fig.add_annotation(
+                    x=Y[j,0], y=Y[j,1], ax=Y[i,0], ay=Y[i,1],
+                    xref='x', yref='y', axref='x', ayref='y',
+                    showarrow=True, arrowhead=2, arrowsize=1.5,
+                    arrowwidth=2, arrowcolor='red',
+                )
+        fig.update_layout(
+            width=800, height=500, showlegend=False,
+            title=self._variance_subtitle(S, dimensions),
+        )
+        fig.show()
 
     def subspace(self, G, K):
         """
@@ -124,10 +246,6 @@ class Embeddings:
         z = self.__class__(A, self.dom)
         z.B = B
         return z
-
-
-arrow_style = dict(length_includes_head=True, alpha=0.5, width=.005, lw=0,
-                   head_width=0.03, head_length=.03)
 
 
 def normalize_rows(A):
@@ -242,34 +360,7 @@ def test():
 
 
     plot_change(professions, emb, deb)
-
     plot_change(gendered.strip().split(), emb, deb)
-
-    pl.show()
-
-    return
-
-    def most_similar_slow(emb, x, n, exclude=None):
-        vocab = list(emb.dom.keys())
-        #vocab.sort(key = lambda y: norm(x - self(y)))
-        vocab.sort(key = lambda y: -(x @ emb(y)))
-        if exclude: vocab = [x for x in vocab if x not in exclude]
-        return vocab[:n]
-
-
-    T = timers()
-    K = 5
-    for x in ['man', 'cowboy', 'president']:
-        with T['kd']:
-            a = emb.most_similar(emb(x), n = K)
-        with T['sort']:
-            b = most_similar_slow(emb, emb(x), n = K)
-        print()
-        print(x)
-        print(a)
-        print(b)
-    print()
-    T.compare()
 
 
 def plot_change(words, emb, deb):
@@ -280,35 +371,41 @@ def plot_change(words, emb, deb):
         D = np.zeros((n,n))
         for i in range(n):
             for j in range(0, i):
-
                 u = words[i]
                 v = words[j]
-
                 u = deb(u[1:]) if u.startswith('*') else emb(u)
                 v = deb(v[1:]) if v.startswith('*') else emb(v)
-
                 D[i,j] = D[j,i] = norm(u - v)
         return D
 
     ww = words + ['*'+w for w in words]
     D = distance_matrix(ww)
-
-    Y, _ = mds(D)
-
-    pl.figure(figsize=(12, 6))
-    pl.scatter(Y[:,0], Y[:,1], s=20, c='b', marker='o')
-
+    Y, S = mds(D)
     pos = dict(zip(ww, Y))
 
+    fig = go.Figure()
+    xs = [pos[w][0] for w in words]
+    ys = [pos[w][1] for w in words]
+    fig.add_trace(go.Scatter(
+        x=xs, y=ys, mode='markers+text',
+        text=words, textposition='top center',
+        marker=dict(size=6, color='blue'),
+    ))
     for w in words:
-        x,y = pos[w]
-        pl.text(x, y, w, fontsize=12)
-
+        x0, y0 = pos[w]
         x1, y1 = pos['*'+w]
-
-        pl.arrow(x, y, (x1 - x), (y1 - y), **arrow_style)
-
-    pl.grid(True)
+        fig.add_annotation(
+            x=x1, y=y1, ax=x0, ay=y0,
+            xref='x', yref='y', axref='x', ayref='y',
+            showarrow=True, arrowhead=2, arrowsize=1.5,
+            arrowwidth=1.5, arrowcolor='rgba(0,0,255,0.4)',
+        )
+    pct = S[:2].sum() / S.sum() * 100
+    fig.update_layout(
+        width=800, height=500, showlegend=False,
+        title=f'MDS: 2D captures {pct:.1f}% of variance',
+    )
+    fig.show()
 
 
 if __name__ == '__main__':
