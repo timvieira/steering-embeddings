@@ -5,7 +5,7 @@
 
 ## Content
 - [ ] Show subspaces in addition to "gender" like "size"
-- [ ] Add math for MDS and subspace identification to the article
+- [ ] Add math for MDS and subspace identification to the article.
 
 ## Hero visualization
 - [x] Marquee 3D scene at top with gendered pairs + professions, ghost/bright dots, trails
@@ -24,6 +24,8 @@
 ## Style
 - [ ] Content is not correctly centered
 - [ ] Remove the "waiting for review" thing (not publishing on Distill)
+- [ ] Pick more attractive colors (the specific red and blue colors we have are yucky)
+- [ ] initial zoom on the hero plot could be increased on some platforms. making it big is good.
 
 ## Polish
 - [ ] Fix plot horizontal alignment with Distill column
