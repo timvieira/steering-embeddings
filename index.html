@@ -13,8 +13,12 @@
 <script type="text/front-matter">
   title: "Steering Word Embeddings"
   description: "An interactive exploration of word vectors, analogies, and subspace projection."
-  authors:
-  - Tim Vieira: https://timvieira.github.io/
+</script>
+<script>
+  // Suppress known Distill v1 template error with missing affiliations
+  window.addEventListener('error', function(e) {
+    if (e.filename && e.filename.includes('template.v1.js')) e.preventDefault();
+  });
 </script>
 
 <style>
