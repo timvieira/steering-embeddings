@@ -165,9 +165,18 @@ function render2D(container, words, coords, arrows, options = {}) {
     g = zoomG.append('g').attr('class', 'main')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Pan + zoom via d3.zoom
+    // Pan + zoom via d3.zoom, but don't intercept clicks on words/circles
     const zoom = d3.zoom()
       .scaleExtent([0.5, 5])
+      .filter((event) => {
+        // Allow scroll-to-zoom always; only allow drag from background (not words/circles)
+        if (event.type === 'wheel') return true;
+        if (event.type === 'mousedown' || event.type === 'pointerdown') {
+          const tag = event.target.tagName;
+          return tag !== 'circle' && tag !== 'text';
+        }
+        return true;
+      })
       .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
     svg.call(zoom);
     svg.style('cursor', 'grab');
