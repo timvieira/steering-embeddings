@@ -1,0 +1,450 @@
+<!doctype html>
+<meta charset="utf-8">
+<script src="https://distill.pub/template.v1.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]})"></script>
+<script src="https://unpkg.com/svd-js@1.1.1/build-umd/svd-js.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script type="text/front-matter">
+  title: "Steering Word Embeddings"
+  description: "An interactive exploration of word vectors, analogies, and subspace projection."
+  authors:
+  - Tim Vieira: https://timvieira.github.io/
+</script>
+
+<style>
+  .figure-row { position: relative; margin: 1.5em 0; }
+  .figure-row .plot-container { width: 100%; }
+  .figure-row .eigen-margin { position: absolute; right: -110px; top: 0; width: 90px; }
+  .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
+
+  .progress-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.95); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 10000;
+    transition: opacity 0.3s;
+  }
+  .progress-overlay.hidden { opacity: 0; pointer-events: none; }
+  .progress-bar { width: 300px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .progress-bar .fill { height: 100%; background: #4a7dcc; width: 0%; transition: width 0.1s; }
+  #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
+
+  .vocab-selector { display: inline-flex; gap: 4px; background: #f7f7f7; border-radius: 4px; padding: 3px; }
+  .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; }
+  .vocab-selector button.active { background: #4a7dcc; color: white; }
+
+  .analogy-input { display: flex; gap: 8px; align-items: center; margin: 1em 0; flex-wrap: wrap; }
+  .analogy-input input { border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; font-size: 15px; width: 120px; }
+  .analogy-input input:focus { outline: none; border-color: #4a7dcc; }
+  .analogy-input .sep { color: #999; font-size: 15px; }
+  .analogy-input button { background: #4a7dcc; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; }
+  .analogy-result { font-size: 16px; padding: 8px 0; min-height: 2em; }
+  .analogy-result .answer { font-weight: 600; color: #4a7dcc; }
+  .error { color: #e74c3c; font-size: 14px; }
+
+  .cooccurrence-img { max-width: 500px; margin: 1em 0; }
+  .cooccurrence-img img { width: 100%; }
+</style>
+
+<!-- Loading overlay -->
+<div class="progress-overlay" id="loading-overlay">
+  <div>Loading word vectors...</div>
+  <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
+  <div id="loading-text">0%</div>
+  <div style="margin-top: 16px;">
+    <div class="vocab-selector" id="vocab-selector-loading">
+      <button data-size="small">Small (10K, 4MB)</button>
+      <button class="active" data-size="medium">Medium (50K, 20MB)</button>
+      
+    </div>
+  </div>
+</div>
+
+<dt-article>
+
+<h1>Steering Word Embeddings</h1>
+<h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
+<dt-byline></dt-byline>
+
+<p>
+  <span style="font-size: 13px; color: #999;">Vocabulary:</span>
+  <span class="vocab-selector" id="vocab-selector">
+    <button data-size="small">10K</button>
+    <button class="active" data-size="medium">50K</button>
+    
+  </span>
+</p>
+
+<h2>What are Word Embeddings?</h2>
+
+<p>A dictionary explains a word using other words &mdash; a human-readable representation. A word embedding explains a word using a list of numbers &mdash; a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar numbers.</p>
+
+<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b>, counting how often pairs of words co-occur within a given window.</p>
+
+<div class="cooccurrence-img">
+  <img src="img/word-co-occurrence.png" alt="Word co-occurrence matrix">
+  <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
+</div>
+
+<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure &mdash; you can't do analogies on them, for example (more on analogies below).</p>
+
+<p>Methods like <a href="https://arxiv.org/abs/1301.3781">word2vec</a> and <a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> don't just compress the co-occurrence matrix. They learn low-dimensional vectors with approximately linear structure &mdash; the reason analogies work and the subspace methods in this article are possible.</p>
+
+<p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
+
+<h2>Structure in the Embedding Space</h2>
+
+<p>Do embeddings capture meaningful structure? We can check by visualizing groups of related words.</p>
+
+<p>Since our vectors are 100-dimensional, we project them to lower dimensions for plotting using <a href="https://en.wikipedia.org/wiki/Multidimensional_scaling"><b>MDS (multidimensional scaling)</b></a>, which finds a layout that best preserves pairwise distances. Use the eigenvalue bars to the right of each plot to switch between 1D, 2D, and 3D views. The percentage shows how much of the original distance structure is captured.</p>
+
+<h3>Superlatives</h3>
+<p>Adjective forms trace out parallel paths:</p>
+<div class="figure-row">
+  <div class="plot-container" id="plot-superlatives"></div>
+  <div class="eigen-margin" id="eigen-superlatives"></div>
+</div>
+
+<h3>Numbers</h3>
+<p>Digits and their word forms occupy distinct but parallel subspaces:</p>
+<div class="figure-row">
+  <div class="plot-container" id="plot-numbers-digits"></div>
+  <div class="eigen-margin" id="eigen-numbers-digits"></div>
+</div>
+<div class="figure-row">
+  <div class="plot-container" id="plot-numbers-words"></div>
+  <div class="eigen-margin" id="eigen-numbers-words"></div>
+</div>
+<p>Written and numeric forms linked together:</p>
+<div class="figure-row">
+  <div class="plot-container" id="plot-numbers-linked"></div>
+  <div class="eigen-margin" id="eigen-numbers-linked"></div>
+</div>
+
+<h2>Word Analogies</h2>
+
+<p>These regularities give rise to <b>word analogies</b>. The vector difference between related word pairs is roughly constant:</p>
+
+$$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{queen}}$$
+
+<p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
+
+<div class="figure-row">
+  <div class="plot-container" id="plot-analogy-king"></div>
+  <div class="eigen-margin" id="eigen-analogy-king"></div>
+</div>
+
+<h3>Try your own</h3>
+<div class="analogy-input">
+  <input type="text" id="analogy-a" placeholder="man" value="man">
+  <span class="sep">is to</span>
+  <input type="text" id="analogy-b" placeholder="woman" value="woman">
+  <span class="sep">as</span>
+  <input type="text" id="analogy-c" placeholder="king" value="king">
+  <span class="sep">is to</span>
+  <button id="analogy-go">?</button>
+</div>
+<div class="analogy-result" id="analogy-result"></div>
+<div class="figure-row">
+  <div class="plot-container" id="plot-analogy-custom"></div>
+  <div class="eigen-margin" id="eigen-analogy-custom"></div>
+</div>
+
+<h2>Identifying Subspaces</h2>
+
+<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't just a pattern between a few word pairs &mdash; it's a consistent axis along which many words vary.</p>
+
+<p>Given groups of word pairs that vary along some concept, we compute the covariance of their embeddings and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the variation within those groups.</p>
+
+<h2>Steering by Subspace Projection</h2>
+
+<p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out:</p>
+
+$$\vec{w}_{\text{steered}} = \frac{\vec{w} - \vec{w}_{\mathcal{B}}}{\|\vec{w} - \vec{w}_{\mathcal{B}}\|} \quad \text{where} \quad \vec{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\vec{w} \cdot \vec{b}_j) \, \vec{b}_j$$
+
+<p>This removes each word's component along the chosen subspace while preserving everything else.</p>
+
+<p>We define a gender subspace using pronoun pairs:</p>
+
+<div class="figure-row">
+  <div class="plot-container" id="plot-gendered-before"></div>
+  <div class="eigen-margin" id="eigen-gendered-before"></div>
+</div>
+
+<p>After steering:</p>
+<div class="figure-row">
+  <div class="plot-container" id="plot-gendered-after"></div>
+  <div class="eigen-margin" id="eigen-gendered-after"></div>
+</div>
+
+<h2>Results</h2>
+
+<h3>Profession Analogies: Before vs. After</h3>
+<p>Before steering, "man :: woman &rarr; doctor" yields "nurse." After, both directions yield "physician":</p>
+
+<div class="figure-row">
+  <div class="plot-container" id="plot-doctor-before"></div>
+  <div class="eigen-margin" id="eigen-doctor-before"></div>
+</div>
+<div class="figure-row">
+  <div class="plot-container" id="plot-doctor-after"></div>
+  <div class="eigen-margin" id="eigen-doctor-after"></div>
+</div>
+
+<h3>Which Words Changed Most?</h3>
+<div id="profession-ranking"></div>
+
+</dt-article>
+
+<dt-appendix>
+  <h3>Acknowledgments</h3>
+  <p>This article uses <a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> vectors (Pennington et al., 2014). The steering method follows <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a>.</p>
+</dt-appendix>
+
+<script type="text/bibliography">
+  @inproceedings{pennington2014glove,
+    title={GloVe: Global Vectors for Word Representation},
+    author={Pennington, Jeffrey and Socher, Richard and Manning, Christopher D},
+    booktitle={EMNLP},
+    year={2014},
+    url={https://nlp.stanford.edu/projects/glove/}
+  }
+  @inproceedings{bolukbasi2016man,
+    title={Man is to Computer Programmer as Woman is to Homemaker? Debiasing Word Embeddings},
+    author={Bolukbasi, Tolga and Chang, Kai-Wei and Zou, James and Saligrama, Venkatesh and Kalai, Adam},
+    booktitle={NeurIPS},
+    year={2016},
+    url={https://arxiv.org/abs/1607.06520}
+  }
+</script>
+
+<script type="module">
+import { Embeddings, mds, loadEmbeddings } from './js/embeddings.js';
+import { EmbeddingViz } from './js/viz.js';
+
+const SIZES = {
+  small:  { url: 'data/glove-small.bin',  label: '10K words' },
+  medium: { url: 'data/glove-medium.bin', label: '50K words' },
+  large:  { url: 'data/glove-large.bin',  label: '400K words' },
+};
+
+let emb = null;
+let steered = null;
+let vizInstances = [];
+
+const GENDER_PAIRS = [
+  ['she','he'], ['woman','man'], ['herself','himself'], ['her','him'],
+  ['hers','his'], ['gal','guy'], ['girl','boy'], ['girls','boys'],
+  ['female','male'], ['females','males'],
+];
+
+const GENDERED_WORDS = [
+  ['man','woman'], ['king','queen'], ['actor','actress'], ['boy','girl'],
+  ['dad','mom'], ['father','mother'], ['brother','sister'], ['uncle','aunt'],
+  ['heir','heiress'], ['duke','duchess'], ['nephew','niece'], ['sir','madame'],
+  ['male','female'], ['masculine','feminine'],
+];
+
+const SUPERLATIVES = [
+  ['poor','poorer','poorest'], ['rich','richer','richest'],
+  ['short','shorter','shortest'], ['slow','slower','slowest'],
+  ['fast','faster','fastest'], ['soft','softer','softest'],
+  ['strong','stronger','strongest'], ['mean','meaner','meanest'],
+  ['dark','darker','darkest'], ['smart','smarter','smartest'],
+];
+
+const PROFESSIONS = [
+  'caretaker','homemaker','doctor','nurse','programmer','teacher',
+  'wife','husband','soldier','salesperson','analyst','therapist',
+  'trainer','instructor','ceo','assistant','telemarketer',
+  'bartender','clerk','designer','father','mother','scientist',
+  'manager','boss','employee',
+];
+
+
+async function init(size = 'medium') {
+  const overlay = document.getElementById('loading-overlay');
+  const fill = document.getElementById('progress-fill');
+  const text = document.getElementById('loading-text');
+  overlay.classList.remove('hidden');
+
+  emb = await loadEmbeddings(SIZES[size].url, (pct) => {
+    fill.style.width = `${(pct * 100).toFixed(0)}%`;
+    text.textContent = `${(pct * 100).toFixed(0)}%`;
+  });
+
+  text.textContent = 'Computing steering vectors...';
+  steered = emb.steer(GENDER_PAIRS, 10);
+
+  overlay.classList.add('hidden');
+  buildVisualizations();
+}
+
+
+function flatWords(groups) {
+  const seen = new Set();
+  const result = [];
+  for (const g of groups) {
+    for (const w of g) {
+      if (!seen.has(w) && emb.has(w)) { seen.add(w); result.push(w); }
+    }
+  }
+  return result;
+}
+
+function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
+  const ab = embToUse.analogy(a, b, c, n);
+  const ba = embToUse.analogy(b, a, c, n);
+  const extra = ba.filter(w => !ab.includes(w));
+  const words = [a, b, c, ...ab, ...extra].filter(w => embToUse.has(w));
+  const unique = [...new Set(words)];
+  const idx = new Map(unique.map((w, i) => [w, i]));
+  const arrows = [
+    { from: idx.get(a), to: idx.get(b), color: 'red' },
+  ];
+  if (ab.length > 0 && idx.has(ab[0])) {
+    arrows.push({ from: idx.get(c), to: idx.get(ab[0]), color: 'red' });
+  }
+  return new EmbeddingViz({
+    emb: embToUse, words: unique,
+    groups: [unique],
+    plotEl: document.getElementById(plotId),
+    eigenEl: document.getElementById(eigenId),
+    arrows,
+    highlights: [idx.get(a), idx.get(b), idx.get(c), ...(ab.length > 0 && idx.has(ab[0]) ? [idx.get(ab[0])] : [])],
+  });
+}
+
+
+function buildVisualizations() {
+  vizInstances = [];
+
+  const supWords = flatWords(SUPERLATIVES);
+  if (supWords.length > 0) {
+    vizInstances.push(new EmbeddingViz({
+      emb, words: supWords, groups: SUPERLATIVES,
+      plotEl: document.getElementById('plot-superlatives'),
+      eigenEl: document.getElementById('eigen-superlatives'),
+    }));
+  }
+
+  const digits = '1 2 3 4 5 6 7 8 9 10 11 12 13'.split(' ').filter(w => emb.has(w));
+  if (digits.length > 0) {
+    vizInstances.push(new EmbeddingViz({
+      emb, words: digits, groups: [digits],
+      plotEl: document.getElementById('plot-numbers-digits'),
+      eigenEl: document.getElementById('eigen-numbers-digits'),
+    }));
+  }
+
+  const numWords = 'one two three four five six seven eight nine ten eleven twelve thirteen'.split(' ').filter(w => emb.has(w));
+  if (numWords.length > 0) {
+    vizInstances.push(new EmbeddingViz({
+      emb, words: numWords, groups: [numWords],
+      plotEl: document.getElementById('plot-numbers-words'),
+      eigenEl: document.getElementById('eigen-numbers-words'),
+    }));
+  }
+
+  const numPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
+    ['five','5'],['six','6'],['seven','7'],['eight','8'],['nine','9']];
+  const linkedWords = flatWords(numPairs);
+  if (linkedWords.length > 0) {
+    vizInstances.push(new EmbeddingViz({
+      emb, words: linkedWords, groups: numPairs,
+      plotEl: document.getElementById('plot-numbers-linked'),
+      eigenEl: document.getElementById('eigen-numbers-linked'),
+      connectGroups: true,
+    }));
+  }
+
+  if (emb.has('man') && emb.has('woman') && emb.has('king')) {
+    vizInstances.push(buildAnalogyViz('plot-analogy-king', 'eigen-analogy-king', 'man', 'woman', 'king', 10, emb));
+  }
+
+  const genWords = flatWords(GENDERED_WORDS);
+  if (genWords.length > 0) {
+    vizInstances.push(new EmbeddingViz({
+      emb, words: genWords, groups: GENDERED_WORDS,
+      plotEl: document.getElementById('plot-gendered-before'),
+      eigenEl: document.getElementById('eigen-gendered-before'),
+    }));
+    vizInstances.push(new EmbeddingViz({
+      emb: steered, words: genWords, groups: GENDERED_WORDS,
+      plotEl: document.getElementById('plot-gendered-after'),
+      eigenEl: document.getElementById('eigen-gendered-after'),
+    }));
+  }
+
+  if (emb.has('doctor')) {
+    vizInstances.push(buildAnalogyViz('plot-doctor-before', 'eigen-doctor-before', 'man', 'woman', 'doctor', 10, emb));
+    vizInstances.push(buildAnalogyViz('plot-doctor-after', 'eigen-doctor-after', 'man', 'woman', 'doctor', 10, steered));
+  }
+
+  const rankEl = document.getElementById('profession-ranking');
+  const profs = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
+  const ranked = profs.map(w => {
+    const v1 = emb.vec(w), v2 = steered.vec(w);
+    let diff = 0;
+    for (let i = 0; i < emb.dims; i++) diff += (v1[i] - v2[i]) ** 2;
+    return { word: w, shift: Math.sqrt(diff) };
+  }).sort((a, b) => b.shift - a.shift);
+
+  rankEl.innerHTML = '<ol>' +
+    ranked.map(r => `<li><b>${r.word}</b> <span style="color:#999">(${r.shift.toFixed(3)})</span></li>`).join('') +
+    '</ol>';
+
+  setupAnalogyInput();
+}
+
+
+function setupAnalogyInput() {
+  const go = document.getElementById('analogy-go');
+  const result = document.getElementById('analogy-result');
+
+  function runAnalogy() {
+    const a = document.getElementById('analogy-a').value.trim().toLowerCase();
+    const b = document.getElementById('analogy-b').value.trim().toLowerCase();
+    const c = document.getElementById('analogy-c').value.trim().toLowerCase();
+
+    if (!a || !b || !c) { result.innerHTML = ''; return; }
+    if (!emb.has(a)) { result.innerHTML = `<span class="error">"${a}" not in vocabulary</span>`; return; }
+    if (!emb.has(b)) { result.innerHTML = `<span class="error">"${b}" not in vocabulary</span>`; return; }
+    if (!emb.has(c)) { result.innerHTML = `<span class="error">"${c}" not in vocabulary</span>`; return; }
+
+    const answers = emb.analogy(a, b, c, 5);
+    result.innerHTML = `${a} is to ${b} as ${c} is to <span class="answer">${answers[0]}</span>` +
+      `<br><span style="color:#999;font-size:14px">Also: ${answers.slice(1).join(', ')}</span>`;
+
+    buildAnalogyViz('plot-analogy-custom', 'eigen-analogy-custom', a, b, c, 10, emb);
+  }
+
+  go.addEventListener('click', runAnalogy);
+  document.querySelectorAll('.analogy-input input').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') runAnalogy(); });
+  });
+}
+
+
+function setupVocabSelectors() {
+  document.querySelectorAll('.vocab-selector').forEach(sel => {
+    sel.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.vocab-selector button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll(`.vocab-selector button[data-size="${btn.dataset.size}"]`)
+          .forEach(b => b.classList.add('active'));
+        init(btn.dataset.size);
+      });
+    });
+  });
+}
+
+setupVocabSelectors();
+init('medium');
+
+</script>
