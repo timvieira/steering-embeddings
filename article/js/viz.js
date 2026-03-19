@@ -5,11 +5,11 @@
 import { mds } from './embeddings.js';
 
 const COLORS = {
-  point: '#4a7dcc',
-  arrow: 'rgba(74, 125, 204, 0.5)',
-  highlight: '#e74c3c',
-  crossGroup: 'rgba(231, 76, 60, 0.3)',
-  eigenActive: '#4a7dcc',
+  point: '#5778a4',
+  arrow: 'rgba(87, 120, 164, 0.5)',
+  highlight: '#e49444',
+  crossGroup: 'rgba(228, 148, 68, 0.3)',
+  eigenActive: '#5778a4',
   eigenInactive: '#ddd',
 };
 
@@ -506,7 +506,7 @@ function renderHero3D(container, wordData, options = {}) {
 
   // Group colors
   const groupNames = [...new Set(wordData.map(d => d.group))];
-  const groupPalette = ['#4a7dcc', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c'];
+  const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
   const groupColor = {};
   groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
 

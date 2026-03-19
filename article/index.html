@@ -36,21 +36,21 @@
   }
   .progress-overlay.hidden { opacity: 0; pointer-events: none; }
   .progress-bar { width: 300px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
-  .progress-bar .fill { height: 100%; background: #4a7dcc; width: 0%; transition: width 0.1s; }
+  .progress-bar .fill { height: 100%; background: #5778a4; width: 0%; transition: width 0.1s; }
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
 
   .vocab-selector { display: inline-flex; gap: 4px; background: #f7f7f7; border-radius: 4px; padding: 3px; }
   .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; }
-  .vocab-selector button.active { background: #4a7dcc; color: white; }
+  .vocab-selector button.active { background: #5778a4; color: white; }
 
   .analogy-input { display: flex; gap: 8px; align-items: center; margin-top: 1em; margin-bottom: 1em; flex-wrap: wrap; }
   .analogy-input input { border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; font-size: 15px; width: 120px; }
-  .analogy-input input:focus { outline: none; border-color: #4a7dcc; }
+  .analogy-input input:focus { outline: none; border-color: #5778a4; }
   .analogy-input .sep { color: #999; font-size: 15px; }
-  .analogy-input button { background: #4a7dcc; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; }
+  .analogy-input button { background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; }
   .analogy-result { font-size: 16px; padding: 8px 0; min-height: 2em; }
-  .analogy-result .answer { font-weight: 600; color: #4a7dcc; }
-  .error { color: #e74c3c; font-size: 14px; }
+  .analogy-result .answer { font-weight: 600; color: #5778a4; }
+  .error { color: #e49444; font-size: 14px; }
 
   img.cooccurrence-img { max-width: 500px; }
   .analogy-input, .analogy-result { box-sizing: border-box; }
@@ -78,8 +78,8 @@
 
 <div id="hero-viz" class="l-page" style="margin: 1em auto;"></div>
 <p style="color: #999; font-size: 13px; margin-bottom: 2em;">
-  <span style="color: #4a7dcc;">&#9679;</span> Gendered word pairs &nbsp;
-  <span style="color: #e74c3c;">&#9679;</span> Occupations &nbsp;
+  <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
+  <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
   &mdash; Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
 </p>
 
@@ -215,7 +215,9 @@
 
 <dt-appendix>
   <h3>Acknowledgments</h3>
-  <p>This article uses <a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> vectors (Pennington et al., 2014). The steering method follows <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a>.</p>
+  <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
+  <h3>References</h3>
+  <p>This article uses GloVe vectors <dt-cite key="pennington2014glove"></dt-cite>. The steering method follows Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>.</p>
 </dt-appendix>
 
 <script type="text/bibliography">
@@ -256,10 +258,10 @@ const GENDER_PAIRS = [
 ];
 
 const GENDERED_WORDS = [
-  ['man','woman'], ['king','queen'], ['actor','actress'], ['boy','girl'],
-  ['dad','mom'], ['father','mother'], ['brother','sister'], ['uncle','aunt'],
-  ['heir','heiress'], ['duke','duchess'], ['nephew','niece'], ['sir','madame'],
-  ['male','female'], ['masculine','feminine'],
+  ['woman','man'], ['queen','king'], ['actress','actor'], ['girl','boy'],
+  ['mom','dad'], ['mother','father'], ['sister','brother'], ['aunt','uncle'],
+  ['heiress','heir'], ['duchess','duke'], ['niece','nephew'], ['madame','sir'],
+  ['female','male'], ['feminine','masculine'],
 ];
 
 const SUPERLATIVES = [

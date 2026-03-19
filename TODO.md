@@ -1,11 +1,13 @@
 ## Article interactivity
-- [ ] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
+- [x] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
+  - Clicking a word in 2D/1D plots adds its top-5 nearest neighbors to the data, recomputes MDS, and animates the transition. Neighbors are styled distinctly (gray, smaller text) with dashed lines to their parent. Recursive: clicking neighbors expands them too.
 - [ ] Animated steering transition (play button, words slide from original to steered with trails)
 - [ ] Build-your-own word groups explorer (text area → instant MDS plot)
 
 ## Content
 - [ ] Show subspaces in addition to "gender" like "size"
-- [ ] Add math for MDS and subspace identification to the article.
+- [x] Add math for MDS and subspace identification to the article.
+  - Added step-by-step derivations for MDS (double centering, eigendecomposition, coordinate extraction) and subspace identification (difference vectors, second moment matrix, SVD). Includes dimensionality/rank discussion and centering explanation.
 
 ## Hero visualization
 - [x] Marquee 3D scene at top with gendered pairs + professions, ghost/bright dots, trails
@@ -14,22 +16,29 @@
 - [x] The ghost of the previous position is too faint.
   - Increased ghost dot opacity from 0.25 to 0.55 and trail opacity from 0.3 to 0.45 in renderHero3D.
 - [x] What do the red/blue colors mean?
-  - Added a color legend below the hero: blue circle = gendered word pairs, red circle = professions.
+  - Added a color legend below the hero: blue circle = gendered word pairs, red circle = occupations.
 - [x] Scroll gets trapped by 3D canvas zoom.
-  - Disabled scroll zoom on the hero (controls.enableZoom = false). Users can still click-drag to orbit.
+  - Re-enabled zoom but added visible border + grab cursor on all 3D canvases so boundary is clear.
 
 ## AWESOMENESS
 - [ ] Animate changes from 1 -> 2 -> 3 dimensions
 
+- [ ] can we show the subspace being identified from the group's vector, then
+  their differences, followed by an (linear) adjustment, all as a
+  smooth/informative/instructive animation?
+
+
 ## Style
-- [ ] Content is not correctly centered
+- [x] Content is not correctly centered
+  - Fixed alignment of equations (wrapped in `<p>`), analogy input (margin fix), cooccurrence image (changed to `<figure>`), and plots (48px left margin on plot-container). All elements now align with Distill text column.
 - [ ] Remove the "waiting for review" thing (not publishing on Distill)
 - [ ] Pick more attractive colors (the specific red and blue colors we have are yucky)
-- [ ] initial zoom on the hero plot could be increased on some platforms. making it big is good.
-- [ ] reorder gendered pairs to be feminine first.
+- [ ] Initial zoom on the hero plot could be increased on some platforms. Making it big is good.
+- [ ] Reorder gendered pairs to be feminine first.
 
 ## Polish
-- [ ] Fix plot horizontal alignment with Distill column
+- [x] Fix plot horizontal alignment with Distill column
+  - Used Distill's `l-body-outset` class + 48px left margin to align plots with text.
 - [ ] Improve 2D arrow aesthetics
 - [x] Auto-orbit all 3D plots
   - Added controls.autoRotate = true to all 3D renders. Pauses on click-drag, resumes after 3s.
@@ -38,17 +47,8 @@
 - [x] Default to 50K vocabulary
   - Changed default from small (10K) to medium (50K). 10K was missing too many words (superlatives, gendered pairs).
 
-
 ## Boo-boos?
-
-- [ ] are some superlatives missing? (e.g., we have soft -> softer but appear to
-  be missing softest).  Please check that all of the data from the notebook was
-  carried over correctly.
-
+- [x] Are some superlatives missing? (e.g., soft -> softer but missing softest)
+  - Only 3 words missing from 50K vocab (softest, meaner, meanest). User updated export_vectors.py with `must_have` parameter to ensure article words are always included. Need to re-export binaries.
 - [ ] Acknowledgements should be references.
-
-- [ ] Acknowledge David Mueller https://damueller.com who co-wrote a homework
-  assignment with me ages ago about word embeddings for a machine learning
-  course at JHU.
-
-
+- [ ] Acknowledge David Mueller https://damueller.com who co-wrote a homework assignment about word embeddings for a machine learning course at JHU.
