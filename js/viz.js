@@ -5,11 +5,11 @@
 import { mds } from './embeddings.js';
 
 const COLORS = {
-  point: '#4a7dcc',
-  arrow: 'rgba(74, 125, 204, 0.5)',
-  highlight: '#e74c3c',
-  crossGroup: 'rgba(231, 76, 60, 0.3)',
-  eigenActive: '#4a7dcc',
+  point: '#5778a4',
+  arrow: 'rgba(87, 120, 164, 0.5)',
+  highlight: '#e49444',
+  crossGroup: 'rgba(228, 148, 68, 0.3)',
+  eigenActive: '#5778a4',
   eigenInactive: '#ddd',
 };
 
@@ -96,7 +96,7 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
  * 2D scatter plot with arrows using D3 SVG.
  */
 function render2D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], crossGroupLines = [], width = 700, height = 450 } = options;
+  const { highlights = [], crossGroupLines = [], width = 620, height = 450 } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
@@ -197,7 +197,7 @@ function render2D(container, words, coords, arrows, options = {}) {
  * 3D scatter plot with arrows using Three.js.
  */
 function render3D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], crossGroupLines = [], width = 700, height = 450 } = options;
+  const { highlights = [], crossGroupLines = [], width = 620, height = 450 } = options;
 
   // Clear
   const el = typeof container === 'string' ? document.getElementById(container) : container;
@@ -209,6 +209,11 @@ function render3D(container, words, coords, arrows, options = {}) {
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
+  renderer.domElement.style.border = '1px solid #e0e0e0';
+  renderer.domElement.style.borderRadius = '4px';
+  renderer.domElement.style.cursor = 'grab';
+  renderer.domElement.addEventListener('pointerdown', () => { renderer.domElement.style.cursor = 'grabbing'; });
+  renderer.domElement.addEventListener('pointerup', () => { renderer.domElement.style.cursor = 'grab'; });
   el.appendChild(renderer.domElement);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -320,7 +325,7 @@ function render3D(container, words, coords, arrows, options = {}) {
  * 1D strip plot using D3.
  */
 function render1D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], width = 700, height = 120 } = options;
+  const { highlights = [], width = 620, height = 120 } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
 
@@ -479,7 +484,12 @@ function renderHero3D(container, wordData, options = {}) {
   controls.enableDamping = true;
   controls.autoRotate = true;
   controls.autoRotateSpeed = 0.8;
-  controls.enableZoom = false;  // prevent scroll from getting trapped
+  // Visible border so users know where the interactive canvas is
+  renderer.domElement.style.border = '1px solid #e0e0e0';
+  renderer.domElement.style.borderRadius = '4px';
+  renderer.domElement.style.cursor = 'grab';
+  renderer.domElement.addEventListener('pointerdown', () => { renderer.domElement.style.cursor = 'grabbing'; });
+  renderer.domElement.addEventListener('pointerup', () => { renderer.domElement.style.cursor = 'grab'; });
 
   let pauseTimeout = null;
   function pauseOrbit() {
@@ -496,7 +506,7 @@ function renderHero3D(container, wordData, options = {}) {
 
   // Group colors
   const groupNames = [...new Set(wordData.map(d => d.group))];
-  const groupPalette = ['#4a7dcc', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c'];
+  const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
   const groupColor = {};
   groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
 

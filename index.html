@@ -23,8 +23,9 @@
 
 <style>
   .figure-row { position: relative; margin: 1.5em 0; }
-  .figure-row .plot-container { width: 100%; }
-  .figure-row .eigen-margin { position: absolute; right: -110px; top: 0; width: 90px; }
+  .figure-row .plot-container { margin-left: 48px; }
+  .figure-row .eigen-margin { position: absolute; right: 0; top: 0; width: 90px; }
+  .variance-caption { margin-left: 0; }
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
 
   .progress-overlay {
@@ -35,24 +36,24 @@
   }
   .progress-overlay.hidden { opacity: 0; pointer-events: none; }
   .progress-bar { width: 300px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
-  .progress-bar .fill { height: 100%; background: #4a7dcc; width: 0%; transition: width 0.1s; }
+  .progress-bar .fill { height: 100%; background: #5778a4; width: 0%; transition: width 0.1s; }
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
 
   .vocab-selector { display: inline-flex; gap: 4px; background: #f7f7f7; border-radius: 4px; padding: 3px; }
   .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; }
-  .vocab-selector button.active { background: #4a7dcc; color: white; }
+  .vocab-selector button.active { background: #5778a4; color: white; }
 
-  .analogy-input { display: flex; gap: 8px; align-items: center; margin: 1em 0; flex-wrap: wrap; }
+  .analogy-input { display: flex; gap: 8px; align-items: center; margin-top: 1em; margin-bottom: 1em; flex-wrap: wrap; }
   .analogy-input input { border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; font-size: 15px; width: 120px; }
-  .analogy-input input:focus { outline: none; border-color: #4a7dcc; }
+  .analogy-input input:focus { outline: none; border-color: #5778a4; }
   .analogy-input .sep { color: #999; font-size: 15px; }
-  .analogy-input button { background: #4a7dcc; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; }
+  .analogy-input button { background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; }
   .analogy-result { font-size: 16px; padding: 8px 0; min-height: 2em; }
-  .analogy-result .answer { font-weight: 600; color: #4a7dcc; }
-  .error { color: #e74c3c; font-size: 14px; }
+  .analogy-result .answer { font-weight: 600; color: #5778a4; }
+  .error { color: #e49444; font-size: 14px; }
 
-  .cooccurrence-img { max-width: 500px; margin: 1em 0; }
-  .cooccurrence-img img { width: 100%; }
+  img.cooccurrence-img { max-width: 500px; }
+  .analogy-input, .analogy-result { box-sizing: border-box; }
 </style>
 
 <!-- Loading overlay -->
@@ -75,12 +76,12 @@
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
 <dt-byline></dt-byline>
 
-<div id="hero-viz" style="width: 100%; margin: 1em 0;"></div>
-<figcaption style="color: #999; font-size: 13px; margin-bottom: 2em;">
-  <span style="color: #4a7dcc;">&#9679;</span> Gendered word pairs &nbsp;
-  <span style="color: #e74c3c;">&#9679;</span> Professions &nbsp;
+<div id="hero-viz" class="l-page" style="margin: 1em auto;"></div>
+<p style="color: #999; font-size: 13px; margin-bottom: 2em;">
+  <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
+  <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
   &mdash; Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
-</figcaption>
+</p>
 
 <p>
   <span style="font-size: 13px; color: #999;">Vocabulary:</span>
@@ -97,10 +98,10 @@
 
 <p>The learning principle behind word embeddings is the <em>distributional hypothesis</em>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b>, counting how often pairs of words co-occur within a given window.</p>
 
-<div class="cooccurrence-img">
-  <img src="img/word-co-occurrence.png" alt="Word co-occurrence matrix">
+<figure>
+  <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="Word co-occurrence matrix">
   <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
-</div>
+</figure>
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure &mdash; you can't do analogies on them, for example (more on analogies below).</p>
 
@@ -116,23 +117,23 @@
 
 <h3>Superlatives</h3>
 <p>Adjective forms trace out parallel paths:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-superlatives"></div>
   <div class="eigen-margin" id="eigen-superlatives"></div>
 </div>
 
 <h3>Numbers</h3>
 <p>Digits and their word forms occupy distinct but parallel subspaces:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-digits"></div>
   <div class="eigen-margin" id="eigen-numbers-digits"></div>
 </div>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-words"></div>
   <div class="eigen-margin" id="eigen-numbers-words"></div>
 </div>
 <p>Written and numeric forms linked together:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-linked"></div>
   <div class="eigen-margin" id="eigen-numbers-linked"></div>
 </div>
@@ -141,11 +142,11 @@
 
 <p>These regularities give rise to <b>word analogies</b>. The vector difference between related word pairs is roughly constant:</p>
 
-$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$$
+<p>$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$$</p>
 
 <p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
 
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
   <div class="eigen-margin" id="eigen-analogy-king"></div>
 </div>
@@ -161,7 +162,7 @@ $$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\
   <button id="analogy-go">?</button>
 </div>
 <div class="analogy-result" id="analogy-result"></div>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-custom"></div>
   <div class="eigen-margin" id="eigen-analogy-custom"></div>
 </div>
@@ -176,33 +177,33 @@ $$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\
 
 <p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out:</p>
 
-$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$
+<p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
 <p>This removes each word's component along the chosen subspace while preserving everything else.</p>
 
 <p>We define a gender subspace using pronoun pairs:</p>
 
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gendered-before"></div>
   <div class="eigen-margin" id="eigen-gendered-before"></div>
 </div>
 
 <p>After steering:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gendered-after"></div>
   <div class="eigen-margin" id="eigen-gendered-after"></div>
 </div>
 
 <h2>Results</h2>
 
-<h3>Profession Analogies: Before vs. After</h3>
+<h3>Occupation Analogies: Before vs. After</h3>
 <p>Before steering, "man :: woman &rarr; doctor" yields "nurse." After, both directions yield "physician":</p>
 
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-before"></div>
   <div class="eigen-margin" id="eigen-doctor-before"></div>
 </div>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-after"></div>
   <div class="eigen-margin" id="eigen-doctor-after"></div>
 </div>
@@ -214,7 +215,9 @@ $$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarr
 
 <dt-appendix>
   <h3>Acknowledgments</h3>
-  <p>This article uses <a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> vectors (Pennington et al., 2014). The steering method follows <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a>.</p>
+  <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
+  <h3>References</h3>
+  <p>This article uses GloVe vectors <dt-cite key="pennington2014glove"></dt-cite>. The steering method follows Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>.</p>
 </dt-appendix>
 
 <script type="text/bibliography">
@@ -255,10 +258,10 @@ const GENDER_PAIRS = [
 ];
 
 const GENDERED_WORDS = [
-  ['man','woman'], ['king','queen'], ['actor','actress'], ['boy','girl'],
-  ['dad','mom'], ['father','mother'], ['brother','sister'], ['uncle','aunt'],
-  ['heir','heiress'], ['duke','duchess'], ['nephew','niece'], ['sir','madame'],
-  ['male','female'], ['masculine','feminine'],
+  ['woman','man'], ['queen','king'], ['actress','actor'], ['girl','boy'],
+  ['mom','dad'], ['mother','father'], ['sister','brother'], ['aunt','uncle'],
+  ['heiress','heir'], ['duchess','duke'], ['niece','nephew'], ['madame','sir'],
+  ['female','male'], ['feminine','masculine'],
 ];
 
 const SUPERLATIVES = [
