@@ -13,14 +13,19 @@
 <script type="text/front-matter">
   title: "Steering Word Embeddings"
   description: "An interactive exploration of word vectors, analogies, and subspace projection."
-  authors:
-  - Tim Vieira: https://timvieira.github.io/
+</script>
+<script>
+  // Suppress known Distill v1 template error with missing affiliations
+  window.addEventListener('error', function(e) {
+    if (e.filename && e.filename.includes('template.v1.js')) e.preventDefault();
+  });
 </script>
 
 <style>
   .figure-row { position: relative; margin: 1.5em 0; }
   .figure-row .plot-container { width: 100%; }
-  .figure-row .eigen-margin { position: absolute; right: -110px; top: 0; width: 90px; }
+  .figure-row .eigen-margin { position: absolute; right: -100px; top: 0; width: 90px; }
+  #hero-viz { max-width: 100%; }
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
 
   .progress-overlay {
@@ -60,7 +65,7 @@
     <div class="vocab-selector" id="vocab-selector-loading">
       <button data-size="small">Small (10K, 4MB)</button>
       <button class="active" data-size="medium">Medium (50K, 20MB)</button>
-      <button data-size="large">Large (400K, 160MB)</button>
+      
     </div>
   </div>
 </div>
@@ -71,12 +76,19 @@
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
 <dt-byline></dt-byline>
 
+<div id="hero-viz" class="l-page" style="margin: 1em auto;"></div>
+<figcaption style="color: #999; font-size: 13px; margin-bottom: 2em;">
+  <span style="color: #4a7dcc;">&#9679;</span> Gendered word pairs &nbsp;
+  <span style="color: #e74c3c;">&#9679;</span> Occupations &nbsp;
+  &mdash; Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
+</figcaption>
+
 <p>
   <span style="font-size: 13px; color: #999;">Vocabulary:</span>
   <span class="vocab-selector" id="vocab-selector">
     <button data-size="small">10K</button>
     <button class="active" data-size="medium">50K</button>
-    <button data-size="large">400K</button>
+    
   </span>
 </p>
 
@@ -105,23 +117,23 @@
 
 <h3>Superlatives</h3>
 <p>Adjective forms trace out parallel paths:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-superlatives"></div>
   <div class="eigen-margin" id="eigen-superlatives"></div>
 </div>
 
 <h3>Numbers</h3>
 <p>Digits and their word forms occupy distinct but parallel subspaces:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-digits"></div>
   <div class="eigen-margin" id="eigen-numbers-digits"></div>
 </div>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-words"></div>
   <div class="eigen-margin" id="eigen-numbers-words"></div>
 </div>
 <p>Written and numeric forms linked together:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-linked"></div>
   <div class="eigen-margin" id="eigen-numbers-linked"></div>
 </div>
@@ -130,11 +142,11 @@
 
 <p>These regularities give rise to <b>word analogies</b>. The vector difference between related word pairs is roughly constant:</p>
 
-$$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{queen}}$$
+$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$$
 
 <p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
 
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
   <div class="eigen-margin" id="eigen-analogy-king"></div>
 </div>
@@ -150,7 +162,7 @@ $$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{q
   <button id="analogy-go">?</button>
 </div>
 <div class="analogy-result" id="analogy-result"></div>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-custom"></div>
   <div class="eigen-margin" id="eigen-analogy-custom"></div>
 </div>
@@ -165,33 +177,33 @@ $$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{q
 
 <p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out:</p>
 
-$$\vec{w}_{\text{steered}} = \frac{\vec{w} - \vec{w}_{\mathcal{B}}}{\|\vec{w} - \vec{w}_{\mathcal{B}}\|} \quad \text{where} \quad \vec{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\vec{w} \cdot \vec{b}_j) \, \vec{b}_j$$
+$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$
 
 <p>This removes each word's component along the chosen subspace while preserving everything else.</p>
 
 <p>We define a gender subspace using pronoun pairs:</p>
 
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gendered-before"></div>
   <div class="eigen-margin" id="eigen-gendered-before"></div>
 </div>
 
 <p>After steering:</p>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gendered-after"></div>
   <div class="eigen-margin" id="eigen-gendered-after"></div>
 </div>
 
 <h2>Results</h2>
 
-<h3>Profession Analogies: Before vs. After</h3>
+<h3>Occupation Analogies: Before vs. After</h3>
 <p>Before steering, "man :: woman &rarr; doctor" yields "nurse." After, both directions yield "physician":</p>
 
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-before"></div>
   <div class="eigen-margin" id="eigen-doctor-before"></div>
 </div>
-<div class="figure-row">
+<div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-after"></div>
   <div class="eigen-margin" id="eigen-doctor-after"></div>
 </div>
@@ -225,7 +237,7 @@ $$\vec{w}_{\text{steered}} = \frac{\vec{w} - \vec{w}_{\mathcal{B}}}{\|\vec{w} - 
 
 <script type="module">
 import { Embeddings, mds, loadEmbeddings } from './js/embeddings.js';
-import { EmbeddingViz } from './js/viz.js';
+import { EmbeddingViz, renderHero3D } from './js/viz.js';
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -321,8 +333,68 @@ function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
 }
 
 
+function buildHero() {
+  // Collect all hero words: gendered pairs + professions
+  const heroWords = [];
+  const seen = new Set();
+  function addWord(w, group) {
+    if (!seen.has(w) && emb.has(w) && steered.has(w)) {
+      seen.add(w);
+      heroWords.push({ word: w, group });
+    }
+  }
+  for (const [w1, w2] of GENDERED_WORDS) {
+    addWord(w1, 'gendered'); addWord(w2, 'gendered');
+  }
+  for (const w of PROFESSIONS) {
+    addWord(w, 'profession');
+  }
+
+  if (heroWords.length === 0) return;
+
+  // Compute joint MDS: build a distance matrix using steered positions for
+  // the "steered" dots and original positions for the "ghost" dots,
+  // all in the same coordinate space.
+  // We'll do MDS on just the steered embeddings (they define the layout)
+  // then project originals into that space by computing their MDS coords too.
+  const allWords = heroWords.map(h => h.word);
+  const n = allWords.length;
+
+  // Joint distance matrix over 2n points: [steered_0..steered_n, orig_0..orig_n]
+  const D = new Float64Array(4 * n * n);
+  const nn = 2 * n;
+  for (let i = 0; i < nn; i++) {
+    for (let j = 0; j < i; j++) {
+      const wi = i < n ? steered.vec(allWords[i]) : emb.vec(allWords[i - n]);
+      const wj = j < n ? steered.vec(allWords[j]) : emb.vec(allWords[j - n]);
+      let dist = 0;
+      for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+      dist = Math.sqrt(dist);
+      D[i * nn + j] = dist;
+      D[j * nn + i] = dist;
+    }
+  }
+
+  const { coords } = mds(D, nn, 3);
+
+  const wordData = heroWords.map((h, i) => ({
+    word: h.word,
+    group: h.group,
+    steeredCoord: coords[i],        // first n entries are steered
+    origCoord: coords[n + i],       // next n entries are original
+  }));
+
+  renderHero3D(document.getElementById('hero-viz'), wordData, {
+    width: document.getElementById('hero-viz').clientWidth || 800,
+    height: 500,
+  });
+}
+
 function buildVisualizations() {
   vizInstances = [];
+
+  // Build hero first
+  buildHero();
 
   const supWords = flatWords(SUPERLATIVES);
   if (supWords.length > 0) {
