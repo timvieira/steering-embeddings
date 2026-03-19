@@ -369,6 +369,174 @@ function render1D(container, words, coords, arrows, options = {}) {
 
 
 /**
+ * 2D animated steering visualization.
+ * Shows words moving from original to steered positions with fading trails.
+ *
+ * wordData: array of { word, origCoord: [x,y], steeredCoord: [x,y], group: string }
+ * container: DOM element
+ */
+function renderSteering2D(container, wordData, options = {}) {
+  const { width = 620, height = 450 } = options;
+  const margin = { top: 30, right: 30, bottom: 40, left: 30 };
+  const w = width - margin.left - margin.right;
+  const h = height - margin.top - margin.bottom;
+
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
+  d3.select(el).selectAll('svg.plot').remove();
+  d3.select(el).selectAll('.steer-controls').remove();
+
+  // Compute scales over both original and steered coords
+  const allX = wordData.flatMap(d => [d.origCoord[0], d.steeredCoord[0]]);
+  const allY = wordData.flatMap(d => [d.origCoord[1], d.steeredCoord[1]]);
+  const pad = 0.1;
+  const xRange = [Math.min(...allX), Math.max(...allX)];
+  const yRange = [Math.min(...allY), Math.max(...allY)];
+  const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
+  const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
+  const xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
+  const yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+
+  // Group colors
+  const groupNames = [...new Set(wordData.map(d => d.group))];
+  const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
+  const groupColor = {};
+  groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
+
+  const svg = d3.select(el).append('svg')
+    .attr('class', 'plot')
+    .attr('width', width).attr('height', height);
+  const g = svg.append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Trails (initially hidden, drawn during animation)
+  const trails = g.selectAll('line.trail')
+    .data(wordData)
+    .enter().append('line')
+    .attr('class', 'trail')
+    .attr('x1', d => xScale(d.origCoord[0]))
+    .attr('y1', d => yScale(d.origCoord[1]))
+    .attr('x2', d => xScale(d.origCoord[0]))
+    .attr('y2', d => yScale(d.origCoord[1]))
+    .attr('stroke', d => groupColor[d.group])
+    .attr('stroke-width', 1.5)
+    .attr('opacity', 0);
+
+  // Ghost dots (original positions, faded)
+  g.selectAll('circle.ghost')
+    .data(wordData)
+    .enter().append('circle')
+    .attr('class', 'ghost')
+    .attr('cx', d => xScale(d.origCoord[0]))
+    .attr('cy', d => yScale(d.origCoord[1]))
+    .attr('r', 3)
+    .attr('fill', d => groupColor[d.group])
+    .attr('opacity', 0);
+
+  // Points (start at original positions)
+  const dots = g.selectAll('circle.word')
+    .data(wordData)
+    .enter().append('circle')
+    .attr('class', 'word')
+    .attr('cx', d => xScale(d.origCoord[0]))
+    .attr('cy', d => yScale(d.origCoord[1]))
+    .attr('r', 4)
+    .attr('fill', d => groupColor[d.group]);
+
+  // Labels
+  const labels = g.selectAll('text.word-label')
+    .data(wordData)
+    .enter().append('text')
+    .attr('class', 'word-label')
+    .attr('x', d => xScale(d.origCoord[0]))
+    .attr('y', d => yScale(d.origCoord[1]) - 8)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '11px')
+    .attr('fill', '#333')
+    .text(d => d.word);
+
+  // Controls
+  const controls = d3.select(el).append('div')
+    .attr('class', 'steer-controls')
+    .style('margin-top', '8px')
+    .style('display', 'flex')
+    .style('gap', '8px')
+    .style('align-items', 'center');
+
+  const playBtn = controls.append('button')
+    .style('background', COLORS.point)
+    .style('color', 'white')
+    .style('border', 'none')
+    .style('border-radius', '4px')
+    .style('padding', '5px 14px')
+    .style('font-size', '13px')
+    .style('cursor', 'pointer')
+    .text('▶ Steer');
+
+  const resetBtn = controls.append('button')
+    .style('background', '#ddd')
+    .style('color', '#333')
+    .style('border', 'none')
+    .style('border-radius', '4px')
+    .style('padding', '5px 14px')
+    .style('font-size', '13px')
+    .style('cursor', 'pointer')
+    .text('Reset');
+
+  const statusText = controls.append('span')
+    .style('font-size', '12px')
+    .style('color', '#999')
+    .text('Original embeddings');
+
+  let steered = false;
+
+  playBtn.on('click', () => {
+    if (steered) return;
+    steered = true;
+    statusText.text('Steering...');
+
+    // Show ghosts
+    g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
+
+    // Animate trails and dots
+    trails.transition().duration(1500).ease(d3.easeCubicInOut)
+      .attr('x2', d => xScale(d.steeredCoord[0]))
+      .attr('y2', d => yScale(d.steeredCoord[1]))
+      .attr('opacity', 0.4);
+
+    dots.transition().duration(1500).ease(d3.easeCubicInOut)
+      .attr('cx', d => xScale(d.steeredCoord[0]))
+      .attr('cy', d => yScale(d.steeredCoord[1]));
+
+    labels.transition().duration(1500).ease(d3.easeCubicInOut)
+      .attr('x', d => xScale(d.steeredCoord[0]))
+      .attr('y', d => yScale(d.steeredCoord[1]) - 8);
+
+    setTimeout(() => statusText.text('Steered embeddings'), 1500);
+  });
+
+  resetBtn.on('click', () => {
+    steered = false;
+    statusText.text('Original embeddings');
+
+    g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
+
+    trails.transition().duration(800).ease(d3.easeCubicInOut)
+      .attr('x2', d => xScale(d.origCoord[0]))
+      .attr('y2', d => yScale(d.origCoord[1]))
+      .attr('opacity', 0);
+
+    dots.transition().duration(800).ease(d3.easeCubicInOut)
+      .attr('cx', d => xScale(d.origCoord[0]))
+      .attr('cy', d => yScale(d.origCoord[1]));
+
+    labels.transition().duration(800).ease(d3.easeCubicInOut)
+      .attr('x', d => xScale(d.origCoord[0]))
+      .attr('y', d => yScale(d.origCoord[1]) - 8);
+  });
+}
+
+
+/**
  * Main visualization wrapper with MDS dimension switching.
  */
 class EmbeddingViz {
@@ -568,4 +736,4 @@ function renderHero3D(container, wordData, options = {}) {
   };
 }
 
-export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D };
+export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D, renderSteering2D };

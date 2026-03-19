@@ -181,17 +181,10 @@
 
 <p>This removes each word's component along the chosen subspace while preserving everything else.</p>
 
-<p>We define a gender subspace using pronoun pairs:</p>
+<p>We define a gender subspace using pronoun pairs. Press <b>Steer</b> to watch the embeddings shift as the gender direction is projected out:</p>
 
 <div class="figure-row l-body-outset">
-  <div class="plot-container" id="plot-gendered-before"></div>
-  <div class="eigen-margin" id="eigen-gendered-before"></div>
-</div>
-
-<p>After steering:</p>
-<div class="figure-row l-body-outset">
-  <div class="plot-container" id="plot-gendered-after"></div>
-  <div class="eigen-margin" id="eigen-gendered-after"></div>
+  <div class="plot-container" id="plot-gendered-steer"></div>
 </div>
 
 <h2>Results</h2>
@@ -239,7 +232,7 @@
 
 <script type="module">
 import { Embeddings, mds, loadEmbeddings } from './js/embeddings.js';
-import { EmbeddingViz, renderHero3D } from './js/viz.js';
+import { EmbeddingViz, renderHero3D, renderSteering2D } from './js/viz.js';
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -441,18 +434,40 @@ function buildVisualizations() {
     vizInstances.push(buildAnalogyViz('plot-analogy-king', 'eigen-analogy-king', 'man', 'woman', 'king', 10, emb));
   }
 
+  // Animated steering for gendered words
   const genWords = flatWords(GENDERED_WORDS);
   if (genWords.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: genWords, groups: GENDERED_WORDS,
-      plotEl: document.getElementById('plot-gendered-before'),
-      eigenEl: document.getElementById('eigen-gendered-before'),
+    const n = genWords.length;
+    // Joint MDS over [steered_0..n, orig_0..n]
+    const nn = 2 * n;
+    const D = new Float64Array(nn * nn);
+    for (let i = 0; i < nn; i++) {
+      for (let j = 0; j < i; j++) {
+        const wi = i < n ? steered.vec(genWords[i]) : emb.vec(genWords[i - n]);
+        const wj = j < n ? steered.vec(genWords[j]) : emb.vec(genWords[j - n]);
+        let dist = 0;
+        for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+        dist = Math.sqrt(dist);
+        D[i * nn + j] = dist;
+        D[j * nn + i] = dist;
+      }
+    }
+    const { coords: jointCoords } = mds(D, nn, 2);
+
+    // Assign groups to words
+    const wordGroupMap = {};
+    for (const [w1, w2] of GENDERED_WORDS) {
+      wordGroupMap[w1] = 'gendered'; wordGroupMap[w2] = 'gendered';
+    }
+
+    const steerData = genWords.map((w, i) => ({
+      word: w,
+      group: wordGroupMap[w] || 'other',
+      steeredCoord: jointCoords[i],
+      origCoord: jointCoords[n + i],
     }));
-    vizInstances.push(new EmbeddingViz({
-      emb: steered, words: genWords, groups: GENDERED_WORDS,
-      plotEl: document.getElementById('plot-gendered-after'),
-      eigenEl: document.getElementById('eigen-gendered-after'),
-    }));
+
+    renderSteering2D(document.getElementById('plot-gendered-steer'), steerData);
   }
 
   if (emb.has('doctor')) {
