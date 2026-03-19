@@ -6,7 +6,8 @@
   - Option B: **Subspace projection.** If the plot's words define a low-rank subspace, only add neighbors whose projection onto that subspace explains a large fraction of their variance. Orthogonal neighbors won't be informative.
   - Option C: **Similarity dropoff.** Instead of always adding 5, look at the similarity scores and stop at a gap. If top-3 are close but #4 drops off, only add 3.
   - Option D: **MDS variance impact.** Tentatively add neighbors, check how much MDS variance explained drops. If it drops a lot, the new words introduce dimensions the plot can't represent — add fewer.
-- [ ] Animated steering transition (play button, words slide from original to steered with trails)
+- [x] Animated steering transition (play button, words slide from original to steered with trails)
+  - Added `renderSteering2D` in viz.js. Computes joint MDS over original+steered positions, then D3 transitions animate words from original to steered with ghost dots and trails. Steer/Reset buttons. Replaces the two separate before/after gendered pair plots.
 - [ ] Build-your-own word groups explorer (text area → instant MDS plot)
 
 ## Content
