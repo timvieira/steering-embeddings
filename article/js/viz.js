@@ -96,22 +96,18 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
  * 2D scatter plot with arrows using D3 SVG.
  */
 function render2D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], crossGroupLines = [], width = 620, height = 450 } = options;
+  const {
+    highlights = [], crossGroupLines = [], width = 620, height = 450,
+    neighborWords = new Set(), neighborLinks = [],
+    animate = false, prevCoords = null, prevWords = null,
+  } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
+  const dur = animate ? 600 : 0;
+  const highlightSet = new Set(highlights);
 
-  // Clear
-  d3.select(container).selectAll('svg.plot').remove();
-
-  const svg = d3.select(container).append('svg')
-    .attr('class', 'plot')
-    .attr('width', width).attr('height', height);
-
-  const g = svg.append('g')
-    .attr('transform', `translate(${margin.left},${margin.top})`);
-
-  // Scales
+  // Scales (always based on final coords)
   const xs = coords.map(c => c[0]);
   const ys = coords.map(c => c[1]);
   const pad = 0.1;
@@ -119,77 +115,128 @@ function render2D(container, words, coords, arrows, options = {}) {
   const yRange = [Math.min(...ys), Math.max(...ys)];
   const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
   const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
-
   const xScale = d3.scaleLinear()
     .domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
   const yScale = d3.scaleLinear()
     .domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
 
-  // Arrow marker
-  svg.append('defs').append('marker')
-    .attr('id', `arrow-${container.id}`)
-    .attr('viewBox', '0 0 10 10')
-    .attr('refX', 8).attr('refY', 5)
-    .attr('markerWidth', 6).attr('markerHeight', 6)
-    .attr('orient', 'auto')
-    .append('path')
-    .attr('d', 'M 0 0 L 10 5 L 0 10 Z')
-    .attr('fill', COLORS.arrow);
-
-  // Red arrow marker for highlights
-  svg.select('defs').append('marker')
-    .attr('id', `arrow-red-${container.id}`)
-    .attr('viewBox', '0 0 10 10')
-    .attr('refX', 8).attr('refY', 5)
-    .attr('markerWidth', 6).attr('markerHeight', 6)
-    .attr('orient', 'auto')
-    .append('path')
-    .attr('d', 'M 0 0 L 10 5 L 0 10 Z')
-    .attr('fill', COLORS.highlight);
-
-  // Cross-group lines (dotted)
-  for (const [i, j] of crossGroupLines) {
-    g.append('line')
-      .attr('x1', xScale(coords[i][0])).attr('y1', yScale(coords[i][1]))
-      .attr('x2', xScale(coords[j][0])).attr('y2', yScale(coords[j][1]))
-      .attr('stroke', COLORS.crossGroup)
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,3');
+  // Map previous words to their old MDS coords for animation start positions
+  const prevWordIdx = prevWords ? new Map(prevWords.map((ww, i) => [ww, i])) : null;
+  function startXY(i) {
+    if (!animate) return [xScale(coords[i][0]), yScale(coords[i][1])];
+    if (prevCoords && prevWordIdx) {
+      const pi = prevWordIdx.get(words[i]);
+      if (pi !== undefined) {
+        // Existing word: start at old position mapped through new scale
+        return [xScale(prevCoords[pi][0]), yScale(prevCoords[pi][1])];
+      }
+      // New word: start at parent's final position
+      const link = neighborLinks.find(l => l.child === i);
+      if (link) {
+        return [xScale(coords[link.parent][0]), yScale(coords[link.parent][1])];
+      }
+    }
+    return [xScale(coords[i][0]), yScale(coords[i][1])];
   }
 
-  // Arrows
-  for (const { from, to, color } of arrows) {
-    const markerId = color === 'red' ? `arrow-red-${container.id}` : `arrow-${container.id}`;
-    const strokeColor = color === 'red' ? COLORS.highlight : COLORS.arrow;
-    g.append('line')
-      .attr('x1', xScale(coords[from][0])).attr('y1', yScale(coords[from][1]))
-      .attr('x2', xScale(coords[to][0])).attr('y2', yScale(coords[to][1]))
-      .attr('stroke', strokeColor)
-      .attr('stroke-width', 1.5)
-      .attr('marker-end', `url(#${markerId})`);
+  // Unique container ID for arrow marker references
+  const cid = container.id || 'plot';
+
+  // Reuse SVG for animated updates, otherwise rebuild
+  let svg = d3.select(container).select('svg.plot');
+  let g;
+  if (svg.empty() || !animate) {
+    d3.select(container).selectAll('svg.plot').remove();
+    svg = d3.select(container).append('svg')
+      .attr('class', 'plot')
+      .attr('width', width).attr('height', height);
+    const defs = svg.append('defs');
+    for (const [suffix, color] of [['', COLORS.arrow], ['-red', COLORS.highlight]]) {
+      defs.append('marker')
+        .attr('id', `arrow${suffix}-${cid}`)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 8).attr('refY', 5)
+        .attr('markerWidth', 6).attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', color);
+    }
+    g = svg.append('g').attr('class', 'main')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+  } else {
+    g = svg.select('g.main');
   }
 
-  // Points
-  const highlightSet = new Set(highlights);
-  g.selectAll('circle')
-    .data(coords)
-    .enter().append('circle')
-    .attr('cx', d => xScale(d[0]))
-    .attr('cy', d => yScale(d[1]))
-    .attr('r', (d, i) => highlightSet.has(i) ? 5 : 3)
-    .attr('fill', (d, i) => highlightSet.has(i) ? COLORS.highlight : COLORS.point);
+  // --- Neighbor links (dashed lines from parent to child) ---
+  const linkData = neighborLinks.filter(l => l.child < coords.length && l.parent < coords.length);
+  const nlinks = g.selectAll('line.neighbor-link').data(linkData, d => `${d.parent}-${d.child}`);
+  nlinks.exit().remove();
+  const nlinksEnter = nlinks.enter().append('line').attr('class', 'neighbor-link')
+    .attr('stroke', '#ccc').attr('stroke-width', 1).attr('stroke-dasharray', '3,2');
+  nlinksEnter.merge(nlinks).transition().duration(dur)
+    .attr('x1', d => xScale(coords[d.parent][0])).attr('y1', d => yScale(coords[d.parent][1]))
+    .attr('x2', d => xScale(coords[d.child][0])).attr('y2', d => yScale(coords[d.child][1]));
 
-  // Labels
-  g.selectAll('text.word-label')
-    .data(words)
-    .enter().append('text')
-    .attr('class', 'word-label')
-    .attr('x', (d, i) => xScale(coords[i][0]))
-    .attr('y', (d, i) => yScale(coords[i][1]) - 8)
+  // --- Cross-group lines ---
+  const cgData = crossGroupLines.filter(([i, j]) => i < coords.length && j < coords.length);
+  const cg = g.selectAll('line.cross-group').data(cgData, d => `cg-${d[0]}-${d[1]}`);
+  cg.exit().remove();
+  const cgEnter = cg.enter().append('line').attr('class', 'cross-group')
+    .attr('stroke', COLORS.crossGroup).attr('stroke-width', 1).attr('stroke-dasharray', '4,3');
+  cgEnter.merge(cg).transition().duration(dur)
+    .attr('x1', d => xScale(coords[d[0]][0])).attr('y1', d => yScale(coords[d[0]][1]))
+    .attr('x2', d => xScale(coords[d[1]][0])).attr('y2', d => yScale(coords[d[1]][1]));
+
+  // --- Arrows ---
+  const arrowData = arrows.filter(a => a.from < coords.length && a.to < coords.length);
+  const arrowSel = g.selectAll('line.arrow').data(arrowData, (d, i) => `a-${d.from}-${d.to}`);
+  arrowSel.exit().remove();
+  const arrowEnter = arrowSel.enter().append('line').attr('class', 'arrow')
+    .attr('stroke-width', 1.5)
+    .attr('stroke', d => d.color === 'red' ? COLORS.highlight : COLORS.arrow)
+    .attr('marker-end', d => `url(#arrow${d.color === 'red' ? '-red' : ''}-${cid})`);
+  arrowEnter.merge(arrowSel).transition().duration(dur)
+    .attr('x1', d => xScale(coords[d.from][0])).attr('y1', d => yScale(coords[d.from][1]))
+    .attr('x2', d => xScale(coords[d.to][0])).attr('y2', d => yScale(coords[d.to][1]));
+
+  // --- Points (keyed by word for stable enter/update/exit) ---
+  const pointData = coords.map((c, i) => ({ c, i, word: words[i] }));
+  const circles = g.selectAll('circle.point').data(pointData, d => d.word);
+  circles.exit().transition().duration(dur).attr('r', 0).remove();
+  const circlesEnter = circles.enter().append('circle').attr('class', 'point')
+    .attr('cx', d => startXY(d.i)[0])
+    .attr('cy', d => startXY(d.i)[1])
+    .attr('r', 0)
+    .style('cursor', 'pointer');
+  circlesEnter.merge(circles).transition().duration(dur)
+    .attr('cx', d => xScale(d.c[0]))
+    .attr('cy', d => yScale(d.c[1]))
+    .attr('r', d => highlightSet.has(d.i) ? 5 : 3.5)
+    .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight :
+      neighborWords.has(d.word) ? '#999' : COLORS.point);
+
+  // --- Labels (keyed by word) ---
+  const labels = g.selectAll('text.word-label').data(pointData, d => d.word);
+  labels.exit().transition().duration(dur).style('opacity', 0).remove();
+  const labelsEnter = labels.enter().append('text').attr('class', 'word-label')
+    .attr('x', d => startXY(d.i)[0])
+    .attr('y', d => startXY(d.i)[1] - 8)
     .attr('text-anchor', 'middle')
-    .attr('font-size', '11px')
-    .attr('fill', '#333')
-    .text(d => d);
+    .style('opacity', 0)
+    .text(d => d.word);
+  labelsEnter.merge(labels).transition().duration(dur)
+    .attr('x', d => xScale(d.c[0]))
+    .attr('y', d => yScale(d.c[1]) - 8)
+    .attr('font-size', d => neighborWords.has(d.word) ? '10px' : '11px')
+    .attr('fill', d => neighborWords.has(d.word) ? '#666' : '#333')
+    .style('opacity', 1);
+
+  // --- Click handlers ---
+  if (options.onClick) {
+    g.selectAll('circle.point').style('cursor', 'pointer')
+      .on('click', (event, d) => options.onClick(d.i, d.word));
+    g.selectAll('text.word-label').style('cursor', 'pointer')
+      .on('click', (event, d) => options.onClick(d.i, d.word));
+  }
 }
 
 
@@ -383,6 +430,10 @@ class EmbeddingViz {
     this.crossGroupLines = config.crossGroupLines || [];
     this.connectGroups = config.connectGroups || false;
     this.dims = config.initialDims || 2;
+    this.neighborWords = new Set();   // words added via click expansion
+    this.neighborLinks = [];          // { parent, child } index pairs
+    this._prevCoords = null;
+    this._prevWords = null;
 
     // Compute MDS at all dimensions
     this.mdsData = computeAllMDS(this.emb, this.words);
@@ -429,24 +480,63 @@ class EmbeddingViz {
     this.render();
   }
 
-  render() {
+  render(animate = false) {
     const coords = this.mdsData.coords[this.dims];
     const opts = {
       highlights: this.highlights,
       crossGroupLines: this.crossGroupLines,
+      neighborWords: this.neighborWords,
+      neighborLinks: this.neighborLinks,
+      animate,
+      prevCoords: this._prevCoords,
+      prevWords: this._prevWords,
     };
 
-    // Clear plot container
     const el = typeof this.plotEl === 'string'
       ? document.getElementById(this.plotEl)
       : this.plotEl;
-    el.innerHTML = '';
 
-    // Add variance caption
-    const caption = document.createElement('div');
-    caption.className = 'variance-caption';
-    caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
-    el.appendChild(caption);
+    // For animated 2D updates, keep the SVG and just update data
+    if (!animate || this.dims !== 2) {
+      el.innerHTML = '';
+      const caption = document.createElement('div');
+      caption.className = 'variance-caption';
+      caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
+      el.appendChild(caption);
+    } else {
+      const caption = el.querySelector('.variance-caption');
+      if (caption) caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
+    }
+
+    // Click handler: add neighbors, recompute MDS, animate
+    const self = this;
+    opts.onClick = (idx, word) => {
+      const vec = self.emb.vec(word);
+      if (!vec) return;
+      const existing = new Set(self.words);
+      const neighbors = self.emb.mostSimilar(vec, 5, existing);
+      if (neighbors.length === 0) return;
+
+      // Save current state for animation start positions
+      self._prevCoords = self.mdsData.coords[self.dims];
+      self._prevWords = [...self.words];
+
+      // Add neighbors to word list
+      const wordIdx = new Map(self.words.map((w, i) => [w, i]));
+      const parentIdx = wordIdx.get(word);
+      for (const nw of neighbors) {
+        if (!existing.has(nw) && self.emb.has(nw)) {
+          self.words.push(nw);
+          self.neighborWords.add(nw);
+          self.neighborLinks.push({ parent: parentIdx, child: self.words.length - 1 });
+          existing.add(nw);
+        }
+      }
+
+      // Recompute MDS with expanded word set and animate
+      self.mdsData = computeAllMDS(self.emb, self.words);
+      self.render(true);
+    };
 
     if (this.dims === 1) {
       render1D(el, this.words, coords, this.arrows, opts);
