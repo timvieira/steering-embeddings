@@ -961,7 +961,7 @@ function renderHero3D(container, wordData, options = {}) {
     scene.add(sprite);
   }
 
-  camera.position.set(3, 2, 3);
+  camera.position.set(2, 1.3, 2);
   camera.lookAt(0, 0, 0);
 
   let animId = null;
