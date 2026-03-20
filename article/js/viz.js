@@ -72,6 +72,8 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
     .attr('width', width).attr('height', height + 20)
     .style('cursor', 'pointer');
 
+  svg.append('title').text('Eigenvalues — taller bars capture more variance. Click to switch dimensions.');
+
   const bars = svg.selectAll('rect.bar')
     .data(topEig)
     .enter().append('rect')
@@ -103,6 +105,19 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
     bars.attr('fill', (d, i) => i < newDims ? COLORS.eigenActive : COLORS.eigenInactive);
     onChange(newDims);
   });
+
+  // Hint text (shows once, fades out)
+  if (!createEigenSelector._hintShown) {
+    createEigenSelector._hintShown = true;
+    const hint = d3.select(container).append('div')
+      .style('font-size', '9px')
+      .style('color', '#999')
+      .style('margin-top', '2px')
+      .style('width', `${width}px`)
+      .style('opacity', 1)
+      .text('click bars to change dimensions');
+    hint.transition().delay(4000).duration(1500).style('opacity', 0).remove();
+  }
 
   // Variance text below bars
   const varianceText = d3.select(container).append('div')
@@ -967,7 +982,7 @@ function renderHero3D(container, wordData, options = {}) {
  * Shows words moving from original to steered positions with fading trails.
  */
 function renderSteering2D(container, wordData, options = {}) {
-  const { width = 620, height = 450 } = options;
+  const { width = 620, height = 450, arrows = [] } = options;
   const margin = { top: 30, right: 30, bottom: 40, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
@@ -1017,6 +1032,21 @@ function renderSteering2D(container, wordData, options = {}) {
     .attr('cx', d => xScale(d.origCoord[0])).attr('cy', d => yScale(d.origCoord[1]))
     .attr('r', 3).attr('fill', d => groupColor[d.group]).attr('opacity', 0);
 
+  // Ghost arrows (original positions, shown after steer)
+  const wordIdx = new Map(wordData.map((d, i) => [d.word, i]));
+  const ghostArrows = g.selectAll('line.ghost-arrow').data(arrows).enter().append('line')
+    .attr('class', 'ghost-arrow')
+    .attr('x1', d => xScale(wordData[d.from]?.origCoord[0])).attr('y1', d => yScale(wordData[d.from]?.origCoord[1]))
+    .attr('x2', d => xScale(wordData[d.to]?.origCoord[0])).attr('y2', d => yScale(wordData[d.to]?.origCoord[1]))
+    .attr('stroke', '#ccc').attr('stroke-width', 1).attr('stroke-dasharray', '4,3').attr('opacity', 0);
+
+  // Active arrows (start at original, animate to steered)
+  const activeArrows = g.selectAll('line.active-arrow').data(arrows).enter().append('line')
+    .attr('class', 'active-arrow')
+    .attr('x1', d => xScale(wordData[d.from]?.origCoord[0])).attr('y1', d => yScale(wordData[d.from]?.origCoord[1]))
+    .attr('x2', d => xScale(wordData[d.to]?.origCoord[0])).attr('y2', d => yScale(wordData[d.to]?.origCoord[1]))
+    .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+
   const dots = g.selectAll('circle.word').data(wordData).enter().append('circle')
     .attr('class', 'word')
     .attr('cx', d => xScale(d.origCoord[0])).attr('cy', d => yScale(d.origCoord[1]))
@@ -1051,6 +1081,7 @@ function renderSteering2D(container, wordData, options = {}) {
     steered = true;
     statusText.text('Steering...');
     g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
+    ghostArrows.transition().duration(300).attr('opacity', 0.3);
     trails.transition().duration(1500).ease(d3.easeCubicInOut)
       .attr('x2', d => xScale(d.steeredCoord[0])).attr('y2', d => yScale(d.steeredCoord[1]))
       .attr('opacity', 0.4);
@@ -1058,6 +1089,9 @@ function renderSteering2D(container, wordData, options = {}) {
       .attr('cx', d => xScale(d.steeredCoord[0])).attr('cy', d => yScale(d.steeredCoord[1]));
     labels.transition().duration(1500).ease(d3.easeCubicInOut)
       .attr('x', d => xScale(d.steeredCoord[0])).attr('y', d => yScale(d.steeredCoord[1]) - 8);
+    activeArrows.transition().duration(1500).ease(d3.easeCubicInOut)
+      .attr('x1', d => xScale(wordData[d.from]?.steeredCoord[0])).attr('y1', d => yScale(wordData[d.from]?.steeredCoord[1]))
+      .attr('x2', d => xScale(wordData[d.to]?.steeredCoord[0])).attr('y2', d => yScale(wordData[d.to]?.steeredCoord[1]));
     setTimeout(() => statusText.text('Steered embeddings'), 1500);
   });
 
@@ -1065,6 +1099,7 @@ function renderSteering2D(container, wordData, options = {}) {
     steered = false;
     statusText.text('Original embeddings');
     g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
+    ghostArrows.transition().duration(300).attr('opacity', 0);
     trails.transition().duration(800).ease(d3.easeCubicInOut)
       .attr('x2', d => xScale(d.origCoord[0])).attr('y2', d => yScale(d.origCoord[1]))
       .attr('opacity', 0);
@@ -1072,6 +1107,9 @@ function renderSteering2D(container, wordData, options = {}) {
       .attr('cx', d => xScale(d.origCoord[0])).attr('cy', d => yScale(d.origCoord[1]));
     labels.transition().duration(800).ease(d3.easeCubicInOut)
       .attr('x', d => xScale(d.origCoord[0])).attr('y', d => yScale(d.origCoord[1]) - 8);
+    activeArrows.transition().duration(800).ease(d3.easeCubicInOut)
+      .attr('x1', d => xScale(wordData[d.from]?.origCoord[0])).attr('y1', d => yScale(wordData[d.from]?.origCoord[1]))
+      .attr('x2', d => xScale(wordData[d.to]?.origCoord[0])).attr('y2', d => yScale(wordData[d.to]?.origCoord[1]));
   });
 }
 

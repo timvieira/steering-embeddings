@@ -237,16 +237,17 @@
 
 <h2>Explore</h2>
 
-<p>Type your own word groups below (one group per line, words separated by spaces) and see how they arrange in embedding space. Click words in the plot to expand neighbors.</p>
+<p>Type word groups below (one group per line). Use <code>-</code> between two words to define a steering pair &mdash; press <b>Steer</b> to project out that subspace.</p>
 
-<textarea id="explorer-input" rows="6" style="width: 100%; max-width: 620px; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">dog cat bird fish
-red blue green yellow
-happy sad angry calm
-run walk sit stand</textarea>
-
-<div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
-  <button id="explorer-go" style="background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 14px; cursor: pointer;">Plot</button>
+<div>
+<textarea id="explorer-input" rows="8" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">doctor nurse programmer teacher scientist
+woman - man
+she - he
+girl - boy
+mother - father</textarea>
+<div style="margin-top: 4px;">
   <span id="explorer-status" style="font-size: 13px; color: #999;"></span>
+</div>
 </div>
 
 <div class="figure-row l-body-outset">
@@ -370,9 +371,19 @@ async function init(size = 'medium') {
 }
 
 
-function flatWords(groups) {
+function warnMissing(words, label) {
+  const missing = words.filter(w => !emb.has(w));
+  if (missing.length > 0) {
+    console.warn(`[${label}] Words not in vocabulary: ${missing.join(', ')}`);
+  }
+  return missing;
+}
+
+function flatWords(groups, label = 'flatWords') {
   const seen = new Set();
   const result = [];
+  const allWords = groups.flat();
+  warnMissing(allWords, label);
   for (const g of groups) {
     for (const w of g) {
       if (!seen.has(w) && emb.has(w)) { seen.add(w); result.push(w); }
@@ -628,7 +639,7 @@ function buildVisualizations() {
   buildHero();
 
   // Superlatives with "degree" direction (consecutive pairs: base→comp, comp→super)
-  const supWords = flatWords(SUPERLATIVES);
+  const supWords = flatWords(SUPERLATIVES, 'superlatives');
   if (supWords.length > 0) {
     const supPairs = [];
     for (const group of SUPERLATIVES) {
@@ -639,14 +650,18 @@ function buildVisualizations() {
   }
 
   // Digits with "counting" direction via PCA (principal axis of the sequence)
-  const digits = '1 2 3 4 5 6 7 8 9'.split(' ').filter(w => emb.has(w));
+  const allDigits = '1 2 3 4 5 6 7 8 9'.split(' ');
+  warnMissing(allDigits, 'digits');
+  const digits = allDigits.filter(w => emb.has(w));
   if (digits.length > 0) {
     buildVizWithDirection(digits, [], [digits], 'counting',
       'plot-numbers-digits', 'eigen-numbers-digits', { directionMode: 'pca' });
   }
 
   // Number words with "counting" direction via PCA
-  const numWords = 'one two three four five six seven eight nine'.split(' ').filter(w => emb.has(w));
+  const allNumWords = 'one two three four five six seven eight nine'.split(' ');
+  warnMissing(allNumWords, 'number words');
+  const numWords = allNumWords.filter(w => emb.has(w));
   if (numWords.length > 0) {
     buildVizWithDirection(numWords, [], [numWords], 'counting',
       'plot-numbers-words', 'eigen-numbers-words', { directionMode: 'pca' });
@@ -655,7 +670,7 @@ function buildVisualizations() {
   // Linked numbers: two direction arrows — "word vs digit" (pair SVD) and "counting" (PCA)
   const numLinkedPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
     ['five','5'],['six','6'],['seven','7'],['eight','8'],['nine','9']];
-  const linkedWords = flatWords(numLinkedPairs);
+  const linkedWords = flatWords(numLinkedPairs, 'linked numbers');
   if (linkedWords.length > 0) {
     const d = emb.dims;
     const vecs = linkedWords.map(w => emb.vec(w));
@@ -779,7 +794,7 @@ function buildVisualizations() {
   }
 
   // Gender pairs with SVD-derived gender direction
-  const genderPairWords = flatWords(GENDERED_WORDS);
+  const genderPairWords = flatWords(GENDERED_WORDS, 'gendered words');
   if (genderPairWords.length > 0) {
     buildVizWithDirection(genderPairWords, GENDERED_WORDS, GENDERED_WORDS, 'gender direction',
       'plot-gender-pairs', 'eigen-gender-pairs');
@@ -790,7 +805,7 @@ function buildVisualizations() {
   }
 
   // Animated steering for gendered words
-  const genWords = flatWords(GENDERED_WORDS);
+  const genWords = flatWords(GENDERED_WORDS, 'steering gendered words');
   if (genWords.length > 0) {
     const n = genWords.length;
     // Joint MDS over [steered_0..n, orig_0..n]
@@ -831,6 +846,7 @@ function buildVisualizations() {
   }
 
   // Profession steering plot
+  warnMissing(PROFESSIONS, 'professions');
   const profWords = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
   if (profWords.length > 0) {
     const n = profWords.length;
@@ -942,63 +958,111 @@ let explorerViz = null;
 
 function setupExplorer() {
   const input = document.getElementById('explorer-input');
-  const goBtn = document.getElementById('explorer-go');
   const status = document.getElementById('explorer-status');
 
   function runExplorer() {
     const text = input.value.trim();
     if (!text) { status.textContent = 'Enter some words above.'; return; }
 
-    // Parse groups: one group per line, words separated by spaces
-    const groups = text.split('\n')
-      .map(line => line.trim().toLowerCase().split(/\s+/).filter(Boolean))
-      .filter(g => g.length > 0);
+    // Parse lines: "word - word" = steering pair, otherwise a word group
+    const steerPairs = [];
+    const displayGroups = [];
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim().toLowerCase();
+      if (!trimmed) continue;
+      if (trimmed.includes(' - ')) {
+        const parts = trimmed.split(' - ').map(s => s.trim()).filter(Boolean);
+        if (parts.length === 2) {
+          steerPairs.push(parts);
+          // Also add pair words to display
+          displayGroups.push(parts);
+          continue;
+        }
+      }
+      const words = trimmed.split(/\s+/).filter(Boolean);
+      if (words.length > 0) displayGroups.push(words);
+    }
 
-    // Collect all unique words, check which exist in vocabulary
+    // Collect all unique words
     const seen = new Set();
-    const words = [];
+    const allWords = [];
     const missing = [];
-    for (const g of groups) {
+    for (const g of displayGroups) {
       for (const w of g) {
         if (seen.has(w)) continue;
         seen.add(w);
-        if (emb.has(w)) {
-          words.push(w);
-        } else {
-          missing.push(w);
-        }
+        if (emb.has(w)) allWords.push(w);
+        else missing.push(w);
       }
     }
 
-    if (words.length < 2) {
+    if (allWords.length < 2) {
       status.innerHTML = `<span class="error">Need at least 2 words in vocabulary.</span>`;
       if (missing.length > 0) status.innerHTML += ` Not found: ${missing.join(', ')}`;
       return;
     }
 
-    // Filter groups to only include words in vocabulary
-    const validGroups = groups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
+    const validGroups = displayGroups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
+    const validPairs = steerPairs.filter(([a, b]) => emb.has(a) && emb.has(b));
 
-    let msg = `${words.length} words plotted`;
+    let msg = `${allWords.length} words`;
+    if (validPairs.length > 0) msg += `, ${validPairs.length} steering pairs`;
     if (missing.length > 0) msg += ` (not found: ${missing.join(', ')})`;
     status.textContent = msg;
 
-    // Clear previous viz
     const plotEl = document.getElementById('plot-explorer');
     const eigenEl = document.getElementById('eigen-explorer');
     plotEl.innerHTML = '';
     eigenEl.innerHTML = '';
 
-    explorerViz = new EmbeddingViz({
-      emb, searchEmb: emb, words, groups: validGroups,
-      plotEl, eigenEl,
-    });
+    if (validPairs.length > 0) {
+      // Steer and show animated transition
+      const explorerSteered = emb.steer(validPairs, Math.min(10, validPairs.length));
+      const n = allWords.length;
+      const nn = 2 * n;
+      const D = new Float64Array(nn * nn);
+      for (let i = 0; i < nn; i++) {
+        for (let j = 0; j < i; j++) {
+          const wi = i < n ? explorerSteered.vec(allWords[i]) : emb.vec(allWords[i - n]);
+          const wj = j < n ? explorerSteered.vec(allWords[j]) : emb.vec(allWords[j - n]);
+          let dist = 0;
+          for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+          dist = Math.sqrt(dist);
+          D[i * nn + j] = dist;
+          D[j * nn + i] = dist;
+        }
+      }
+      const { coords: jointCoords } = mds(D, nn, 2);
+      const steerData = allWords.map((w, i) => ({
+        word: w,
+        group: validPairs.some(([a, b]) => w === a || w === b) ? 'pair' : 'word',
+        steeredCoord: jointCoords[i],
+        origCoord: jointCoords[n + i],
+      }));
+      // Build arrows from display groups (consecutive words on a line)
+      const wordToIdx = new Map(allWords.map((w, i) => [w, i]));
+      const groupArrows = [];
+      for (const g of validGroups) {
+        for (let i = 0; i < g.length - 1; i++) {
+          const a = wordToIdx.get(g[i]), b = wordToIdx.get(g[i + 1]);
+          if (a !== undefined && b !== undefined) groupArrows.push({ from: a, to: b });
+        }
+      }
+      renderSteering2D(plotEl, steerData, { arrows: groupArrows });
+    } else {
+      // No steering pairs — just plot
+      explorerViz = new EmbeddingViz({
+        emb, searchEmb: emb, words: allWords, groups: validGroups,
+        plotEl, eigenEl,
+      });
+    }
   }
 
-  goBtn.addEventListener('click', runExplorer);
-  // Also run on Ctrl+Enter in the textarea
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runExplorer();
+  // Debounced live update as user types
+  let debounceTimer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(runExplorer, 500);
   });
 
   // Run with default content on load

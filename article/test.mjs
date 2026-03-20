@@ -469,11 +469,12 @@ async function testExplorer() {
     document.querySelectorAll('#plot-explorer svg.plot text.word-label').length);
   test('Explorer: default plot has words', defaultWords > 0, `${defaultWords} words`);
 
-  // Type custom input and click Plot
+  // Type custom input (live update, debounced 500ms)
   await page.evaluate(() => {
-    document.getElementById('explorer-input').value = 'king queen prince princess\nman woman boy girl';
+    const el = document.getElementById('explorer-input');
+    el.value = 'king queen prince princess\nman woman boy girl';
+    el.dispatchEvent(new Event('input'));
   });
-  await page.click('#explorer-go');
   await new Promise(r => setTimeout(r, 3000));
 
   const customWords = await page.evaluate(() => {
@@ -485,10 +486,11 @@ async function testExplorer() {
 
   // Check missing word handling
   await page.evaluate(() => {
-    document.getElementById('explorer-input').value = 'xyznotaword123';
+    const el = document.getElementById('explorer-input');
+    el.value = 'xyznotaword123';
+    el.dispatchEvent(new Event('input'));
   });
-  await page.click('#explorer-go');
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise(r => setTimeout(r, 1000));
   const errorMsg = await page.evaluate(() =>
     document.getElementById('explorer-status')?.textContent || '');
   test('Explorer: shows error for missing words', errorMsg.includes('Need at least') || errorMsg.includes('not found'),
