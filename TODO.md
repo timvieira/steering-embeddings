@@ -2,6 +2,7 @@
 
 - Is there a good question to use Three.js kept for hero visualization?
 
+- do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
 
 ## Article interactivity
 
