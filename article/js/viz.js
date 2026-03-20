@@ -707,37 +707,37 @@ class EmbeddingViz {
     const pm = Math.max(...prevAll) || 1;
     const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
 
-    // Score a candidate rotation using Procrustes-style alignment:
-    // find best scale+flip to match prevN, return residual distance.
+    // Score a candidate rotation+flip using Procrustes-style alignment.
+    // Returns { dist, flipX, flipY } for the best sign combination.
     function score(a, t) {
       const p = project3Dto2D(norm3D, a, t);
-      // Try both orientations (flip y) since MDS eigenvectors have arbitrary sign
-      let best = Infinity;
-      for (const flipY of [1, -1]) {
-        // Compute optimal scale via least-squares: s = (sum p·prev) / (sum p·p)
-        let dot = 0, pp = 0;
-        for (let i = 0; i < n; i++) {
-          dot += p[i][0] * prevN[i][0] + (p[i][1] * flipY) * prevN[i][1];
-          pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
+      let best = { dist: Infinity, flipX: 1, flipY: 1 };
+      for (const fx of [1, -1]) {
+        for (const fy of [1, -1]) {
+          let dot = 0, pp = 0;
+          for (let i = 0; i < n; i++) {
+            dot += (p[i][0] * fx) * prevN[i][0] + (p[i][1] * fy) * prevN[i][1];
+            pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
+          }
+          const s = pp > 0 ? dot / pp : 1;
+          let d = 0;
+          for (let i = 0; i < n; i++) {
+            d += (s * p[i][0] * fx - prevN[i][0]) ** 2 + (s * p[i][1] * fy - prevN[i][1]) ** 2;
+          }
+          if (d < best.dist) best = { dist: d, flipX: fx, flipY: fy };
         }
-        const s = pp > 0 ? dot / pp : 1;
-        let d = 0;
-        for (let i = 0; i < n; i++) {
-          d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] * flipY - prevN[i][1]) ** 2;
-        }
-        if (d < best) best = d;
       }
       return best;
     }
 
     // Coarse search: 36 angles × 9 tilts
-    let bestA = 0, bestT = 0.4, bestD = Infinity;
+    let bestA = 0, bestT = 0.4, bestD = Infinity, bestFx = 1, bestFy = 1;
     for (let ai = 0; ai < 36; ai++) {
       const a = ai * Math.PI / 18;
       for (let ti = -4; ti <= 4; ti++) {
         const t = ti * 0.2;
-        const d = score(a, t);
-        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+        const r = score(a, t);
+        if (r.dist < bestD) { bestD = r.dist; bestA = a; bestT = t; bestFx = r.flipX; bestFy = r.flipY; }
       }
     }
 
@@ -747,13 +747,15 @@ class EmbeddingViz {
       for (let dt = -2; dt <= 2; dt++) {
         const a = bestA + da * fineStep;
         const t = bestT + dt * 0.05;
-        const d = score(a, t);
-        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+        const r = score(a, t);
+        if (r.dist < bestD) { bestD = r.dist; bestA = a; bestT = t; bestFx = r.flipX; bestFy = r.flipY; }
       }
     }
 
     this._rotationAngle = bestA;
     this._tiltAngle = bestT;
+    this._flipX = bestFx;
+    this._flipY = bestFy;
   }
 
   // Get current 2D coordinates (projecting 3D if needed).
@@ -772,7 +774,10 @@ class EmbeddingViz {
     // 3D: project and normalize to bounding sphere
     const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    return project3Dto2D(normalized, this._rotationAngle, this._tiltAngle);
+    const projected = project3Dto2D(normalized, this._rotationAngle, this._tiltAngle);
+    const fx = this._flipX || 1, fy = this._flipY || 1;
+    if (fx === 1 && fy === 1) return projected;
+    return projected.map(([x, y]) => [x * fx, y * fy]);
   }
 
   _stopRotation() {
@@ -844,7 +849,9 @@ class EmbeddingViz {
 
     function tick() {
       if (autoRotate && !dragging) self._rotationAngle += 0.005;
-      const projected = project3Dto2D(normalized, self._rotationAngle, self._tiltAngle);
+      const raw = project3Dto2D(normalized, self._rotationAngle, self._tiltAngle);
+      const fx = self._flipX || 1, fy = self._flipY || 1;
+      const projected = (fx === 1 && fy === 1) ? raw : raw.map(([x, y]) => [x * fx, y * fy]);
       self._currentCoords2D = projected;
 
       // Update positions directly (no transition — this is continuous rotation)
