@@ -14,6 +14,14 @@
   the man:woman analogies after gender steering should all be mostly junk and
   that should be something we can test for ideally.)
 
+- There are some cool examples (e.g., city:zipcode) and useful content in to
+  draw from https://nlp.stanford.edu/projects/glove/
+
+- Are there places that could use visual aids?  (An example of a missing visual
+  aid is the matrix factoriization.)
+
+- Are there places that are lacking mathematical detail or rigor?  (E.g., matrix
+  factorization, and MDS explanation are a bit weak.)
 
 ## Article interactivity
 
@@ -115,11 +123,11 @@
 
 - [ ] animations between 2d and 3d should find the closet 3d view to the current
   2d view.  There appears to be an unnecessarily large change.
-  
+
   - claude: Added _findBestRotation: searches 36 angles × 4 tilts to find projection closest to current 2D layout.
 
   - timv: this still isn't minimal also there is often a funny zooming that happens that seems unncessary
-  
+
 
 - [x] I cant rotate the points along all axes in 3d.
   - Added vertical drag (tilt angle) to the 3D projected view. Horizontal drag = rotation, vertical drag = tilt (clamped ±90°).
@@ -180,9 +188,10 @@
   dots before they know what embeddings or steering are.
   - Added orienting caption: "Each dot is a word; faded dots show original positions; bright dots show where they land after a gender direction is removed; trails show the shift."
 
-- [ ] Beef up the Results section — the doctor/nurse example is a single case
+- [x] Beef up the Results section — the doctor/nurse example is a single case
   stated in prose then shown in two plots. A brief table or a couple more
   occupation examples inline would make it land harder.
+  - Added dynamically-generated table showing man:woman::X analogy results before/after steering for 8 occupations. Changed results highlighted in orange.
 
 - [ ] Un-purple the Discussion section — first paragraph (limitations of
   projection) should be in black; it's the main takeaway, not supplementary.
@@ -197,9 +206,10 @@
 - [x] Improve the co-occurrence figure caption — was just "source".
   - Added inline description: "A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus."
 
-- [ ] Split the GloVe paragraph — it introduces GloVe, explains the
+- [x] Split the GloVe paragraph — it introduces GloVe, explains the
   factorization objective, and connects it to linear structure all in one purple
   block. The "which is why analogies work" payoff should be more prominent.
+  - Split into two paragraphs: (1) factorization mechanics, (2) why linear structure emerges and its consequences.
 
 - [x] Clarify the Explore section syntax.
   - Rewrote instructions: explains that words on the same line are plotted together and connected by arrows, and that `word - word` defines steering pairs.
