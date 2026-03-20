@@ -150,7 +150,7 @@ function render2D(container, words, coords, arrows, options = {}) {
   } = options;
   // Detect 1D mode early: all y-coords are ~0 (set by _getCoords2D for dims===1)
   const is1D = !fixedDomain && coords.every(c => Math.abs(c[1]) < 1e-9);
-  const margin = { top: is1D ? 100 : 30, right: 30, bottom: is1D ? 15 : 30, left: 30 };
+  const margin = { top: is1D ? 60 : 30, right: 30, bottom: is1D ? 60 : 30, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
   const dur = animate ? 600 : 0;
@@ -297,15 +297,22 @@ function render2D(container, words, coords, arrows, options = {}) {
       neighborWords.has(d.word) ? '#999' : COLORS.point);
 
   // --- Labels (keyed by word) ---
-  // In 1D mode, labels rotate -90° (vertical, reading bottom-to-top) with text-anchor:start
-  // so they extend upward from the point. All use transform for smooth animated transitions.
-  const labelAngle = is1D ? -90 : 0;
-  const labelAnchor = is1D ? 'start' : 'middle';
-  function labelXY(d) {
-    const lx = xScale(d.c[0]);
-    const ly = yScale(d.c[1]) - (is1D ? 6 : 8);
-    return [lx, ly];
+  // In 1D mode, alternate labels above/below the line (sorted by x) to reduce overlap.
+  // Above: rotate -90° text-anchor:start (text up). Below: rotate 90° text-anchor:start (text down).
+  // All use transform for smooth animated transitions between dimensions.
+  const labelSide = {};  // word → 'above' | 'below'
+  if (is1D) {
+    const sorted = pointData.slice().sort((a, b) => a.c[0] - b.c[0]);
+    sorted.forEach((d, i) => { labelSide[d.word] = i % 2 === 0 ? 'above' : 'below'; });
   }
+  function labelTransformFor(d) {
+    const lx = xScale(d.c[0]);
+    if (!is1D) return `translate(${lx}, ${yScale(d.c[1]) - 8}) rotate(0)`;
+    const below = labelSide[d.word] === 'below';
+    const ly = yScale(d.c[1]) + (below ? 6 : -6);
+    return `translate(${lx}, ${ly}) rotate(${below ? 90 : -90})`;
+  }
+  const labelAnchor = is1D ? 'start' : 'middle';
 
   const labels = g.selectAll('text.word-label').data(pointData, d => d.word);
   labels.exit().transition().duration(dur).style('opacity', 0).remove();
@@ -328,16 +335,13 @@ function render2D(container, words, coords, arrows, options = {}) {
     .style('opacity', 0)
     .attr('transform', d => {
       const [sx, sy] = startXY(d.i);
-      return `translate(${sx}, ${sy - 8}) rotate(${labelAngle})`;
+      return `translate(${sx}, ${sy - 8}) rotate(0)`;
     })
     .text(d => d.word);
   labelsEnter.merge(labels)
     .attr('text-anchor', labelAnchor)
     .transition().duration(dur)
-    .attr('transform', d => {
-      const [lx, ly] = labelXY(d);
-      return `translate(${lx}, ${ly}) rotate(${labelAngle})`;
-    })
+    .attr('transform', d => labelTransformFor(d))
     .attr('font-size', d => hiddenPoints.has(d.i) ? '12px' : neighborWords.has(d.word) ? '10px' : '11px')
     .attr('font-weight', d => hiddenPoints.has(d.i) ? 'bold' : 'normal')
     .attr('font-style', d => hiddenPoints.has(d.i) ? 'italic' : 'normal')
