@@ -71,6 +71,7 @@
     <div class="vocab-selector" id="vocab-selector-loading">
       <button data-size="small">Small (10K, 4MB)</button>
       <button class="active" data-size="medium">Medium (50K, 20MB)</button>
+      <button data-size="large">Large (400K, 160MB)</button>
       
     </div>
   </div>
@@ -94,6 +95,7 @@
   <span class="vocab-selector" id="vocab-selector">
     <button data-size="small">10K</button>
     <button class="active" data-size="medium">50K</button>
+    <button data-size="large">400K</button>
     
   </span>
 </p>
@@ -232,6 +234,25 @@
 <p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately. If some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. The method also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
 <p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. <dt-cite key="zhao2018gender"></dt-cite> proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. <dt-cite key="ravfogel2020inlp"></dt-cite> introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+
+<h2>Explore</h2>
+
+<p>Type your own word groups below (one group per line, words separated by spaces) and see how they arrange in embedding space. Click words in the plot to expand neighbors.</p>
+
+<textarea id="explorer-input" rows="6" style="width: 100%; max-width: 620px; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">dog cat bird fish
+red blue green yellow
+happy sad angry calm
+run walk sit stand</textarea>
+
+<div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
+  <button id="explorer-go" style="background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 14px; cursor: pointer;">Plot</button>
+  <span id="explorer-status" style="font-size: 13px; color: #999;"></span>
+</div>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-explorer"></div>
+  <div class="eigen-margin" id="eigen-explorer"></div>
+</div>
 
 </dt-article>
 
@@ -885,6 +906,7 @@ function buildVisualizations() {
     .text(d => d.shift.toFixed(3));
 
   setupAnalogyInput();
+  setupExplorer();
 }
 
 
@@ -913,6 +935,74 @@ function setupAnalogyInput() {
   document.querySelectorAll('.analogy-input input').forEach(el => {
     el.addEventListener('keydown', e => { if (e.key === 'Enter') runAnalogy(); });
   });
+}
+
+
+let explorerViz = null;
+
+function setupExplorer() {
+  const input = document.getElementById('explorer-input');
+  const goBtn = document.getElementById('explorer-go');
+  const status = document.getElementById('explorer-status');
+
+  function runExplorer() {
+    const text = input.value.trim();
+    if (!text) { status.textContent = 'Enter some words above.'; return; }
+
+    // Parse groups: one group per line, words separated by spaces
+    const groups = text.split('\n')
+      .map(line => line.trim().toLowerCase().split(/\s+/).filter(Boolean))
+      .filter(g => g.length > 0);
+
+    // Collect all unique words, check which exist in vocabulary
+    const seen = new Set();
+    const words = [];
+    const missing = [];
+    for (const g of groups) {
+      for (const w of g) {
+        if (seen.has(w)) continue;
+        seen.add(w);
+        if (emb.has(w)) {
+          words.push(w);
+        } else {
+          missing.push(w);
+        }
+      }
+    }
+
+    if (words.length < 2) {
+      status.innerHTML = `<span class="error">Need at least 2 words in vocabulary.</span>`;
+      if (missing.length > 0) status.innerHTML += ` Not found: ${missing.join(', ')}`;
+      return;
+    }
+
+    // Filter groups to only include words in vocabulary
+    const validGroups = groups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
+
+    let msg = `${words.length} words plotted`;
+    if (missing.length > 0) msg += ` (not found: ${missing.join(', ')})`;
+    status.textContent = msg;
+
+    // Clear previous viz
+    const plotEl = document.getElementById('plot-explorer');
+    const eigenEl = document.getElementById('eigen-explorer');
+    plotEl.innerHTML = '';
+    eigenEl.innerHTML = '';
+
+    explorerViz = new EmbeddingViz({
+      emb, searchEmb: emb, words, groups: validGroups,
+      plotEl, eigenEl,
+    });
+  }
+
+  goBtn.addEventListener('click', runExplorer);
+  // Also run on Ctrl+Enter in the textarea
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runExplorer();
+  });
+
+  // Run with default content on load
+  runExplorer();
 }
 
 

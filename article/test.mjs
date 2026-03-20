@@ -459,6 +459,42 @@ async function testDefaultVocab() {
   test('Default vocab is medium', active === 'medium', `got "${active}"`);
 }
 
+async function testExplorer() {
+  // Default content should have rendered a plot on load
+  const defaultPlot = await page.evaluate(() =>
+    !!document.querySelector('#plot-explorer svg.plot'));
+  test('Explorer: default plot rendered on load', defaultPlot);
+
+  const defaultWords = await page.evaluate(() =>
+    document.querySelectorAll('#plot-explorer svg.plot text.word-label').length);
+  test('Explorer: default plot has words', defaultWords > 0, `${defaultWords} words`);
+
+  // Type custom input and click Plot
+  await page.evaluate(() => {
+    document.getElementById('explorer-input').value = 'king queen prince princess\nman woman boy girl';
+  });
+  await page.click('#explorer-go');
+  await new Promise(r => setTimeout(r, 3000));
+
+  const customWords = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('#plot-explorer svg.plot text.word-label')];
+    return labels.map(l => l.textContent);
+  });
+  test('Explorer: custom plot has expected words', customWords.includes('king') && customWords.includes('girl'),
+    customWords.join(', '));
+
+  // Check missing word handling
+  await page.evaluate(() => {
+    document.getElementById('explorer-input').value = 'xyznotaword123';
+  });
+  await page.click('#explorer-go');
+  await new Promise(r => setTimeout(r, 500));
+  const errorMsg = await page.evaluate(() =>
+    document.getElementById('explorer-status')?.textContent || '');
+  test('Explorer: shows error for missing words', errorMsg.includes('Need at least') || errorMsg.includes('not found'),
+    errorMsg.substring(0, 80));
+}
+
 // Run all tests
 console.log(`\nTesting: ${URL}\n`);
 const jsErrors = await setup();
@@ -483,6 +519,7 @@ await testSuperlativesComplete();
 await testFemineFirst();
 await testAcknowledgments();
 await testDefaultVocab();
+await testExplorer();
 
 await browser.close();
 
