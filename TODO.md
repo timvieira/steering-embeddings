@@ -74,6 +74,7 @@
   limitations (projecting out gender may damage useful information), and
   connections to more recent debiasing work.
   - Added Discussion section covering limitations and citing Zhao et al. and Ravfogel et al. (INLP).
+  - Fixed: Zhao et al. and Ravfogel et al. were plain text — converted to proper dt-cite with bibliography entries.
 
 - [x] Expand the "Identifying Subspaces" section with a worked example: show
   2-3 gender pair difference vectors pointing in roughly the same direction
