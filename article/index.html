@@ -234,8 +234,9 @@
 </script>
 
 <script type="module">
-import { Embeddings, mds, loadEmbeddings } from './js/embeddings.js';
-import { EmbeddingViz, renderHero3D, renderSteering2D } from './js/viz.js';
+const v = Date.now();
+const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${v}`);
+const { EmbeddingViz, renderHero3D, renderSteering2D } = await import(`./js/viz.js?v=${v}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },

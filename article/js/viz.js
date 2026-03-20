@@ -208,6 +208,12 @@ function render2D(container, words, coords, arrows, options = {}) {
     svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
   } else {
     g = svg.select('g.main');
+    // If switching to 3D on a reused SVG, remove the D3 zoom that was attached in 2D
+    if (fixedDomain) {
+      svg.on('.zoom', null);  // remove all d3.zoom event listeners
+      // Reset the zoom-container transform (pan/zoom may have shifted it)
+      svg.select('g.zoom-container').attr('transform', null);
+    }
   }
 
   // --- Neighbor links (dashed lines from parent to child) ---
