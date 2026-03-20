@@ -215,26 +215,28 @@ async function testNeighborStylingAcrossDimensions() {
 }
 
 async function testClickToExpand3D() {
-  // Switch numbers-digits to 3D
+  // Switch numbers-digits to 3D (now rendered as projected SVG, not canvas)
   await page.evaluate(() => {
     const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
     if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 3000));
 
-  const hasCanvas = await page.evaluate(() =>
-    !!document.querySelector('#plot-numbers-digits canvas'));
-  test('Click-to-expand 3D: canvas exists after switch', hasCanvas);
+  // 3D is now D3 SVG with projected rotation — verify SVG still exists
+  const has3dSvg = await page.evaluate(() =>
+    !!document.querySelector('#plot-numbers-digits svg.plot'));
+  test('Click-to-expand 3D: SVG exists (projected 3D)', has3dSvg);
 
-  // Note: raycasting click is hard to test in headless puppeteer,
-  // but we verify the infrastructure is wired
-  const hasRaycastSetup = await page.evaluate(() => {
-    // The canvas should have pointerup listener (for raycasting)
-    const canvas = document.querySelector('#plot-numbers-digits canvas');
-    // Can't directly check listeners, but verify canvas is interactive
-    return canvas?.style.cursor === 'grab';
-  });
-  test('Click-to-expand 3D: canvas is interactive', hasRaycastSetup);
+  // Click a word to expand in projected 3D view
+  const beforeCount = await page.evaluate(() =>
+    document.querySelectorAll('#plot-numbers-digits svg.plot text.word-label').length);
+  const word = await page.$('#plot-numbers-digits svg.plot text.word-label');
+  if (word) await word.click();
+  await new Promise(r => setTimeout(r, 2000));
+  const afterCount = await page.evaluate(() =>
+    document.querySelectorAll('#plot-numbers-digits svg.plot text.word-label').length);
+  test('Click-to-expand 3D: neighbors added', afterCount > beforeCount,
+    `${beforeCount} → ${afterCount}`);
 
   // Switch back to 2D for subsequent tests
   await page.evaluate(() => {
@@ -344,9 +346,10 @@ async function testDimensionTransitionAnimation() {
     if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 500));
+  // 3D is now projected SVG with rotation, not canvas
   const has3D = await page.evaluate((sel) =>
-    !!document.querySelector(`${sel} canvas`), plotSel);
-  test('Dimension transition: 3D canvas after switch', has3D);
+    !!document.querySelector(`${sel} svg.plot`), plotSel);
+  test('Dimension transition: 3D SVG exists (projected)', has3D);
 
   // Switch back to 2D for other tests
   await page.evaluate(() => {

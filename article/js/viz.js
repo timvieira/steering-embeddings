@@ -1,6 +1,6 @@
 /**
- * Embedding visualizations using D3 (2D) and Three.js (3D).
- * Unified component for paths, analogies, and steering comparisons.
+ * Embedding visualizations using D3 for all rendering (1D, 2D, projected 3D).
+ * Three.js is only used for the hero visualization.
  */
 import { mds } from './embeddings.js';
 
@@ -12,6 +12,24 @@ const COLORS = {
   eigenActive: '#5778a4',
   eigenInactive: '#ddd',
 };
+
+/**
+ * Project 3D coordinates to 2D via rotation matrix.
+ * angle: rotation around Y axis (radians)
+ * tilt: rotation around X axis (radians)
+ */
+function project3Dto2D(coords3D, angle = 0, tilt = 0.4) {
+  const cosA = Math.cos(angle), sinA = Math.sin(angle);
+  const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+  return coords3D.map(([x, y, z]) => {
+    // Rotate around Y axis
+    const x1 = x * cosA + z * sinA;
+    const z1 = -x * sinA + z * cosA;
+    // Rotate around X axis (tilt)
+    const y1 = y * cosT - z1 * sinT;
+    return [x1, y1];
+  });
+}
 
 /**
  * Compute MDS for a set of words at dimensions 1, 2, and 3.
@@ -558,6 +576,9 @@ class EmbeddingViz {
       }
     }
 
+    this._rotationAngle = 0;
+    this._rotationAnim = null;
+
     // Create eigen selector
     if (this.eigenEl) {
       this.eigenSelector = createEigenSelector(
@@ -565,9 +586,12 @@ class EmbeddingViz {
         this.mdsData.eigenvalues,
         this.dims,
         (newDims) => {
-          const prevDims = this.dims;
+          // Save current projected coords as prev for smooth transition
+          this._prevCoords = this._currentCoords2D;
+          this._prevWords = [...this.words];
           this.dims = newDims;
-          this._animateDimensionChange(prevDims, newDims);
+          this._stopRotation();
+          this.render(true);
         }
       );
     }
@@ -575,48 +599,93 @@ class EmbeddingViz {
     this.render();
   }
 
-  render(animate = false) {
-    const coords = this.mdsData.coords[this.dims];
-    const opts = {
-      highlights: this.highlights,
-      crossGroupLines: this.crossGroupLines,
-      neighborWords: this.neighborWords,
-      neighborLinks: this.neighborLinks,
-      animate,
-      prevCoords: this._prevCoords,
-      prevWords: this._prevWords,
-    };
+  // Get current 2D coordinates (projecting 3D if needed)
+  _getCoords2D() {
+    const raw = this.mdsData.coords[this.dims];
+    if (this.dims === 1) return raw.map(c => [c[0], 0]);
+    if (this.dims === 2) return raw;
+    // 3D: project
+    return project3Dto2D(raw, this._rotationAngle);
+  }
 
-    const el = typeof this.plotEl === 'string'
-      ? document.getElementById(this.plotEl)
-      : this.plotEl;
-
-    // For animated 2D updates, keep the SVG and just update data
-    if (!animate || this.dims !== 2) {
-      el.innerHTML = '';
-      const caption = document.createElement('div');
-      caption.className = 'variance-caption';
-      caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
-      el.appendChild(caption);
-    } else {
-      const caption = el.querySelector('.variance-caption');
-      if (caption) caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
+  _stopRotation() {
+    if (this._rotationAnim) {
+      cancelAnimationFrame(this._rotationAnim);
+      this._rotationAnim = null;
     }
+  }
 
-    // Click handler: add neighbors, recompute MDS, animate
+  _startRotation() {
+    if (this.dims !== 3) return;
     const self = this;
-    opts.onClick = (idx, word) => {
+    const el = typeof this.plotEl === 'string'
+      ? document.getElementById(this.plotEl) : this.plotEl;
+    const svg = d3.select(el).select('svg.plot');
+    const g = svg.select('g.main');
+    if (g.empty()) return;
+
+    // Compute scales that fit all possible rotations (use bounding sphere)
+    const raw3D = this.mdsData.coords[3];
+    const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+    const w = 620 - margin.left - margin.right;
+    const h = 450 - margin.top - margin.bottom;
+    const pad = maxR * 0.15;
+    const xScale = d3.scaleLinear().domain([-maxR - pad, maxR + pad]).range([0, w]);
+    const yScale = d3.scaleLinear().domain([-maxR - pad, maxR + pad]).range([h, 0]);
+
+    function tick() {
+      self._rotationAngle += 0.005;
+      const projected = project3Dto2D(raw3D, self._rotationAngle);
+      self._currentCoords2D = projected;
+
+      // Update positions directly (no transition — this is continuous rotation)
+      g.selectAll('circle.point')
+        .attr('cx', d => xScale(projected[d.i][0]))
+        .attr('cy', d => yScale(projected[d.i][1]));
+      g.selectAll('text.word-label')
+        .attr('x', d => xScale(projected[d.i][0]))
+        .attr('y', d => yScale(projected[d.i][1]) - 8);
+
+      // Update arrows
+      g.selectAll('line.arrow')
+        .attr('x1', d => xScale(projected[d.from][0]))
+        .attr('y1', d => yScale(projected[d.from][1]))
+        .attr('x2', d => xScale(projected[d.to][0]))
+        .attr('y2', d => yScale(projected[d.to][1]));
+
+      // Update neighbor links
+      g.selectAll('line.neighbor-link')
+        .attr('x1', d => xScale(projected[d.parent][0]))
+        .attr('y1', d => yScale(projected[d.parent][1]))
+        .attr('x2', d => xScale(projected[d.child][0]))
+        .attr('y2', d => yScale(projected[d.child][1]));
+
+      // Update cross-group lines
+      g.selectAll('line.cross-group')
+        .attr('x1', d => xScale(projected[d[0]][0]))
+        .attr('y1', d => yScale(projected[d[0]][1]))
+        .attr('x2', d => xScale(projected[d[1]][0]))
+        .attr('y2', d => yScale(projected[d[1]][1]));
+
+      self._rotationAnim = requestAnimationFrame(tick);
+    }
+    self._rotationAnim = requestAnimationFrame(tick);
+  }
+
+  _makeOnClick() {
+    const self = this;
+    return (idx, word) => {
       const vec = self.emb.vec(word);
       if (!vec) return;
       const existing = new Set(self.words);
       const neighbors = self.emb.mostSimilar(vec, 5, existing);
       if (neighbors.length === 0) return;
 
-      // Save current state for animation start positions
-      self._prevCoords = self.mdsData.coords[self.dims];
+      self._stopRotation();
+      self._prevCoords = self._currentCoords2D;
       self._prevWords = [...self.words];
 
-      // Add neighbors to word list
       const wordIdx = new Map(self.words.map((w, i) => [w, i]));
       const parentIdx = wordIdx.get(word);
       for (const nw of neighbors) {
@@ -628,93 +697,51 @@ class EmbeddingViz {
         }
       }
 
-      // Recompute MDS with expanded word set and animate
       self.mdsData = computeAllMDS(self.emb, self.words);
       self.render(true);
     };
-
-    if (this.dims === 1) {
-      render1D(el, this.words, coords, this.arrows, opts);
-    } else if (this.dims === 2) {
-      render2D(el, this.words, coords, this.arrows, opts);
-    } else {
-      render3D(el, this.words, coords, this.arrows, opts);
-    }
-
-    if (this.eigenSelector) this.eigenSelector.update(this.dims);
   }
 
-  _animateDimensionChange(prevDims, newDims) {
+  render(animate = false) {
+    this._stopRotation();
+    const coords2D = this._getCoords2D();
+    this._currentCoords2D = coords2D;
+
     const el = typeof this.plotEl === 'string'
       ? document.getElementById(this.plotEl) : this.plotEl;
 
-    // SVG-to-SVG transitions (1D↔2D): rebuild SVG but animate from old positions
-    if (prevDims <= 2 && newDims <= 2) {
-      const prevCoords = this.mdsData.coords[prevDims];
-      const newCoords = this.mdsData.coords[newDims];
-
-      // Pad coords to 2D (1D gets y=0)
-      const prevCoords2D = prevCoords.map(c => c.length === 1 ? [c[0], 0] : c);
-      const newCoords2D = newCoords.map(c => c.length === 1 ? [c[0], 0] : c);
-
-      // Save prev state so render2D can animate from old positions
-      this._prevCoords = prevCoords2D;
-      this._prevWords = [...this.words];
-
-      // Clear and rebuild (render2D with animate=false creates fresh SVG,
-      // but we set animate=true so it does enter transitions from prevCoords)
+    // For animated updates, keep the SVG; otherwise rebuild
+    if (!animate) {
       el.innerHTML = '';
       const caption = document.createElement('div');
       caption.className = 'variance-caption';
-      caption.textContent = `${newDims}D MDS captures ${this.mdsData.variance[newDims].toFixed(1)}% of variance`;
+      caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
       el.appendChild(caption);
-
-      // Use render2D for both 1D and 2D targets (1D = 2D with all y≈0)
-      this.render._buildOpts = null;  // force fresh SVG
-      const opts = {
-        highlights: this.highlights,
-        crossGroupLines: this.crossGroupLines,
-        neighborWords: this.neighborWords,
-        neighborLinks: this.neighborLinks,
-        animate: true,
-        prevCoords: prevCoords2D,
-        prevWords: [...this.words],
-      };
-      const self = this;
-      opts.onClick = (idx, word) => {
-        const vec = self.emb.vec(word);
-        if (!vec) return;
-        const existing = new Set(self.words);
-        const neighbors = self.emb.mostSimilar(vec, 5, existing);
-        if (neighbors.length === 0) return;
-        self._prevCoords = self.mdsData.coords[self.dims];
-        self._prevWords = [...self.words];
-        const wordIdx = new Map(self.words.map((w, i) => [w, i]));
-        const parentIdx = wordIdx.get(word);
-        for (const nw of neighbors) {
-          if (!existing.has(nw) && self.emb.has(nw)) {
-            self.words.push(nw);
-            self.neighborWords.add(nw);
-            self.neighborLinks.push({ parent: parentIdx, child: self.words.length - 1 });
-            existing.add(nw);
-          }
-        }
-        self.mdsData = computeAllMDS(self.emb, self.words);
-        self.render(true);
-      };
-
-      render2D(el, this.words, newCoords2D, this.arrows, opts);
-      if (this.eigenSelector) this.eigenSelector.update(this.dims);
-      return;
+    } else {
+      const caption = el.querySelector('.variance-caption');
+      if (caption) caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
     }
 
-    // Transitions involving 3D: cross-fade
-    el.style.transition = 'opacity 0.25s';
-    el.style.opacity = '0';
-    setTimeout(() => {
-      this.render(false);
-      el.style.opacity = '1';
-    }, 250);
+    const opts = {
+      highlights: this.highlights,
+      crossGroupLines: this.crossGroupLines,
+      neighborWords: this.neighborWords,
+      neighborLinks: this.neighborLinks,
+      animate,
+      prevCoords: this._prevCoords,
+      prevWords: this._prevWords,
+      onClick: this._makeOnClick(),
+    };
+
+    render2D(el, this.words, coords2D, this.arrows, opts);
+
+    if (this.eigenSelector) this.eigenSelector.update(this.dims);
+
+    // Start rotation for 3D
+    if (this.dims === 3) {
+      // Wait for transition to finish before starting rotation
+      setTimeout(() => this._startRotation(), animate ? 700 : 0);
+    }
   }
 }
 
