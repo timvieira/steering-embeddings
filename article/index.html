@@ -655,22 +655,25 @@ function buildVisualizations() {
     const { u: u1 } = SVDJS.SVD(C1mat);
     const dir1 = new Float64Array(d);
     for (let i = 0; i < d; i++) dir1[i] = u1[i][0];
-    // Orient: word→digit
+    // Orient to match pair arrows: word→digit (v1 is word, v2 is digit)
     const meanDiff = new Float64Array(d);
     for (const [w1, w2] of numLinkedPairs) {
       const v1 = emb.vec(w1), v2 = emb.vec(w2);
-      if (v1 && v2) for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+      if (v1 && v2) for (let i = 0; i < d; i++) meanDiff[i] += v1[i] - v2[i];
     }
     let dot1 = 0;
     for (let i = 0; i < d; i++) dot1 += dir1[i] * meanDiff[i];
     if (dot1 < 0) for (let i = 0; i < d; i++) dir1[i] = -dir1[i];
 
-    // Direction 2: "counting" via PCA on all word vectors
+    // Direction 2: "counting" via PCA on just written words (not all 18,
+    // since PCA on the combined set would be dominated by word-vs-digit)
+    const wordForms = numLinkedPairs.map(p => p[0]).filter(w => emb.has(w));
+    const wordVecs = wordForms.map(w => emb.vec(w));
     const centroid = new Float64Array(d);
-    for (const v of vecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
-    for (let i = 0; i < d; i++) centroid[i] /= vecs.length;
+    for (const v of wordVecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
+    for (let i = 0; i < d; i++) centroid[i] /= wordVecs.length;
     const C2 = new Float64Array(d * d);
-    for (const v of vecs) {
+    for (const v of wordVecs) {
       for (let i = 0; i < d; i++)
         for (let j = 0; j < d; j++)
           C2[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
@@ -686,11 +689,14 @@ function buildVisualizations() {
     for (let i = 0; i < d; i++) dot2 += dir2[i] * (vLast[i] - vFirst[i]);
     if (dot2 < 0) for (let i = 0; i < d; i++) dir2[i] = -dir2[i];
 
-    // Anchor scale
+    // Anchor scale and centroid over ALL plotted words (both forms)
+    const allCentroid = new Float64Array(d);
+    for (const v of vecs) for (let i = 0; i < d; i++) allCentroid[i] += v[i];
+    for (let i = 0; i < d; i++) allCentroid[i] /= vecs.length;
     let avgDist = 0;
     for (const v of vecs) {
       let dd = 0;
-      for (let i = 0; i < d; i++) dd += (v[i] - centroid[i]) ** 2;
+      for (let i = 0; i < d; i++) dd += (v[i] - allCentroid[i]) ** 2;
       avgDist += Math.sqrt(dd);
     }
     avgDist /= vecs.length;
@@ -704,10 +710,10 @@ function buildVisualizations() {
       { vec: new Float64Array(d), label: 'counting' },      // dir2 pos
     ];
     for (let i = 0; i < d; i++) {
-      anchors[0].vec[i] = centroid[i] - dir1[i] * sc;
-      anchors[1].vec[i] = centroid[i] + dir1[i] * sc;
-      anchors[2].vec[i] = centroid[i] - dir2[i] * sc;
-      anchors[3].vec[i] = centroid[i] + dir2[i] * sc;
+      anchors[0].vec[i] = allCentroid[i] - dir1[i] * sc;
+      anchors[1].vec[i] = allCentroid[i] + dir1[i] * sc;
+      anchors[2].vec[i] = allCentroid[i] - dir2[i] * sc;
+      anchors[3].vec[i] = allCentroid[i] + dir2[i] * sc;
     }
 
     // Build extended embeddings
