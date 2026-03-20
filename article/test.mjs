@@ -81,17 +81,13 @@ async function testAlignment() {
   const m = await page.evaluate(() => {
     const p = document.querySelector('dt-article > p');
     const svg = document.querySelector('svg.plot');
-    const caption = document.querySelector('.variance-caption');
     return {
       text: Math.round(p?.getBoundingClientRect().left),
       svg: Math.round(svg?.getBoundingClientRect().left),
-      caption: Math.round(caption?.getBoundingClientRect().left),
     };
   });
   test('SVG aligns with text', Math.abs(m.text - m.svg) < 5,
     `text=${m.text} svg=${m.svg}`);
-  test('Caption aligns with text', Math.abs(m.text - m.caption) < 5,
-    `text=${m.text} caption=${m.caption}`);
 }
 
 async function testMathRendering() {

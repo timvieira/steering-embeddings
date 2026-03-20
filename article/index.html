@@ -321,8 +321,12 @@ function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
   const arrows = [
     { from: idx.get(a), to: idx.get(b), color: 'red' },
   ];
+  const crossGroupLines = [];
   if (ab.length > 0 && idx.has(ab[0])) {
     arrows.push({ from: idx.get(c), to: idx.get(ab[0]), color: 'red' });
+    // Parallelogram: dashed lines connecting a→c and b→answer
+    crossGroupLines.push([idx.get(a), idx.get(c)]);
+    crossGroupLines.push([idx.get(b), idx.get(ab[0])]);
   }
   return new EmbeddingViz({
     emb: embToUse, words: unique,
@@ -330,6 +334,7 @@ function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
     plotEl: document.getElementById(plotId),
     eigenEl: document.getElementById(eigenId),
     arrows,
+    crossGroupLines,
     highlights: [idx.get(a), idx.get(b), idx.get(c), ...(ab.length > 0 && idx.has(ab[0]) ? [idx.get(ab[0])] : [])],
   });
 }
@@ -491,9 +496,45 @@ function buildVisualizations() {
     return { word: w, shift: Math.sqrt(diff) };
   }).sort((a, b) => b.shift - a.shift);
 
-  rankEl.innerHTML = '<ol>' +
-    ranked.map(r => `<li><b>${r.word}</b> <span style="color:#999">(${r.shift.toFixed(3)})</span></li>`).join('') +
-    '</ol>';
+  // D3 horizontal bar chart for profession ranking
+  rankEl.innerHTML = '';
+  const barW = 500, barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
+  const barH = ranked.length * barRowH + barMargin.top + barMargin.bottom;
+  const maxShift = ranked[0]?.shift || 1;
+  const barXScale = d3.scaleLinear().domain([0, maxShift]).range([0, barW - barMargin.left - barMargin.right]);
+
+  const barSvg = d3.select(rankEl).append('svg')
+    .attr('width', barW).attr('height', barH);
+  const barG = barSvg.append('g')
+    .attr('transform', `translate(${barMargin.left},${barMargin.top})`);
+
+  barG.selectAll('rect').data(ranked).enter().append('rect')
+    .attr('x', 0)
+    .attr('y', (d, i) => i * barRowH)
+    .attr('width', d => barXScale(d.shift))
+    .attr('height', barRowH - 4)
+    .attr('fill', '#e49444')
+    .attr('rx', 2)
+    .attr('opacity', 0.7);
+
+  barG.selectAll('text.label').data(ranked).enter().append('text')
+    .attr('class', 'label')
+    .attr('x', -8)
+    .attr('y', (d, i) => i * barRowH + barRowH / 2 + 1)
+    .attr('text-anchor', 'end')
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', '12px')
+    .attr('fill', '#333')
+    .text(d => d.word);
+
+  barG.selectAll('text.value').data(ranked).enter().append('text')
+    .attr('class', 'value')
+    .attr('x', d => barXScale(d.shift) + 4)
+    .attr('y', (d, i) => i * barRowH + barRowH / 2 + 1)
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', '10px')
+    .attr('fill', '#999')
+    .text(d => d.shift.toFixed(3));
 
   setupAnalogyInput();
 }

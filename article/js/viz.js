@@ -104,9 +104,21 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
     onChange(newDims);
   });
 
-  return { update(dims) {
-    bars.attr('fill', (d, i) => i < dims ? COLORS.eigenActive : COLORS.eigenInactive);
-  }};
+  // Variance text below bars
+  const varianceText = d3.select(container).append('div')
+    .style('font-size', '10px')
+    .style('color', '#999')
+    .style('margin-top', '2px')
+    .style('width', `${width}px`);
+
+  return {
+    update(dims, variance) {
+      bars.attr('fill', (d, i) => i < dims ? COLORS.eigenActive : COLORS.eigenInactive);
+      if (variance !== undefined) {
+        varianceText.text(`${variance.toFixed(1)}%`);
+      }
+    }
+  };
 }
 
 
@@ -768,13 +780,6 @@ class EmbeddingViz {
     // For animated updates, keep the SVG; otherwise rebuild
     if (!animate) {
       el.innerHTML = '';
-      const caption = document.createElement('div');
-      caption.className = 'variance-caption';
-      caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
-      el.appendChild(caption);
-    } else {
-      const caption = el.querySelector('.variance-caption');
-      if (caption) caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
     }
 
     // For 3D, use a fixed domain so scale doesn't change during rotation
@@ -794,7 +799,7 @@ class EmbeddingViz {
 
     render2D(el, this.words, coords2D, this.arrows, opts);
 
-    if (this.eigenSelector) this.eigenSelector.update(this.dims);
+    if (this.eigenSelector) this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
 
     // Start rotation for 3D
     if (this.dims === 3) {
