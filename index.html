@@ -31,9 +31,15 @@
 
   .figure-row { position: relative; margin: 1.5em 0; }
   .figure-row .plot-container { margin-left: 48px; }
-  .figure-row .eigen-margin { position: absolute; right: 0; top: 0; width: 90px; }
-  .variance-caption { margin-left: 0; }
+  .figure-row .eigen-margin { position: absolute; right: 6px; bottom: 6px; z-index: 10; }
+
+  @media (max-width: 768px) {
+    .figure-row .plot-container { margin-left: 0; }
+  }
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
+
+  /* Clip SVGs to prevent KaTeX glyph paths and plot trails from overflowing */
+  svg.plot, .katex svg { overflow: hidden; }
 
   .progress-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -59,8 +65,13 @@
   .analogy-result .answer { font-weight: 600; color: #5778a4; }
   .error { color: #e49444; font-size: 14px; }
 
-  img.cooccurrence-img { max-width: 500px; }
+  img.cooccurrence-img { max-width: min(500px, 100%); }
   .analogy-input, .analogy-result { box-sizing: border-box; }
+
+  #analogy-table table { border-collapse: collapse; font-size: 14px; width: 100%; max-width: 560px; }
+  #analogy-table th, #analogy-table td { padding: 4px 10px; text-align: left; border-bottom: 1px solid #eee; }
+  #analogy-table th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #analogy-table td.changed { color: #e49444; }
 </style>
 
 <!-- Loading overlay -->
@@ -88,7 +99,7 @@
 <p style="color: #999; font-size: 13px; line-height: 1.4; margin-bottom: 2em;">
   <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
   <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
- &mdash;Faded dots show original positions; bright dots show steered positions; trails show how each word moved.
+ &mdash;Each dot is a word; faded dots show original positions; bright dots show where they land after a gender direction is removed; trails show the shift.
 </p>
 
 <p>
@@ -103,18 +114,20 @@
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
+<p style="color: #7b2d8b;">The word "queen" is closer to "king" than to "bicycle"&mdash;and not because someone hand-coded that. Word embeddings represent each word as a vector of numbers, learned from how words co-occur in text, so that proximity in vector space reflects proximity in meaning.</p>
 
 <p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> <dt-cite key="harris1954distributional"></dt-cite>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
-  <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
+  <figcaption>A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus. (<a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a>)</figcaption>
 </figure>
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts and add approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count.</p>
+
+<p style="color: #7b2d8b;">This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
 <p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
@@ -192,7 +205,7 @@
 
 <h2>Identifying Subspaces</h2>
 
-<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
+<p style="color: #7b2d8b;">The consistency of these analogies suggests that the embedding space contains <b>interpretable subspaces</b>&mdash;directions we can find systematically, not just stumble across in individual word pairs. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
 
 <p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
 
@@ -201,15 +214,30 @@
   <div class="eigen-margin" id="eigen-gender-pairs"></div>
 </div>
 
+<p style="color: #7b2d8b;">Gender is not the only interpretable subspace. Here are word pairs that differ primarily in size:</p>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-size-pairs"></div>
+  <div class="eigen-margin" id="eigen-size-pairs"></div>
+</div>
+
 <p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a second-moment matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $d_i = \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The second-moment matrix is:</p>
 
 <p style="color: #7b2d8b;">$$C = \frac{1}{2}\sum_{i=1}^{p} d_i \, d_i^T$$</p>
 
 <p style="color: #7b2d8b;">The factor of $\frac{1}{2}$ arises because each pair has two observations with one degree of freedom. $C$ is a $100 \times 100$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the SVD $C = U \Sigma V^T$ and keeping the top-$k$ columns of $U$ gives an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the pair differences.</p>
 
+<p style="color: #7b2d8b;">The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-subspace-anim"></div>
+</div>
+
 <h2>Steering by Subspace Projection</h2>
 
 <p style="color: #7b2d8b;">Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
+
+<p style="color: #7b2d8b;">The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize.</p>
 
 <p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
@@ -221,7 +249,7 @@
   <div class="plot-container" id="plot-gendered-steer"></div>
 </div>
 
-<h2>Results</h2>
+<h2>Steering in Action</h2>
 
 <h3>Occupation Analogies: Before vs. After</h3>
 <p>Before steering, the analogy man : woman :: doctor yields "nurse." After steering, both man&rarr;woman and woman&rarr;man yield "physician":</p>
@@ -234,6 +262,10 @@
   <div class="plot-container" id="plot-doctor-after"></div>
   <div class="eigen-margin" id="eigen-doctor-after"></div>
 </div>
+
+<p style="color: #7b2d8b;">The doctor example is not an isolated case. The table below runs the same analogy&mdash;man : woman :: <em>occupation</em>&mdash;across several professions, before and after steering:</p>
+
+<div id="analogy-table"></div>
 
 <h3>Which Words Changed Most?</h3>
 <p>Press <b>Steer</b> to see how each occupation's embedding shifts when the gender subspace is removed:</p>
@@ -252,7 +284,7 @@
 
 <h2>Explore</h2>
 
-<p>Type word groups below (one group per line). Use <code>-</code> between two words to define a steering pair &mdash; press <b>Steer</b> to project out that subspace.</p>
+<p>Type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Use <code>word - word</code> to define a steering pair&mdash;when pairs are present, a <b>Steer</b> button appears to project out that subspace.</p>
 
 <div>
 <textarea id="explorer-input" rows="8" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">doctor nurse programmer teacher scientist
@@ -335,7 +367,7 @@ mother - father</textarea>
 <script type="module">
 const v = Date.now();
 const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${v}`);
-const { EmbeddingViz, renderHero3D, renderSteering2D } = await import(`./js/viz.js?v=${v}`);
+const { EmbeddingViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${v}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -358,6 +390,12 @@ const GENDERED_WORDS = [
   ['mom','dad'], ['mother','father'], ['sister','brother'], ['aunt','uncle'],
   ['heiress','heir'], ['duchess','duke'], ['niece','nephew'], ['madame','sir'],
   ['female','male'], ['feminine','masculine'],
+];
+
+const SIZE_PAIRS = [
+  ['small','large'], ['tiny','huge'], ['little','big'],
+  ['narrow','wide'], ['short','tall'], ['thin','thick'],
+  ['shallow','deep'], ['minor','major'], ['miniature','giant'],
 ];
 
 const SUPERLATIVES = [
@@ -837,6 +875,31 @@ function buildVisualizations() {
       'plot-gender-pairs', 'eigen-gender-pairs');
   }
 
+  // Size pairs with SVD-derived size direction
+  const sizePairWords = flatWords(SIZE_PAIRS, 'size pairs');
+  if (sizePairWords.length > 0) {
+    buildVizWithDirection(sizePairWords, SIZE_PAIRS, SIZE_PAIRS, 'size direction',
+      'plot-size-pairs', 'eigen-size-pairs');
+  }
+
+  // Subspace identification animation (first 8 gender pairs)
+  const animPairDefs = GENDERED_WORDS.slice(0, 8);
+  const animWords = flatWords(animPairDefs, 'subspace anim');
+  if (animWords.length >= 4) {
+    const animMDS = computeAllMDS(emb, animWords);
+    const animCoords = animMDS.coords[2];
+    const animWordIdx = new Map(animWords.map((w, i) => [w, i]));
+    const animWordData = animWords.map((w, i) => ({ word: w, coord: animCoords[i] }));
+    const animPairIndices = animPairDefs
+      .filter(([a, b]) => animWordIdx.has(a) && animWordIdx.has(b))
+      .map(([a, b]) => ({ from: animWordIdx.get(a), to: animWordIdx.get(b) }));
+    renderSubspaceAnimation(
+      document.getElementById('plot-subspace-anim'),
+      animWordData,
+      { pairs: animPairIndices, directionLabel: 'gender direction' }
+    );
+  }
+
   if (emb.has('man') && emb.has('woman') && emb.has('king')) {
     vizInstances.push(buildAnalogyViz('plot-analogy-king', 'eigen-analogy-king', 'man', 'woman', 'king', 10, emb));
   }
@@ -882,6 +945,26 @@ function buildVisualizations() {
     vizInstances.push(buildAnalogyViz('plot-doctor-after', 'eigen-doctor-after', 'man', 'woman', 'doctor', 10, steered));
   }
 
+  // Occupation analogy table: before vs. after steering
+  const analogyOccupations = ['doctor','programmer','boss','scientist','nurse','teacher','homemaker','assistant'];
+  const tableEl = document.getElementById('analogy-table');
+  if (tableEl) {
+    const rows = analogyOccupations
+      .filter(w => emb.has(w) && steered.has(w))
+      .map(w => {
+        const before = emb.analogy('man', 'woman', w, 1)[0];
+        const after = steered.analogy('man', 'woman', w, 1)[0];
+        return { word: w, before, after, changed: before !== after };
+      });
+    let html = '<table><thead><tr><th>Occupation</th><th>man : woman :: <em>X</em> → ?<br>(before)</th><th>→ ? (after steering)</th></tr></thead><tbody>';
+    for (const r of rows) {
+      const cls = r.changed ? ' class="changed"' : '';
+      html += `<tr><td>${r.word}</td><td>${r.before}</td><td${cls}>${r.after}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+  }
+
   // Profession steering plot
   warnMissing(PROFESSIONS, 'professions');
   const profWords = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
@@ -920,7 +1003,7 @@ function buildVisualizations() {
 
   // D3 horizontal bar chart for profession ranking
   rankEl.innerHTML = '';
-  const barW = 500, barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
+  const barW = Math.min(500, rankEl.clientWidth || 500), barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
   const barH = ranked.length * barRowH + barMargin.top + barMargin.bottom;
   const maxShift = ranked[0]?.shift || 1;
   const barXScale = d3.scaleLinear().domain([0, maxShift]).range([0, barW - barMargin.left - barMargin.right]);
@@ -978,7 +1061,10 @@ function setupAnalogyInput() {
     if (!emb.has(c)) { result.innerHTML = `<span class="error">"${c}" not in vocabulary</span>`; return; }
 
     const answers = emb.analogy(a, b, c, 5);
+    const query = `Explain this analogy: "${a} is to ${b} as ${c} is to ${answers[0]}." The other top answers were ${answers.slice(1).join(', ')}. What's the connection? Be concise.`;
+    const perplexityUrl = `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`;
     result.innerHTML = `${a} is to ${b} as ${c} is to <span class="answer">${answers[0]}</span>` +
+      ` <a href="${perplexityUrl}" target="_blank" rel="noopener" title="Explain with AI" style="font-size:13px;color:#999;text-decoration:none;border-bottom:1px dashed #ccc;">explain?</a>` +
       `<br><span style="color:#999;font-size:14px">Also: ${answers.slice(1).join(', ')}</span>`;
 
     buildAnalogyViz('plot-analogy-custom', 'eigen-analogy-custom', a, b, c, 10, emb);

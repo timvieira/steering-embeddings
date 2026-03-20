@@ -71,72 +71,62 @@ function getResponsiveWidth(container, fallback = 620) {
  * MDS Eigenvalue selector widget (SVG in the margin).
  */
 function createEigenSelector(container, eigenvalues, activeDims, onChange) {
-  // Only show top 3 eigenvalues (for 1D/2D/3D switching)
   const topEig = eigenvalues.slice(0, 3);
-  const width = 80, height = 60, barWidth = 20, gap = 4;
   const maxVal = Math.max(...topEig.map(v => Math.max(0, v)));
+  const barH = 20, barW = 8, gap = 2;
+  const svgW = topEig.length * (barW + gap), svgH = barH + 12;
 
-  const svg = d3.select(container).append('svg')
-    .attr('width', width).attr('height', height + 20)
+  const row = d3.select(container).append('div')
+    .style('display', 'inline-flex')
+    .style('align-items', 'flex-end')
+    .style('gap', '3px')
+    .style('user-select', 'none')
+    .style('background', 'rgba(255,255,255,0.85)')
+    .style('padding', '2px 4px')
+    .style('border-radius', '3px');
+
+  const svg = row.append('svg')
+    .attr('width', svgW).attr('height', svgH)
     .style('cursor', 'pointer');
 
-  svg.append('title').text('MDS eigenvalues — bar height reflects how much each dimension contributes. Click to switch dimensions.');
+  svg.append('title').text('Click to switch dimensions');
 
   const bars = svg.selectAll('rect.bar')
     .data(topEig)
     .enter().append('rect')
     .attr('class', 'bar')
-    .attr('x', (d, i) => i * (barWidth + gap))
-    .attr('y', d => height - (maxVal > 0 ? Math.max(0, d) / maxVal * height : 0))
-    .attr('width', barWidth)
-    .attr('height', d => maxVal > 0 ? Math.max(0, d) / maxVal * height : 0)
-    .attr('fill', (d, i) => i < activeDims ? COLORS.eigenActive : COLORS.eigenInactive)
-    .attr('rx', 2);
+    .attr('x', (d, i) => i * (barW + gap))
+    .attr('y', d => barH - (maxVal > 0 ? Math.max(0, d) / maxVal * barH : 0))
+    .attr('width', barW)
+    .attr('height', d => maxVal > 0 ? Math.max(0, d) / maxVal * barH : 0)
+    .attr('fill', (d, i) => i < activeDims ? '#aac4de' : '#e8e8e8')
+    .attr('rx', 1);
 
-  // Labels
   svg.selectAll('text.label')
     .data(topEig)
     .enter().append('text')
-    .attr('class', 'label')
-    .attr('x', (d, i) => i * (barWidth + gap) + barWidth / 2)
-    .attr('y', height + 14)
+    .attr('x', (d, i) => i * (barW + gap) + barW / 2)
+    .attr('y', barH + 10)
     .attr('text-anchor', 'middle')
-    .attr('font-size', '10px')
-    .attr('fill', '#666')
-    .text((d, i) => `${i + 1}D`);
+    .attr('font-size', '8px')
+    .attr('fill', '#ccc')
+    .text((d, i) => `${i + 1}`);
 
-  // Click handler
-  svg.selectAll('rect.bar').on('click', function(event, d) {
+  bars.on('click', function(event, d) {
     const idx = topEig.indexOf(d);
     const newDims = idx + 1;
-    // Update colors
-    bars.attr('fill', (d, i) => i < newDims ? COLORS.eigenActive : COLORS.eigenInactive);
+    bars.attr('fill', (d, i) => i < newDims ? '#aac4de' : '#e8e8e8');
     onChange(newDims);
   });
 
-  // Hint text (shows once, fades out)
-  if (!createEigenSelector._hintShown) {
-    createEigenSelector._hintShown = true;
-    const hint = d3.select(container).append('div')
-      .style('font-size', '9px')
-      .style('color', '#999')
-      .style('margin-top', '2px')
-      .style('width', `${width}px`)
-      .style('opacity', 1)
-      .text('click bars to change dimensions');
-    hint.transition().delay(4000).duration(1500).style('opacity', 0).remove();
-  }
-
-  // Variance text below bars
-  const varianceText = d3.select(container).append('div')
-    .style('font-size', '10px')
-    .style('color', '#999')
-    .style('margin-top', '2px')
-    .style('width', `${width}px`);
+  const varianceText = row.append('span')
+    .style('font-size', '9px')
+    .style('color', '#ccc')
+    .style('margin-left', '2px');
 
   return {
     update(dims, variance) {
-      bars.attr('fill', (d, i) => i < dims ? COLORS.eigenActive : COLORS.eigenInactive);
+      bars.attr('fill', (d, i) => i < dims ? '#aac4de' : '#e8e8e8');
       if (variance !== undefined) {
         varianceText.text(`${variance.toFixed(1)}%`);
       }
@@ -155,10 +145,13 @@ function render2D(container, words, coords, arrows, options = {}) {
     highlights = [], crossGroupLines = [], width = defaultW, height = Math.round(defaultW * 0.72),
     neighborWords = new Set(), neighborLinks = [],
     animate = false, prevCoords = null, prevWords = null,
-    fixedDomain = null,  // optional: [min, max] for both axes (for stable 3D rotation)
+    fixedDomain = null,  // optional: [min, max] for both axes (for stable transitions)
+    disableZoom = false,  // true in 3D mode (orbit handles interaction)
     hiddenPoints = new Set(),  // indices of points to hide (no circle or label)
   } = options;
-  const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+  // Detect 1D mode early: all y-coords are ~0 (set by _getCoords2D for dims===1)
+  const is1D = coords.every(c => Math.abs(c[1]) < 1e-9);
+  const margin = { top: is1D ? 60 : 30, right: 30, bottom: is1D ? 60 : 30, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
   const dur = animate ? 600 : 0;
@@ -227,7 +220,7 @@ function render2D(container, words, coords, arrows, options = {}) {
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Pan + zoom via d3.zoom — but NOT in 3D mode (orbit handles drag there)
-    if (!fixedDomain) {
+    if (!disableZoom) {
       const zoom = d3.zoom()
         .scaleExtent([0.5, 5])
         .filter((event) => {
@@ -247,7 +240,7 @@ function render2D(container, words, coords, arrows, options = {}) {
   } else {
     g = svg.select('g.main');
     // If switching to 3D on a reused SVG, remove the D3 zoom that was attached in 2D
-    if (fixedDomain) {
+    if (disableZoom) {
       svg.on('.zoom', null);  // remove all d3.zoom event listeners
       // Reset the zoom-container transform (pan/zoom may have shifted it)
       svg.select('g.zoom-container').attr('transform', null);
@@ -305,17 +298,51 @@ function render2D(container, words, coords, arrows, options = {}) {
       neighborWords.has(d.word) ? '#999' : COLORS.point);
 
   // --- Labels (keyed by word) ---
+  // In 1D mode, alternate labels above/below the line (sorted by x) to reduce overlap.
+  // Above: rotate -90° text-anchor:start (text up). Below: rotate 90° text-anchor:start (text down).
+  // All use transform for smooth animated transitions between dimensions.
+  const labelSide = {};  // word → 'above' | 'below'
+  if (is1D) {
+    const sorted = pointData.slice().sort((a, b) => a.c[0] - b.c[0]);
+    sorted.forEach((d, i) => { labelSide[d.word] = i % 2 === 0 ? 'above' : 'below'; });
+  }
+  function labelTransformFor(d) {
+    const lx = xScale(d.c[0]);
+    if (!is1D) return `translate(${lx}, ${yScale(d.c[1]) - 8}) rotate(0)`;
+    const below = labelSide[d.word] === 'below';
+    const ly = yScale(d.c[1]) + (below ? 6 : -6);
+    return `translate(${lx}, ${ly}) rotate(${below ? 90 : -90})`;
+  }
+  const labelAnchor = is1D ? 'start' : 'middle';
+
   const labels = g.selectAll('text.word-label').data(pointData, d => d.word);
   labels.exit().transition().duration(dur).style('opacity', 0).remove();
+
+  // Migrate any existing labels from x/y positioning to transform (no visual change)
+  if (animate) {
+    labels.each(function() {
+      const el = d3.select(this);
+      const ox = parseFloat(el.attr('x')) || 0;
+      const oy = parseFloat(el.attr('y')) || 0;
+      if (ox !== 0 || oy !== 0) {
+        el.attr('x', 0).attr('y', 0)
+          .attr('transform', `translate(${ox}, ${oy}) rotate(0)`);
+      }
+    });
+  }
+
   const labelsEnter = labels.enter().append('text').attr('class', 'word-label')
-    .attr('x', d => startXY(d.i)[0])
-    .attr('y', d => startXY(d.i)[1] - 8)
-    .attr('text-anchor', 'middle')
+    .attr('text-anchor', labelAnchor)
     .style('opacity', 0)
+    .attr('transform', d => {
+      const [sx, sy] = startXY(d.i);
+      return `translate(${sx}, ${sy - 8}) rotate(0)`;
+    })
     .text(d => d.word);
-  labelsEnter.merge(labels).transition().duration(dur)
-    .attr('x', d => xScale(d.c[0]))
-    .attr('y', d => yScale(d.c[1]) - 8)
+  labelsEnter.merge(labels)
+    .attr('text-anchor', labelAnchor)
+    .transition().duration(dur)
+    .attr('transform', d => labelTransformFor(d))
     .attr('font-size', d => hiddenPoints.has(d.i) ? '12px' : neighborWords.has(d.word) ? '10px' : '11px')
     .attr('font-weight', d => hiddenPoints.has(d.i) ? 'bold' : 'normal')
     .attr('font-style', d => hiddenPoints.has(d.i) ? 'italic' : 'normal')
@@ -674,21 +701,52 @@ class EmbeddingViz {
     const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const norm3D = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
     const prev = this._prevCoords;
+    const n = Math.min(prev.length, norm3D.length);
+
+    // Normalize prev coords to [-1,1] for comparison
     const prevAll = prev.flatMap(c => [Math.abs(c[0]), Math.abs(c[1])]);
     const pm = Math.max(...prevAll) || 1;
     const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
+
+    // Score: sum of squared distances after optimal uniform scaling.
+    function score(a, t) {
+      const p = project3Dto2D(norm3D, a, t);
+      let dot = 0, pp = 0;
+      for (let i = 0; i < n; i++) {
+        dot += p[i][0] * prevN[i][0] + p[i][1] * prevN[i][1];
+        pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
+      }
+      const s = pp > 0 ? dot / pp : 1;
+      let d = 0;
+      for (let i = 0; i < n; i++) {
+        d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] - prevN[i][1]) ** 2;
+      }
+      return d;
+    }
+
+    // Coarse search: 72 angles (5° steps) × full tilt range [-π/2, π/2]
+    // 72 angles covers X-flip (angle + π). Wide tilt range covers Y-flip.
     let bestA = 0, bestT = 0.4, bestD = Infinity;
-    for (let ai = 0; ai < 36; ai++) {
-      const a = ai * Math.PI / 18;
-      for (const t of [0.0, 0.3, 0.6, -0.3]) {
-        const p = project3Dto2D(norm3D, a, t);
-        let d = 0;
-        for (let i = 0; i < Math.min(prev.length, p.length); i++) {
-          d += (p[i][0] - prevN[i][0]) ** 2 + (p[i][1] - prevN[i][1]) ** 2;
-        }
+    for (let ai = 0; ai < 72; ai++) {
+      const a = ai * Math.PI / 36;
+      for (let ti = -7; ti <= 7; ti++) {
+        const t = ti * (Math.PI / 14);  // ~±π/2
+        const d = score(a, t);
         if (d < bestD) { bestD = d; bestA = a; bestT = t; }
       }
     }
+
+    // Fine search: refine ±3° around best angle, ±0.05 around best tilt
+    const fineStep = Math.PI / 180;
+    for (let da = -3; da <= 3; da++) {
+      for (let dt = -3; dt <= 3; dt++) {
+        const a = bestA + da * fineStep;
+        const t = bestT + dt * 0.02;
+        const d = score(a, t);
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+      }
+    }
+
     this._rotationAngle = bestA;
     this._tiltAngle = bestT;
   }
@@ -697,8 +755,15 @@ class EmbeddingViz {
   // For 3D, normalizes to bounding sphere so scale is stable during rotation.
   _getCoords2D() {
     const raw = this.mdsData.coords[this.dims];
-    if (this.dims === 1) return raw.map(c => [c[0], 0]);
-    if (this.dims === 2) return raw;
+    if (this.dims === 1) {
+      const maxAbs = Math.max(...raw.map(c => Math.abs(c[0]))) || 1;
+      return raw.map(c => [c[0] / maxAbs, 0]);
+    }
+    if (this.dims === 2) {
+      // Normalize to bounding circle, same as 3D, so scale is consistent across transitions
+      const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
+      return raw.map(([x, y]) => [x / maxR, y / maxR]);
+    }
     // 3D: project and normalize to bounding sphere
     const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
@@ -782,8 +847,7 @@ class EmbeddingViz {
         .attr('cx', d => xScale(projected[d.i][0]))
         .attr('cy', d => yScale(projected[d.i][1]));
       g.selectAll('text.word-label')
-        .attr('x', d => xScale(projected[d.i][0]))
-        .attr('y', d => yScale(projected[d.i][1]) - 8);
+        .attr('transform', d => `translate(${xScale(projected[d.i][0])}, ${yScale(projected[d.i][1]) - 8}) rotate(0)`);
 
       // Update arrows
       g.selectAll('line.arrow')
@@ -857,8 +921,15 @@ class EmbeddingViz {
       el.innerHTML = '';
     }
 
-    // For 3D, use a fixed domain so scale doesn't change during rotation
-    const fixedDomain = this.dims === 3 ? [-1.15, 1.15] : null;
+    // Fixed domain for all dims — coords are normalized to [-1,1],
+    // so a consistent domain prevents zoom jumps during dimension transitions.
+    const fixedDomain = [-1.15, 1.15];
+
+    // In 1D mode, use a compact height — the data is a single line
+    const plotWidth = getResponsiveWidth(el);
+    const plotHeight = this.dims === 1
+      ? Math.min(200, Math.round(plotWidth * 0.35))
+      : Math.round(plotWidth * 0.72);
 
     const opts = {
       highlights: this.highlights,
@@ -870,7 +941,10 @@ class EmbeddingViz {
       prevWords: this._prevWords,
       onClick: this._makeOnClick(),
       fixedDomain,
+      disableZoom: this.dims === 3,
       hiddenPoints: this.hiddenPoints,
+      width: plotWidth,
+      height: plotHeight,
     };
 
     render2D(el, this.words, coords2D, this.arrows, opts);
@@ -1126,4 +1200,231 @@ function renderSteering2D(container, wordData, options = {}) {
   });
 }
 
-export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D, renderSteering2D };
+/**
+ * Animated subspace identification walkthrough.
+ * Steps: Pairs → Differences → Direction → Projection → Steer.
+ *
+ * wordData: array of { word, coord: [x,y] }
+ * options.pairs: array of { from, to } indices into wordData
+ * options.directionLabel: label for the direction arrow
+ */
+function renderSubspaceAnimation(container, wordData, options = {}) {
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
+  if (!el) return;
+  const defaultW = getResponsiveWidth(el);
+  const { width = defaultW, height = Math.round(defaultW * 0.72) } = options;
+  const { pairs = [], directionLabel = 'direction' } = options;
+  const margin = { top: 30, right: 30, bottom: 40, left: 30 };
+  const w = width - margin.left - margin.right;
+  const h = height - margin.top - margin.bottom;
+
+  d3.select(el).selectAll('svg.plot').remove();
+  d3.select(el).selectAll('.anim-controls').remove();
+
+  // Centroid of all words in MDS space
+  const cx = d3.mean(wordData, d => d.coord[0]);
+  const cy = d3.mean(wordData, d => d.coord[1]);
+
+  // Direction from mean pair difference (from → to) in 2D
+  let ddx = 0, ddy = 0;
+  for (const p of pairs) {
+    ddx += wordData[p.to].coord[0] - wordData[p.from].coord[0];
+    ddy += wordData[p.to].coord[1] - wordData[p.from].coord[1];
+  }
+  const dLen = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
+  const dirX = ddx / dLen, dirY = ddy / dLen;
+
+  // Steered coords: remove component along direction relative to centroid
+  for (const d of wordData) {
+    const vx = d.coord[0] - cx, vy = d.coord[1] - cy;
+    const proj = vx * dirX + vy * dirY;
+    d.steeredCoord = [d.coord[0] - proj * dirX, d.coord[1] - proj * dirY];
+  }
+
+  // Direction arrow half-length
+  const maxPairLen = Math.max(...pairs.map(p => {
+    const px = wordData[p.to].coord[0] - wordData[p.from].coord[0];
+    const py = wordData[p.to].coord[1] - wordData[p.from].coord[1];
+    return Math.sqrt(px * px + py * py);
+  })) || 1;
+  const arrowHalfLen = maxPairLen * 0.8;
+
+  // Scales: fit all positions (original, steered, translated arrows, direction arrow)
+  const allX = wordData.flatMap(d => [d.coord[0], d.steeredCoord[0]]);
+  const allY = wordData.flatMap(d => [d.coord[1], d.steeredCoord[1]]);
+  allX.push(cx - dirX * arrowHalfLen, cx + dirX * arrowHalfLen);
+  allY.push(cy - dirY * arrowHalfLen, cy + dirY * arrowHalfLen);
+  for (const p of pairs) {
+    allX.push(cx + wordData[p.to].coord[0] - wordData[p.from].coord[0]);
+    allY.push(cy + wordData[p.to].coord[1] - wordData[p.from].coord[1]);
+  }
+  const pad = 0.12;
+  const xDom = [Math.min(...allX), Math.max(...allX)];
+  const yDom = [Math.min(...allY), Math.max(...allY)];
+  const xPad = (xDom[1] - xDom[0]) * pad || 0.1;
+  const yPad = (yDom[1] - yDom[0]) * pad || 0.1;
+  const xScale = d3.scaleLinear().domain([xDom[0] - xPad, xDom[1] + xPad]).range([0, w]);
+  const yScale = d3.scaleLinear().domain([yDom[0] - yPad, yDom[1] + yPad]).range([h, 0]);
+
+  const svg = d3.select(el).append('svg')
+    .attr('class', 'plot').attr('width', width).attr('height', height);
+  const cid = el.id || 'anim';
+  const defs = svg.append('defs');
+  for (const [suffix, color] of [['', COLORS.arrow], ['-dir', '#c0392b']]) {
+    defs.append('marker')
+      .attr('id', `arrow${suffix}-${cid}`)
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 8).attr('refY', 5)
+      .attr('markerWidth', 6).attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', color);
+  }
+
+  const mainG = svg.append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // --- Pair arrows (visible in step 0) ---
+  const pairArrows = mainG.selectAll('line.pair-arrow').data(pairs).enter().append('line')
+    .attr('class', 'pair-arrow')
+    .attr('x1', d => xScale(wordData[d.from].coord[0]))
+    .attr('y1', d => yScale(wordData[d.from].coord[1]))
+    .attr('x2', d => xScale(wordData[d.to].coord[0]))
+    .attr('y2', d => yScale(wordData[d.to].coord[1]))
+    .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
+    .attr('marker-end', `url(#arrow-${cid})`);
+
+  // --- Translated arrows at centroid (appear in step 1) ---
+  const transArrows = mainG.selectAll('line.trans-arrow').data(pairs).enter().append('line')
+    .attr('class', 'trans-arrow')
+    .attr('x1', xScale(cx)).attr('y1', yScale(cy))
+    .attr('x2', d => xScale(cx + wordData[d.to].coord[0] - wordData[d.from].coord[0]))
+    .attr('y2', d => yScale(cy + wordData[d.to].coord[1] - wordData[d.from].coord[1]))
+    .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
+    .attr('marker-end', `url(#arrow-${cid})`)
+    .attr('opacity', 0);
+
+  // --- Direction arrow (appears in step 2) ---
+  const dirArrow = mainG.append('line')
+    .attr('x1', xScale(cx - dirX * arrowHalfLen))
+    .attr('y1', yScale(cy - dirY * arrowHalfLen))
+    .attr('x2', xScale(cx + dirX * arrowHalfLen))
+    .attr('y2', yScale(cy + dirY * arrowHalfLen))
+    .attr('stroke', '#c0392b').attr('stroke-width', 2.5)
+    .attr('stroke-dasharray', '8,4')
+    .attr('marker-end', `url(#arrow-dir-${cid})`)
+    .attr('opacity', 0);
+
+  const dirLabelEl = mainG.append('text')
+    .attr('x', xScale(cx + dirX * arrowHalfLen * 1.05))
+    .attr('y', yScale(cy + dirY * arrowHalfLen * 1.05) - 10)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
+    .attr('fill', '#c0392b').text(directionLabel)
+    .attr('opacity', 0);
+
+  // --- Projection lines: word → steered position, parallel to direction (step 3) ---
+  const projLines = mainG.selectAll('line.proj-line').data(wordData).enter().append('line')
+    .attr('class', 'proj-line')
+    .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
+    .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]))
+    .attr('stroke', '#c0392b').attr('stroke-width', 1).attr('stroke-dasharray', '3,2')
+    .attr('opacity', 0);
+
+  // --- Ghost dots (appear in step 4 at original positions) ---
+  const ghosts = mainG.selectAll('circle.ghost').data(wordData).enter().append('circle')
+    .attr('class', 'ghost')
+    .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]))
+    .attr('r', 3).attr('fill', COLORS.point).attr('opacity', 0);
+
+  // --- Word dots ---
+  const dots = mainG.selectAll('circle.word-dot').data(wordData).enter().append('circle')
+    .attr('class', 'word-dot')
+    .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]))
+    .attr('r', 3.5).attr('fill', COLORS.point);
+
+  // --- Labels ---
+  const labelEls = mainG.selectAll('text.word-label').data(wordData).enter().append('text')
+    .attr('class', 'word-label')
+    .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8)
+    .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
+    .text(d => d.word);
+
+  // --- Step-through controls ---
+  let currentStep = 0;
+  const stepNames = ['Pairs', 'Differences', 'Direction', 'Projection', 'Steer'];
+
+  const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')
+    .style('margin-top', '8px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+
+  const btn = ctrlDiv.append('button')
+    .style('background', COLORS.point).style('color', 'white').style('border', 'none')
+    .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
+    .style('cursor', 'pointer').text('Next ▶');
+
+  const statusSpan = ctrlDiv.append('span')
+    .style('font-size', '12px').style('color', '#999');
+
+  function updateStatus() {
+    statusSpan.text(`${currentStep + 1}/${stepNames.length}: ${stepNames[currentStep]}`);
+  }
+  updateStatus();
+
+  function goTo(s) {
+    currentStep = s;
+    updateStatus();
+    const dur = 800;
+
+    if (s === 0) {
+      btn.text('Next ▶').style('background', COLORS.point).style('color', 'white');
+      pairArrows.transition().duration(dur).attr('opacity', 1);
+      transArrows.transition().duration(dur).attr('opacity', 0);
+      dirArrow.transition().duration(dur).attr('opacity', 0);
+      dirLabelEl.transition().duration(dur).attr('opacity', 0);
+      projLines.transition().duration(dur).attr('opacity', 0)
+        .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
+        .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]));
+      ghosts.transition().duration(dur).attr('opacity', 0);
+      dots.transition().duration(dur)
+        .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]));
+      labelEls.transition().duration(dur)
+        .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8);
+
+    } else if (s === 1) {
+      pairArrows.transition().duration(dur).attr('opacity', 0.15);
+      transArrows.transition().duration(dur).attr('opacity', 0.7);
+
+    } else if (s === 2) {
+      transArrows.transition().duration(dur).attr('opacity', 0);
+      dirArrow.transition().duration(dur).attr('opacity', 0.8);
+      dirLabelEl.transition().duration(dur).attr('opacity', 1);
+
+    } else if (s === 3) {
+      projLines.transition().duration(dur)
+        .attr('x2', d => xScale(d.steeredCoord[0]))
+        .attr('y2', d => yScale(d.steeredCoord[1]))
+        .attr('opacity', 0.5);
+
+    } else if (s === 4) {
+      btn.text('Reset').style('background', '#ddd').style('color', '#333');
+      ghosts.transition().duration(300).attr('opacity', 0.25);
+      pairArrows.transition().duration(dur).attr('opacity', 0);
+      dots.transition().duration(1200).ease(d3.easeCubicInOut)
+        .attr('cx', d => xScale(d.steeredCoord[0]))
+        .attr('cy', d => yScale(d.steeredCoord[1]));
+      labelEls.transition().duration(1200).ease(d3.easeCubicInOut)
+        .attr('x', d => xScale(d.steeredCoord[0]))
+        .attr('y', d => yScale(d.steeredCoord[1]) - 8);
+      projLines.transition().delay(500).duration(800)
+        .attr('x1', d => xScale(d.steeredCoord[0]))
+        .attr('y1', d => yScale(d.steeredCoord[1]))
+        .attr('opacity', 0);
+    }
+  }
+
+  btn.on('click', () => {
+    if (currentStep >= 4) goTo(0);
+    else goTo(currentStep + 1);
+  });
+}
+
+export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D, renderSteering2D, renderSubspaceAnimation };
