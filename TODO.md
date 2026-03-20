@@ -50,7 +50,8 @@
 
 ## Content
 
-- [ ] Show subspaces in addition to "gender" like "size"
+- [x] Show subspaces in addition to "gender" like "size"
+  - Added SIZE_PAIRS (small/large, tiny/huge, etc.) with SVD-derived "size direction" arrow. Plot inserted between gender pairs and the subspace math.
 
 - [x] Add math for MDS and subspace identification to the article.
 
@@ -159,18 +160,21 @@
   replace the external PNG with an inline SVG/table.
   - Added detailed alt text describing the matrix structure.
 
-- [ ] Make plot dimensions responsive — currently hardcoded at 620x450px,
+- [x] Make plot dimensions responsive — currently hardcoded at 620x450px,
   overflows on narrow screens.
+  - Added getResponsiveWidth() helper; all render functions read container clientWidth. Height uses 0.72 aspect ratio. Capped at 900px, fallback 620px.
 
-- [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
+- [x] Add error handling for failed binary loads (fetch error, 404, offline) —
   show a user-visible message instead of leaving the loading overlay up forever.
+  - try/catch around loadEmbeddings; on failure shows red progress bar + error message + suggestion to try smaller vocab.
 
 - [x] Clean up the "Large (400K)" vocab option — buttons are commented out in
   HTML but config and data file exist. Either enable it or remove the dead code.
   - Enabled: added Large (400K) buttons to both loading and inline vocab selectors.
 
-- [ ] Tighten the opening paragraph — lead with something more concrete or
+- [x] Tighten the opening paragraph — lead with something more concrete or
   surprising rather than the dictionary-definition style.
+  - Replaced dictionary/embedding parallel with concrete example: "queen" is closer to "king" than "bicycle" — leads with the payoff.
 
 - [x] Add context to the hero visualization — readers land on trails and colored
   dots before they know what embeddings or steering are.

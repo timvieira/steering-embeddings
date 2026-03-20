@@ -103,7 +103,7 @@
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
+<p style="color: #7b2d8b;">The word "queen" is closer to "king" than to "bicycle"&mdash;and not because someone hand-coded that. Word embeddings represent each word as a vector of numbers, learned from how words co-occur in text, so that proximity in vector space reflects proximity in meaning.</p>
 
 <p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> <dt-cite key="harris1954distributional"></dt-cite>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
@@ -199,6 +199,13 @@
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gender-pairs"></div>
   <div class="eigen-margin" id="eigen-gender-pairs"></div>
+</div>
+
+<p style="color: #7b2d8b;">Gender is not the only interpretable subspace. Here are word pairs that differ primarily in size:</p>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-size-pairs"></div>
+  <div class="eigen-margin" id="eigen-size-pairs"></div>
 </div>
 
 <p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a second-moment matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $d_i = \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The second-moment matrix is:</p>
@@ -360,6 +367,12 @@ const GENDERED_WORDS = [
   ['mom','dad'], ['mother','father'], ['sister','brother'], ['aunt','uncle'],
   ['heiress','heir'], ['duchess','duke'], ['niece','nephew'], ['madame','sir'],
   ['female','male'], ['feminine','masculine'],
+];
+
+const SIZE_PAIRS = [
+  ['small','large'], ['tiny','huge'], ['little','big'],
+  ['narrow','wide'], ['short','tall'], ['thin','thick'],
+  ['shallow','deep'], ['minor','major'], ['miniature','giant'],
 ];
 
 const SUPERLATIVES = [
@@ -837,6 +850,13 @@ function buildVisualizations() {
   if (genderPairWords.length > 0) {
     buildVizWithDirection(genderPairWords, GENDERED_WORDS, GENDERED_WORDS, 'gender direction',
       'plot-gender-pairs', 'eigen-gender-pairs');
+  }
+
+  // Size pairs with SVD-derived size direction
+  const sizePairWords = flatWords(SIZE_PAIRS, 'size pairs');
+  if (sizePairWords.length > 0) {
+    buildVizWithDirection(sizePairWords, SIZE_PAIRS, SIZE_PAIRS, 'size direction',
+      'plot-size-pairs', 'eigen-size-pairs');
   }
 
   if (emb.has('man') && emb.has('woman') && emb.has('king')) {
