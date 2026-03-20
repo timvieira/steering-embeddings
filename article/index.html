@@ -473,117 +473,112 @@ function buildVisualizations() {
     }));
   }
 
-  // Gender pairs plot: arrows from masculine to feminine show parallel difference vectors
-  // plus a thick arrow showing the mean gender direction
+  // Gender pairs plot with SVD-derived gender direction arrow.
+  // We compute the top SVD direction from the pair differences in 100-D,
+  // create two anchor points (centroid ± direction), include them in the
+  // MDS distance matrix so they're faithfully projected, then draw the
+  // arrow between them.
   const genderPairWords = flatWords(GENDERED_WORDS);
   if (genderPairWords.length > 0) {
-    const gpViz = new EmbeddingViz({
-      emb, words: genderPairWords, groups: GENDERED_WORDS,
-      plotEl: document.getElementById('plot-gender-pairs'),
-      eigenEl: document.getElementById('eigen-gender-pairs'),
-    });
-    vizInstances.push(gpViz);
+    // Step 1: Compute top-1 SVD direction from GENDERED_WORDS pairs in 100-D
+    const d = emb.dims;
+    const C = new Float64Array(d * d);
+    for (const [w1, w2] of GENDERED_WORDS) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      const diff = new Float64Array(d);
+      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += diff[i] * diff[j] / 2;
+    }
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    const genderDir = new Float64Array(d);
+    for (let i = 0; i < d; i++) genderDir[i] = svdU[i][0];
 
-    // Overlay the mean gender direction arrow on the plot
-    function overlayGenderDirection() {
-      const coords = gpViz._currentCoords2D;
-      if (!coords || coords.length === 0) return;
-      const wordIdx = new Map(gpViz.words.map((w, i) => [w, i]));
+    // Step 2: Compute centroid of all plotted words in 100-D
+    const centroid = new Float64Array(d);
+    for (const w of genderPairWords) {
+      const v = emb.vec(w);
+      for (let i = 0; i < d; i++) centroid[i] += v[i];
+    }
+    for (let i = 0; i < d; i++) centroid[i] /= genderPairWords.length;
 
-      // Compute mean difference vector in MDS space (feminine - masculine)
-      let dx = 0, dy = 0, count = 0;
-      for (const [fem, masc] of GENDERED_WORDS) {
-        const fi = wordIdx.get(fem), mi = wordIdx.get(masc);
-        if (fi !== undefined && mi !== undefined) {
-          dx += coords[fi][0] - coords[mi][0];
-          dy += coords[fi][1] - coords[mi][1];
-          count++;
-        }
-      }
-      if (count === 0) return;
-      dx /= count; dy /= count;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len === 0) return;
+    // Step 3: Create anchor points: centroid ± scaled gender direction
+    // Scale so anchors are at a distance comparable to the word spread
+    let avgDist = 0, distCount = 0;
+    for (const w of genderPairWords) {
+      const v = emb.vec(w);
+      let dd = 0;
+      for (let i = 0; i < d; i++) dd += (v[i] - centroid[i]) ** 2;
+      avgDist += Math.sqrt(dd);
+      distCount++;
+    }
+    avgDist /= distCount;
+    const anchorScale = avgDist * 1.2;
 
-      // Centroid of all points
-      let cx = 0, cy = 0;
-      for (const c of coords) { cx += c[0]; cy += c[1]; }
-      cx /= coords.length; cy /= coords.length;
-
-      // Scale and position: draw from centroid - dir to centroid + dir
-      const plotEl = document.getElementById('plot-gender-pairs');
-      const svg = d3.select(plotEl).select('svg.plot');
-      const g = svg.select('g.main');
-      if (g.empty()) return;
-
-      // Remove previous overlay
-      g.selectAll('.gender-direction').remove();
-
-      // Get the scales from the plot's coordinate system
-      const margin = { top: 30, right: 30, bottom: 30, left: 30 };
-      const w = 620 - margin.left - margin.right;
-      const h = 450 - margin.top - margin.bottom;
-      const xs = coords.map(c => c[0]), ys = coords.map(c => c[1]);
-      const pad = 0.1;
-      const xRange = [Math.min(...xs), Math.max(...xs)];
-      const yRange = [Math.min(...ys), Math.max(...ys)];
-      const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
-      const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
-
-      const fixedDomain = gpViz.dims === 3 ? [-1.15, 1.15] : null;
-      let xScale, yScale;
-      if (fixedDomain) {
-        xScale = d3.scaleLinear().domain(fixedDomain).range([0, w]);
-        yScale = d3.scaleLinear().domain(fixedDomain).range([h, 0]);
-      } else {
-        xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
-        yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
-      }
-
-      // Extend the direction arrow to span most of the plot
-      const span = Math.max(xRange[1] - xRange[0], yRange[1] - yRange[0]) * 0.4;
-      const ux = dx / len, uy = dy / len;
-
-      // Arrow marker for the direction line
-      const defs = svg.select('defs');
-      defs.selectAll('#arrow-gender-dir').remove();
-      defs.append('marker')
-        .attr('id', 'arrow-gender-dir')
-        .attr('viewBox', '0 0 10 10')
-        .attr('refX', 8).attr('refY', 5)
-        .attr('markerWidth', 8).attr('markerHeight', 8)
-        .attr('orient', 'auto')
-        .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', '#c44e52');
-
-      g.append('line')
-        .attr('class', 'gender-direction')
-        .attr('x1', xScale(cx - ux * span))
-        .attr('y1', yScale(cy - uy * span))
-        .attr('x2', xScale(cx + ux * span))
-        .attr('y2', yScale(cy + uy * span))
-        .attr('stroke', '#c44e52')
-        .attr('stroke-width', 2.5)
-        .attr('stroke-dasharray', '8,4')
-        .attr('opacity', 0.7)
-        .attr('marker-end', 'url(#arrow-gender-dir)');
-
-      g.append('text')
-        .attr('class', 'gender-direction')
-        .attr('x', xScale(cx + ux * span * 1.05))
-        .attr('y', yScale(cy + uy * span * 1.05) - 10)
-        .attr('font-size', '11px')
-        .attr('fill', '#c44e52')
-        .attr('font-weight', 'bold')
-        .text('gender direction');
+    const anchorPos = new Float64Array(d);
+    const anchorNeg = new Float64Array(d);
+    for (let i = 0; i < d; i++) {
+      anchorPos[i] = centroid[i] + genderDir[i] * anchorScale;
+      anchorNeg[i] = centroid[i] - genderDir[i] * anchorScale;
     }
 
-    // Overlay after initial render and on dimension changes
-    setTimeout(overlayGenderDirection, 100);
-    const origRender = gpViz.render.bind(gpViz);
-    gpViz.render = function(animate) {
-      origRender(animate);
-      setTimeout(overlayGenderDirection, animate ? 700 : 100);
-    };
+    // Step 4: Build distance matrix including anchors as last two points
+    const allVecs = genderPairWords.map(w => emb.vec(w));
+    allVecs.push(anchorNeg, anchorPos);  // indices: n, n+1
+    const n = allVecs.length;
+    const Dmat = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < i; j++) {
+        let dist = 0;
+        for (let k = 0; k < d; k++) dist += (allVecs[i][k] - allVecs[j][k]) ** 2;
+        dist = Math.sqrt(dist);
+        Dmat[i * n + j] = dist;
+        Dmat[j * n + i] = dist;
+      }
+    }
+
+    // Step 5: Run MDS and render with EmbeddingViz-like setup but with
+    // the direction arrow drawn between the two anchor points.
+    const allWords = [...genderPairWords, '▸ gender dir', 'gender dir ▸'];
+    const anchorNegIdx = genderPairWords.length;
+    const anchorPosIdx = genderPairWords.length + 1;
+
+    // Build a temporary Embeddings object that includes the anchor points
+    const extVecs = new Float32Array(n * d);
+    for (let i = 0; i < genderPairWords.length; i++) {
+      const v = emb.vec(genderPairWords[i]);
+      for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
+    }
+    for (let j = 0; j < d; j++) {
+      extVecs[anchorNegIdx * d + j] = anchorNeg[j];
+      extVecs[anchorPosIdx * d + j] = anchorPos[j];
+    }
+    const extEmb = new Embeddings(allWords, extVecs, d);
+
+    // Build arrows: pair arrows + the direction arrow between anchors
+    const wordIdx = new Map(allWords.map((w, i) => [w, i]));
+    const gpArrows = [];
+    for (const [w1, w2] of GENDERED_WORDS) {
+      const a = wordIdx.get(w1), b = wordIdx.get(w2);
+      if (a !== undefined && b !== undefined) gpArrows.push({ from: a, to: b });
+    }
+    // Direction arrow (red, from negative to positive end)
+    gpArrows.push({ from: anchorNegIdx, to: anchorPosIdx, color: 'red' });
+
+    vizInstances.push(new EmbeddingViz({
+      emb: extEmb, words: allWords, groups: GENDERED_WORDS,
+      plotEl: document.getElementById('plot-gender-pairs'),
+      eigenEl: document.getElementById('eigen-gender-pairs'),
+      arrows: gpArrows,
+      highlights: [anchorNegIdx, anchorPosIdx],
+    }));
   }
 
   if (emb.has('man') && emb.has('woman') && emb.has('king')) {
