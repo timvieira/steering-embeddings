@@ -618,14 +618,14 @@ function buildVisualizations() {
   }
 
   // Digits with "counting" direction via PCA (principal axis of the sequence)
-  const digits = '1 2 3 4 5 6 7 8 9 10 11 12 13'.split(' ').filter(w => emb.has(w));
+  const digits = '1 2 3 4 5 6 7 8 9'.split(' ').filter(w => emb.has(w));
   if (digits.length > 0) {
     buildVizWithDirection(digits, [], [digits], 'counting',
       'plot-numbers-digits', 'eigen-numbers-digits', { directionMode: 'pca' });
   }
 
   // Number words with "counting" direction via PCA
-  const numWords = 'one two three four five six seven eight nine ten eleven twelve thirteen'.split(' ').filter(w => emb.has(w));
+  const numWords = 'one two three four five six seven eight nine'.split(' ').filter(w => emb.has(w));
   if (numWords.length > 0) {
     buildVizWithDirection(numWords, [], [numWords], 'counting',
       'plot-numbers-words', 'eigen-numbers-words', { directionMode: 'pca' });
