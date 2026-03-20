@@ -188,17 +188,19 @@ function render2D(container, words, coords, arrows, options = {}) {
     g = zoomG.append('g').attr('class', 'main')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Pan + zoom via d3.zoom, but don't intercept clicks on words/circles
+    // Pan + zoom via d3.zoom
+    // In 3D mode (fixedDomain set), disable drag panning — orbit handles it
     const zoom = d3.zoom()
       .scaleExtent([0.5, 5])
       .filter((event) => {
-        // Allow scroll-to-zoom always; only allow drag from background (not words/circles)
         if (event.type === 'wheel') return true;
         if (event.type === 'mousedown' || event.type === 'pointerdown') {
+          // In 3D projected mode, don't let d3.zoom handle drags (orbit does it)
+          if (fixedDomain) return false;
           const tag = event.target.tagName;
           return tag !== 'circle' && tag !== 'text';
         }
-        return true;
+        return !fixedDomain;  // block other drag events in 3D too
       })
       .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
     svg.call(zoom);
@@ -644,8 +646,42 @@ class EmbeddingViz {
     const xScale = d3.scaleLinear().domain([-1.15, 1.15]).range([0, w]);
     const yScale = d3.scaleLinear().domain([-1.15, 1.15]).range([h, 0]);
 
+    // Drag-to-orbit: horizontal drag controls rotation angle
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartAngle = 0;
+    let autoRotate = true;
+    let resumeTimeout = null;
+
+    const svgNode = svg.node();
+    svgNode.addEventListener('pointerdown', (e) => {
+      // Only drag from background, not from words/circles
+      if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+      dragging = true;
+      dragStartX = e.clientX;
+      dragStartAngle = self._rotationAngle;
+      autoRotate = false;
+      clearTimeout(resumeTimeout);
+      svgNode.style.cursor = 'grabbing';
+      svgNode.setPointerCapture(e.pointerId);
+    });
+
+    svgNode.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - dragStartX;
+      self._rotationAngle = dragStartAngle + dx * 0.01;
+    });
+
+    svgNode.addEventListener('pointerup', () => {
+      if (!dragging) return;
+      dragging = false;
+      svgNode.style.cursor = 'grab';
+      // Resume auto-rotation after 3s
+      resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
+    });
+
     function tick() {
-      self._rotationAngle += 0.005;
+      if (autoRotate && !dragging) self._rotationAngle += 0.005;
       const projected = project3Dto2D(normalized, self._rotationAngle);
       self._currentCoords2D = projected;
 
