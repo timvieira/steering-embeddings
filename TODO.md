@@ -14,6 +14,15 @@
 
 - [ ] Build-your-own word groups explorer (text area → instant MDS plot)
 
+- [ ] Draw the parallelogram in analogy visualizations: show a→b and c→answer
+  as parallel arrows to make the vector arithmetic visible.
+
+- [ ] Make the eigenvalue bars more discoverable — add a tooltip or small
+  "click to change dimensions" hint on first appearance.
+
+- [ ] Replace the plain `<ol>` profession ranking with a horizontal bar chart
+  showing shift magnitude, consistent with the rest of the visual style.
+
 
 ## Content
 
@@ -26,17 +35,32 @@
     (difference vectors, second moment matrix, SVD). Includes
     dimensionality/rank discussion and centering explanation.
 
-
-## tutorial
-
 - [ ] adjust the explanation to indicate that there are other ways one might
   come up with embeddings for words that are not based on co-occurence
-  statistics.  We should give citations for that.  Please mark edits in purple.
+  statistics (word2vec skip-gram/CBOW, contextual embeddings like BERT).
+  Include citations. Please mark edits in purple.
 
 - [ ] the idea of a matrix factorization is missing: there should be a target
   matrix and them a way of reconstructing it from a lower dimensional
   representation.  In this case, the log co-occurence matrix is being
   reconstructed from the 100-dimensional glove embeddings.
+
+- [ ] Add intuition for *why* analogies work — connect the log-bilinear GloVe
+  objective to the linearity of the resulting space.
+
+- [ ] Add a concluding section after Results: discuss what the results mean,
+  limitations (projecting out gender may damage useful information), and
+  connections to more recent debiasing work.
+
+- [ ] Expand the "Identifying Subspaces" section with a worked example: show
+  2-3 gender pair difference vectors pointing in roughly the same direction
+  before jumping to the covariance matrix / SVD formalism.
+
+- [ ] Clarify "steering" vs "debiasing" terminology — note that Bolukbasi et al.
+  call this "debiasing" so readers searching for related work can find it.
+
+- [ ] Explain *why* re-normalization happens after projection in the steering
+  formula (cosine similarity is the standard metric for these vectors).
 
 ## Hero visualization
 
@@ -127,6 +151,24 @@
 
 - [x] Default to 50K vocabulary
   - Changed default from small (10K) to medium (50K). 10K was missing too many words (superlatives, gendered pairs).
+
+## Technical polish
+
+- [ ] Improve co-occurrence image accessibility: add descriptive alt text, or
+  replace the external PNG with an inline SVG/table.
+
+- [ ] Make plot dimensions responsive — currently hardcoded at 620x450px,
+  overflows on narrow screens.
+
+- [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
+  show a user-visible message instead of leaving the loading overlay up forever.
+
+- [ ] Clean up the "Large (400K)" vocab option — buttons are commented out in
+  HTML but config and data file exist. Either enable it or remove the dead code.
+
+- [ ] Tighten the opening paragraph — lead with something more concrete or
+  surprising rather than the dictionary-definition style.
+
 
 ## Boo-boos?
 
