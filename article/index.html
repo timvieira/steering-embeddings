@@ -231,7 +231,7 @@
 
 <p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately. If some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. The method also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
-<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. (2018) proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. (2020) introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. <dt-cite key="zhao2018gender"></dt-cite> proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. <dt-cite key="ravfogel2020inlp"></dt-cite> introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
 
 </dt-article>
 
@@ -268,6 +268,20 @@
     booktitle={NeurIPS},
     year={2016},
     url={https://arxiv.org/abs/1607.06520}
+  }
+  @inproceedings{zhao2018gender,
+    title={Learning Gender-Neutral Word Embeddings},
+    author={Zhao, Jieyu and Zhou, Yichao and Li, Zeyu and Wang, Wei and Chang, Kai-Wei},
+    booktitle={EMNLP},
+    year={2018},
+    url={https://arxiv.org/abs/1809.01496}
+  }
+  @inproceedings{ravfogel2020inlp,
+    title={Null It Out: Guarding Protected Attributes by Iterative Nullspace Projection},
+    author={Ravfogel, Shauli and Elazar, Yanai and Gonen, Hila and Twiton, Michael and Goldberg, Yoav},
+    booktitle={ACL},
+    year={2020},
+    url={https://arxiv.org/abs/2004.07667}
   }
 </script>
 
@@ -550,22 +564,22 @@ function buildVisualizations() {
       'plot-superlatives', 'eigen-superlatives');
   }
 
-  // Digits with "counting" direction (consecutive pairs: 1→2, 2→3, ...)
   const digits = '1 2 3 4 5 6 7 8 9 10 11 12 13'.split(' ').filter(w => emb.has(w));
   if (digits.length > 0) {
-    const digitPairs = [];
-    for (let i = 0; i < digits.length - 1; i++) digitPairs.push([digits[i], digits[i + 1]]);
-    buildVizWithDirection(digits, digitPairs, [digits], 'counting',
-      'plot-numbers-digits', 'eigen-numbers-digits');
+    vizInstances.push(new EmbeddingViz({
+      emb, words: digits, groups: [digits],
+      plotEl: document.getElementById('plot-numbers-digits'),
+      eigenEl: document.getElementById('eigen-numbers-digits'),
+    }));
   }
 
-  // Number words with "counting" direction
   const numWords = 'one two three four five six seven eight nine ten eleven twelve thirteen'.split(' ').filter(w => emb.has(w));
   if (numWords.length > 0) {
-    const numPairs = [];
-    for (let i = 0; i < numWords.length - 1; i++) numPairs.push([numWords[i], numWords[i + 1]]);
-    buildVizWithDirection(numWords, numPairs, [numWords], 'counting',
-      'plot-numbers-words', 'eigen-numbers-words');
+    vizInstances.push(new EmbeddingViz({
+      emb, words: numWords, groups: [numWords],
+      plotEl: document.getElementById('plot-numbers-words'),
+      eigenEl: document.getElementById('eigen-numbers-words'),
+    }));
   }
 
   const numLinkedPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
