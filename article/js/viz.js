@@ -71,72 +71,62 @@ function getResponsiveWidth(container, fallback = 620) {
  * MDS Eigenvalue selector widget (SVG in the margin).
  */
 function createEigenSelector(container, eigenvalues, activeDims, onChange) {
-  // Only show top 3 eigenvalues (for 1D/2D/3D switching)
   const topEig = eigenvalues.slice(0, 3);
-  const width = 80, height = 60, barWidth = 20, gap = 4;
   const maxVal = Math.max(...topEig.map(v => Math.max(0, v)));
+  const barH = 20, barW = 8, gap = 2;
+  const svgW = topEig.length * (barW + gap), svgH = barH + 12;
 
-  const svg = d3.select(container).append('svg')
-    .attr('width', width).attr('height', height + 20)
+  const row = d3.select(container).append('div')
+    .style('display', 'inline-flex')
+    .style('align-items', 'flex-end')
+    .style('gap', '3px')
+    .style('user-select', 'none')
+    .style('background', 'rgba(255,255,255,0.85)')
+    .style('padding', '2px 4px')
+    .style('border-radius', '3px');
+
+  const svg = row.append('svg')
+    .attr('width', svgW).attr('height', svgH)
     .style('cursor', 'pointer');
 
-  svg.append('title').text('MDS eigenvalues — bar height reflects how much each dimension contributes. Click to switch dimensions.');
+  svg.append('title').text('Click to switch dimensions');
 
   const bars = svg.selectAll('rect.bar')
     .data(topEig)
     .enter().append('rect')
     .attr('class', 'bar')
-    .attr('x', (d, i) => i * (barWidth + gap))
-    .attr('y', d => height - (maxVal > 0 ? Math.max(0, d) / maxVal * height : 0))
-    .attr('width', barWidth)
-    .attr('height', d => maxVal > 0 ? Math.max(0, d) / maxVal * height : 0)
-    .attr('fill', (d, i) => i < activeDims ? COLORS.eigenActive : COLORS.eigenInactive)
-    .attr('rx', 2);
+    .attr('x', (d, i) => i * (barW + gap))
+    .attr('y', d => barH - (maxVal > 0 ? Math.max(0, d) / maxVal * barH : 0))
+    .attr('width', barW)
+    .attr('height', d => maxVal > 0 ? Math.max(0, d) / maxVal * barH : 0)
+    .attr('fill', (d, i) => i < activeDims ? '#aac4de' : '#e8e8e8')
+    .attr('rx', 1);
 
-  // Labels
   svg.selectAll('text.label')
     .data(topEig)
     .enter().append('text')
-    .attr('class', 'label')
-    .attr('x', (d, i) => i * (barWidth + gap) + barWidth / 2)
-    .attr('y', height + 14)
+    .attr('x', (d, i) => i * (barW + gap) + barW / 2)
+    .attr('y', barH + 10)
     .attr('text-anchor', 'middle')
-    .attr('font-size', '10px')
-    .attr('fill', '#666')
-    .text((d, i) => `${i + 1}D`);
+    .attr('font-size', '8px')
+    .attr('fill', '#ccc')
+    .text((d, i) => `${i + 1}`);
 
-  // Click handler
-  svg.selectAll('rect.bar').on('click', function(event, d) {
+  bars.on('click', function(event, d) {
     const idx = topEig.indexOf(d);
     const newDims = idx + 1;
-    // Update colors
-    bars.attr('fill', (d, i) => i < newDims ? COLORS.eigenActive : COLORS.eigenInactive);
+    bars.attr('fill', (d, i) => i < newDims ? '#aac4de' : '#e8e8e8');
     onChange(newDims);
   });
 
-  // Hint text (shows once, fades out)
-  if (!createEigenSelector._hintShown) {
-    createEigenSelector._hintShown = true;
-    const hint = d3.select(container).append('div')
-      .style('font-size', '9px')
-      .style('color', '#999')
-      .style('margin-top', '2px')
-      .style('width', `${width}px`)
-      .style('opacity', 1)
-      .text('click bars to change dimensions');
-    hint.transition().delay(4000).duration(1500).style('opacity', 0).remove();
-  }
-
-  // Variance text below bars
-  const varianceText = d3.select(container).append('div')
-    .style('font-size', '10px')
-    .style('color', '#999')
-    .style('margin-top', '2px')
-    .style('width', `${width}px`);
+  const varianceText = row.append('span')
+    .style('font-size', '9px')
+    .style('color', '#ccc')
+    .style('margin-left', '2px');
 
   return {
     update(dims, variance) {
-      bars.attr('fill', (d, i) => i < dims ? COLORS.eigenActive : COLORS.eigenInactive);
+      bars.attr('fill', (d, i) => i < dims ? '#aac4de' : '#e8e8e8');
       if (variance !== undefined) {
         varianceText.text(`${variance.toFixed(1)}%`);
       }
@@ -179,6 +169,34 @@ function render2D(container, words, coords, arrows, options = {}) {
     const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
     xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
     yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+  }
+
+  // Detect 1D mode: all y-coords are ~0 (set by _getCoords2D for dims===1)
+  const is1D = !fixedDomain && coords.every(c => Math.abs(c[1]) < 1e-9);
+
+  // In 1D mode, compute vertical offsets to avoid label collisions.
+  // Sort by x, then greedily assign labels to staggered vertical slots.
+  const labelOffsets = new Float64Array(coords.length);  // extra y-offset per label (in px)
+  if (is1D) {
+    const indices = coords.map((_, i) => i).sort((a, b) => xScale(coords[a][0]) - xScale(coords[b][0]));
+    const minGap = 14;  // minimum horizontal gap in px before displacing
+    // Slots alternate above/below: slot 0 = default (above), 1 = below, 2 = further above, etc.
+    const slotOffsets = [0, 40, -20, 60, -40, 80];
+    const placed = [];  // { x, slot } of already-placed labels
+    for (const idx of indices) {
+      const px = xScale(coords[idx][0]);
+      // Find which slots are taken by nearby labels
+      const takenSlots = new Set();
+      for (const p of placed) {
+        if (Math.abs(p.x - px) < minGap) takenSlots.add(p.slot);
+      }
+      let slot = 0;
+      for (let s = 0; s < slotOffsets.length; s++) {
+        if (!takenSlots.has(s)) { slot = s; break; }
+      }
+      labelOffsets[idx] = slotOffsets[slot] || 0;
+      placed.push({ x: px, slot });
+    }
   }
 
   // Map previous words to their old MDS coords for animation start positions
@@ -305,17 +323,49 @@ function render2D(container, words, coords, arrows, options = {}) {
       neighborWords.has(d.word) ? '#999' : COLORS.point);
 
   // --- Labels (keyed by word) ---
+  // In 1D mode, labels rotate -55° and use text-anchor:end so they fan upward from the point.
+  // All labels use transform (translate + rotate) for positioning so rotation animates smoothly.
+  const labelAngle = is1D ? -55 : 0;
+  const labelAnchor = is1D ? 'end' : 'middle';
+  function labelXY(d) {
+    const lx = xScale(d.c[0]);
+    const ly = is1D
+      ? yScale(d.c[1]) - 6 + labelOffsets[d.i]
+      : yScale(d.c[1]) - 8;
+    return [lx, ly];
+  }
+
   const labels = g.selectAll('text.word-label').data(pointData, d => d.word);
   labels.exit().transition().duration(dur).style('opacity', 0).remove();
+
+  // Migrate any existing labels from x/y positioning to transform (no visual change)
+  if (animate) {
+    labels.each(function() {
+      const el = d3.select(this);
+      const ox = parseFloat(el.attr('x')) || 0;
+      const oy = parseFloat(el.attr('y')) || 0;
+      if (ox !== 0 || oy !== 0) {
+        el.attr('x', 0).attr('y', 0)
+          .attr('transform', `translate(${ox}, ${oy}) rotate(0)`);
+      }
+    });
+  }
+
   const labelsEnter = labels.enter().append('text').attr('class', 'word-label')
-    .attr('x', d => startXY(d.i)[0])
-    .attr('y', d => startXY(d.i)[1] - 8)
-    .attr('text-anchor', 'middle')
+    .attr('text-anchor', labelAnchor)
     .style('opacity', 0)
+    .attr('transform', d => {
+      const [sx, sy] = startXY(d.i);
+      return `translate(${sx}, ${sy - 8}) rotate(${labelAngle})`;
+    })
     .text(d => d.word);
-  labelsEnter.merge(labels).transition().duration(dur)
-    .attr('x', d => xScale(d.c[0]))
-    .attr('y', d => yScale(d.c[1]) - 8)
+  labelsEnter.merge(labels)
+    .attr('text-anchor', labelAnchor)
+    .transition().duration(dur)
+    .attr('transform', d => {
+      const [lx, ly] = labelXY(d);
+      return `translate(${lx}, ${ly}) rotate(${labelAngle})`;
+    })
     .attr('font-size', d => hiddenPoints.has(d.i) ? '12px' : neighborWords.has(d.word) ? '10px' : '11px')
     .attr('font-weight', d => hiddenPoints.has(d.i) ? 'bold' : 'normal')
     .attr('font-style', d => hiddenPoints.has(d.i) ? 'italic' : 'normal')
@@ -782,8 +832,7 @@ class EmbeddingViz {
         .attr('cx', d => xScale(projected[d.i][0]))
         .attr('cy', d => yScale(projected[d.i][1]));
       g.selectAll('text.word-label')
-        .attr('x', d => xScale(projected[d.i][0]))
-        .attr('y', d => yScale(projected[d.i][1]) - 8);
+        .attr('transform', d => `translate(${xScale(projected[d.i][0])}, ${yScale(projected[d.i][1]) - 8}) rotate(0)`);
 
       // Update arrows
       g.selectAll('line.arrow')

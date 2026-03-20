@@ -31,9 +31,15 @@
 
   .figure-row { position: relative; margin: 1.5em 0; }
   .figure-row .plot-container { margin-left: 48px; }
-  .figure-row .eigen-margin { position: absolute; right: 0; top: 0; width: 90px; }
-  .variance-caption { margin-left: 0; }
+  .figure-row .eigen-margin { position: absolute; right: 6px; bottom: 6px; z-index: 10; }
+
+  @media (max-width: 768px) {
+    .figure-row .plot-container { margin-left: 0; }
+  }
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
+
+  /* Clip SVGs to prevent KaTeX glyph paths and plot trails from overflowing */
+  svg.plot, .katex svg { overflow: hidden; }
 
   .progress-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -59,8 +65,13 @@
   .analogy-result .answer { font-weight: 600; color: #5778a4; }
   .error { color: #e49444; font-size: 14px; }
 
-  img.cooccurrence-img { max-width: 500px; }
+  img.cooccurrence-img { max-width: min(500px, 100%); }
   .analogy-input, .analogy-result { box-sizing: border-box; }
+
+  #analogy-table table { border-collapse: collapse; font-size: 14px; width: 100%; max-width: 560px; }
+  #analogy-table th, #analogy-table td { padding: 4px 10px; text-align: left; border-bottom: 1px solid #eee; }
+  #analogy-table th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #analogy-table td.changed { color: #e49444; }
 </style>
 
 <!-- Loading overlay -->
@@ -114,7 +125,9 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts and add approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count.</p>
+
+<p style="color: #7b2d8b;">This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
 <p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
@@ -243,6 +256,10 @@
   <div class="plot-container" id="plot-doctor-after"></div>
   <div class="eigen-margin" id="eigen-doctor-after"></div>
 </div>
+
+<p style="color: #7b2d8b;">The doctor example is not an isolated case. The table below runs the same analogy&mdash;man : woman :: <em>occupation</em>&mdash;across several professions, before and after steering:</p>
+
+<div id="analogy-table"></div>
 
 <h3>Which Words Changed Most?</h3>
 <p>Press <b>Steer</b> to see how each occupation's embedding shifts when the gender subspace is removed:</p>
@@ -904,6 +921,26 @@ function buildVisualizations() {
     vizInstances.push(buildAnalogyViz('plot-doctor-after', 'eigen-doctor-after', 'man', 'woman', 'doctor', 10, steered));
   }
 
+  // Occupation analogy table: before vs. after steering
+  const analogyOccupations = ['doctor','programmer','boss','scientist','nurse','teacher','homemaker','assistant'];
+  const tableEl = document.getElementById('analogy-table');
+  if (tableEl) {
+    const rows = analogyOccupations
+      .filter(w => emb.has(w) && steered.has(w))
+      .map(w => {
+        const before = emb.analogy('man', 'woman', w, 1)[0];
+        const after = steered.analogy('man', 'woman', w, 1)[0];
+        return { word: w, before, after, changed: before !== after };
+      });
+    let html = '<table><thead><tr><th>Occupation</th><th>man : woman :: <em>X</em> → ?<br>(before)</th><th>→ ? (after steering)</th></tr></thead><tbody>';
+    for (const r of rows) {
+      const cls = r.changed ? ' class="changed"' : '';
+      html += `<tr><td>${r.word}</td><td>${r.before}</td><td${cls}>${r.after}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+  }
+
   // Profession steering plot
   warnMissing(PROFESSIONS, 'professions');
   const profWords = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
@@ -942,7 +979,7 @@ function buildVisualizations() {
 
   // D3 horizontal bar chart for profession ranking
   rankEl.innerHTML = '';
-  const barW = 500, barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
+  const barW = Math.min(500, rankEl.clientWidth || 500), barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
   const barH = ranked.length * barRowH + barMargin.top + barMargin.bottom;
   const maxShift = ranked[0]?.shift || 1;
   const barXScale = d3.scaleLinear().domain([0, maxShift]).range([0, barW - barMargin.left - barMargin.right]);
