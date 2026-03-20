@@ -39,7 +39,10 @@
   - Re-enabled zoom but added visible border + grab cursor on all 3D canvases so boundary is clear.
 
 ## AWESOMENESS
-- [ ] Animate changes from 1 -> 2 -> 3 dimensions
+- [x] Animate changes from 1 -> 2 -> 3 dimensions
+  - 1D↔2D: smooth D3 transitions — coords padded to 2D (y=0 for 1D), points slide between positions.
+  - 2D↔3D: opacity cross-fade (250ms out, render new, fade in).
+  - SVG is rebuilt fresh for dimension changes but enter transitions start at old positions.
 
 - [ ] can we show the subspace being identified from the group's vector, then
   their differences, followed by an (linear) adjustment, all as a
