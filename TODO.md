@@ -39,8 +39,9 @@
   as parallel arrows to make the vector arithmetic visible.
   - Added dashed crossGroupLines connecting a→c and b→answer in buildAnalogyViz.
 
-- [ ] Make the eigenvalue bars more discoverable — add a tooltip or small
+- [x] Make the eigenvalue bars more discoverable — add a tooltip or small
   "click to change dimensions" hint on first appearance.
+  - Added SVG tooltip explaining eigenvalues and click-to-switch. Added one-time "click bars to change dimensions" hint that fades out after 4s.
 
 - [x] Replace the plain `<ol>` profession ranking with a horizontal bar chart
   showing shift magnitude, consistent with the rest of the visual style.
@@ -191,8 +192,9 @@
 - [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
   show a user-visible message instead of leaving the loading overlay up forever.
 
-- [ ] Clean up the "Large (400K)" vocab option — buttons are commented out in
+- [x] Clean up the "Large (400K)" vocab option — buttons are commented out in
   HTML but config and data file exist. Either enable it or remove the dead code.
+  - Enabled: added Large (400K) buttons to both loading and inline vocab selectors.
 
 - [ ] Tighten the opening paragraph — lead with something more concrete or
   surprising rather than the dictionary-definition style.
@@ -204,7 +206,8 @@
 
   - Re-exported binaries with `must_have` parameter. All 30 superlatives now present.
 
-  - [ ] errors/warnings if words are missing to prevent issues like this.
+  - [x] errors/warnings if words are missing to prevent issues like this.
+    - Added `warnMissing()` helper; called for superlatives, digits, number words, gendered words, and professions. Logs missing words to console with labels.
 
 - [x] Acknowledgements should be references.
 

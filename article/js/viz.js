@@ -72,7 +72,7 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
     .attr('width', width).attr('height', height + 20)
     .style('cursor', 'pointer');
 
-  svg.append('title').text('Eigenvalues — taller bars capture more variance. Click to switch dimensions.');
+  svg.append('title').text('MDS eigenvalues — bar height reflects how much each dimension contributes. Click to switch dimensions.');
 
   const bars = svg.selectAll('rect.bar')
     .data(topEig)
@@ -1061,55 +1061,51 @@ function renderSteering2D(container, wordData, options = {}) {
   const controls = d3.select(el).append('div').attr('class', 'steer-controls')
     .style('margin-top', '8px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
 
-  const playBtn = controls.append('button')
+  const toggleBtn = controls.append('button')
     .style('background', COLORS.point).style('color', 'white').style('border', 'none')
     .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
     .style('cursor', 'pointer').text('▶ Steer');
-
-  const resetBtn = controls.append('button')
-    .style('background', '#ddd').style('color', '#333').style('border', 'none')
-    .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
-    .style('cursor', 'pointer').text('Reset');
 
   const statusText = controls.append('span')
     .style('font-size', '12px').style('color', '#999').text('Original embeddings');
 
   let steered = false;
 
-  playBtn.on('click', () => {
-    if (steered) return;
-    steered = true;
-    statusText.text('Steering...');
-    g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
-    ghostArrows.transition().duration(300).attr('opacity', 0.3);
-    trails.transition().duration(1500).ease(d3.easeCubicInOut)
-      .attr('x2', d => xScale(d.steeredCoord[0])).attr('y2', d => yScale(d.steeredCoord[1]))
-      .attr('opacity', 0.4);
-    dots.transition().duration(1500).ease(d3.easeCubicInOut)
-      .attr('cx', d => xScale(d.steeredCoord[0])).attr('cy', d => yScale(d.steeredCoord[1]));
-    labels.transition().duration(1500).ease(d3.easeCubicInOut)
-      .attr('x', d => xScale(d.steeredCoord[0])).attr('y', d => yScale(d.steeredCoord[1]) - 8);
-    activeArrows.transition().duration(1500).ease(d3.easeCubicInOut)
-      .attr('x1', d => xScale(wordData[d.from]?.steeredCoord[0])).attr('y1', d => yScale(wordData[d.from]?.steeredCoord[1]))
-      .attr('x2', d => xScale(wordData[d.to]?.steeredCoord[0])).attr('y2', d => yScale(wordData[d.to]?.steeredCoord[1]));
-    setTimeout(() => statusText.text('Steered embeddings'), 1500);
-  });
-
-  resetBtn.on('click', () => {
-    steered = false;
-    statusText.text('Original embeddings');
-    g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
-    ghostArrows.transition().duration(300).attr('opacity', 0);
-    trails.transition().duration(800).ease(d3.easeCubicInOut)
-      .attr('x2', d => xScale(d.origCoord[0])).attr('y2', d => yScale(d.origCoord[1]))
-      .attr('opacity', 0);
-    dots.transition().duration(800).ease(d3.easeCubicInOut)
-      .attr('cx', d => xScale(d.origCoord[0])).attr('cy', d => yScale(d.origCoord[1]));
-    labels.transition().duration(800).ease(d3.easeCubicInOut)
-      .attr('x', d => xScale(d.origCoord[0])).attr('y', d => yScale(d.origCoord[1]) - 8);
-    activeArrows.transition().duration(800).ease(d3.easeCubicInOut)
-      .attr('x1', d => xScale(wordData[d.from]?.origCoord[0])).attr('y1', d => yScale(wordData[d.from]?.origCoord[1]))
-      .attr('x2', d => xScale(wordData[d.to]?.origCoord[0])).attr('y2', d => yScale(wordData[d.to]?.origCoord[1]));
+  toggleBtn.on('click', () => {
+    if (!steered) {
+      steered = true;
+      toggleBtn.text('Reset').style('background', '#ddd').style('color', '#333');
+      statusText.text('Steering...');
+      g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
+      ghostArrows.transition().duration(300).attr('opacity', 0.3);
+      trails.transition().duration(1500).ease(d3.easeCubicInOut)
+        .attr('x2', d => xScale(d.steeredCoord[0])).attr('y2', d => yScale(d.steeredCoord[1]))
+        .attr('opacity', 0.4);
+      dots.transition().duration(1500).ease(d3.easeCubicInOut)
+        .attr('cx', d => xScale(d.steeredCoord[0])).attr('cy', d => yScale(d.steeredCoord[1]));
+      labels.transition().duration(1500).ease(d3.easeCubicInOut)
+        .attr('x', d => xScale(d.steeredCoord[0])).attr('y', d => yScale(d.steeredCoord[1]) - 8);
+      activeArrows.transition().duration(1500).ease(d3.easeCubicInOut)
+        .attr('x1', d => xScale(wordData[d.from]?.steeredCoord[0])).attr('y1', d => yScale(wordData[d.from]?.steeredCoord[1]))
+        .attr('x2', d => xScale(wordData[d.to]?.steeredCoord[0])).attr('y2', d => yScale(wordData[d.to]?.steeredCoord[1]));
+      setTimeout(() => statusText.text('Steered embeddings'), 1500);
+    } else {
+      steered = false;
+      toggleBtn.text('▶ Steer').style('background', COLORS.point).style('color', 'white');
+      statusText.text('Original embeddings');
+      g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
+      ghostArrows.transition().duration(300).attr('opacity', 0);
+      trails.transition().duration(800).ease(d3.easeCubicInOut)
+        .attr('x2', d => xScale(d.origCoord[0])).attr('y2', d => yScale(d.origCoord[1]))
+        .attr('opacity', 0);
+      dots.transition().duration(800).ease(d3.easeCubicInOut)
+        .attr('cx', d => xScale(d.origCoord[0])).attr('cy', d => yScale(d.origCoord[1]));
+      labels.transition().duration(800).ease(d3.easeCubicInOut)
+        .attr('x', d => xScale(d.origCoord[0])).attr('y', d => yScale(d.origCoord[1]) - 8);
+      activeArrows.transition().duration(800).ease(d3.easeCubicInOut)
+        .attr('x1', d => xScale(wordData[d.from]?.origCoord[0])).attr('y1', d => yScale(wordData[d.from]?.origCoord[1]))
+        .attr('x2', d => xScale(wordData[d.to]?.origCoord[0])).attr('y2', d => yScale(wordData[d.to]?.origCoord[1]));
+    }
   });
 }
 
