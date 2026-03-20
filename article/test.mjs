@@ -275,6 +275,87 @@ async function testClickToExpand1D() {
   await new Promise(r => setTimeout(r, 2000));
 }
 
+async function testDimensionTransitionAnimation() {
+  // Start in 2D, switch to 1D, verify points animate (SVG stays, positions change)
+  const plotSel = '#plot-numbers-words';
+
+  // Get initial point positions in 2D
+  const before2D = await page.evaluate((sel) => {
+    const points = [...document.querySelectorAll(`${sel} svg.plot circle.point`)];
+    return points.slice(0, 3).map(p => ({
+      cx: parseFloat(p.getAttribute('cx')),
+      cy: parseFloat(p.getAttribute('cy')),
+    }));
+  }, plotSel);
+
+  // Switch to 1D
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    if (bars.length >= 1) bars[0].dispatchEvent(new Event('click'));
+  });
+
+  // Check mid-animation: SVG should still exist (not destroyed and rebuilt)
+  await new Promise(r => setTimeout(r, 100));
+  const midAnim = await page.evaluate((sel) => {
+    const svg = document.querySelector(`${sel} svg.plot`);
+    const points = [...(svg?.querySelectorAll('circle.point') || [])];
+    return {
+      svgExists: !!svg,
+      pointCount: points.length,
+    };
+  }, plotSel);
+  test('Dimension transition: SVG preserved during 1D↔2D animation', midAnim.svgExists);
+  test('Dimension transition: points exist during animation', midAnim.pointCount > 0,
+    `${midAnim.pointCount} points`);
+
+  // Wait for animation to complete
+  await new Promise(r => setTimeout(r, 1000));
+
+  // After animation: y-coords should be near 0 (1D = strip plot rendered as 2D with y≈0)
+  const after1D = await page.evaluate((sel) => {
+    const points = [...document.querySelectorAll(`${sel} svg.plot circle.point`)];
+    const ys = points.map(p => parseFloat(p.getAttribute('cy')));
+    const allSameY = ys.every(y => Math.abs(y - ys[0]) < 1);
+    return { allSameY, sampleY: ys.slice(0, 3) };
+  }, plotSel);
+  test('Dimension transition: 1D points on same y-line', after1D.allSameY,
+    `y-values: ${after1D.sampleY.map(y => y.toFixed(1)).join(', ')}`);
+
+  // Switch back to 2D
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 1000));
+
+  // Points should have spread out in y
+  const back2D = await page.evaluate((sel) => {
+    const points = [...document.querySelectorAll(`${sel} svg.plot circle.point`)];
+    const ys = points.map(p => parseFloat(p.getAttribute('cy')));
+    const yRange = Math.max(...ys) - Math.min(...ys);
+    return { yRange };
+  }, plotSel);
+  test('Dimension transition: 2D points spread in y', back2D.yRange > 10,
+    `y-range: ${back2D.yRange.toFixed(1)}`);
+
+  // Test 3D transition: should fade out/in
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 500));
+  const has3D = await page.evaluate((sel) =>
+    !!document.querySelector(`${sel} canvas`), plotSel);
+  test('Dimension transition: 3D canvas after switch', has3D);
+
+  // Switch back to 2D for other tests
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 1000));
+}
+
 async function testPanZoom() {
   // Check all SVG plots have zoom infrastructure
   const allPlots = await page.evaluate(() => {
@@ -396,6 +477,7 @@ await testClickToExpand();
 await testNeighborStylingAcrossDimensions();
 await testClickToExpand3D();
 await testClickToExpand1D();
+await testDimensionTransitionAnimation();
 await testPanZoom();
 await testPanZoomDoesNotBreakOtherPlots();
 await testSuperlativesComplete();

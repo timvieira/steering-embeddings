@@ -564,7 +564,11 @@ class EmbeddingViz {
         this.eigenEl,
         this.mdsData.eigenvalues,
         this.dims,
-        (newDims) => { this.dims = newDims; this.render(); }
+        (newDims) => {
+          const prevDims = this.dims;
+          this.dims = newDims;
+          this._animateDimensionChange(prevDims, newDims);
+        }
       );
     }
 
@@ -638,6 +642,79 @@ class EmbeddingViz {
     }
 
     if (this.eigenSelector) this.eigenSelector.update(this.dims);
+  }
+
+  _animateDimensionChange(prevDims, newDims) {
+    const el = typeof this.plotEl === 'string'
+      ? document.getElementById(this.plotEl) : this.plotEl;
+
+    // SVG-to-SVG transitions (1D↔2D): rebuild SVG but animate from old positions
+    if (prevDims <= 2 && newDims <= 2) {
+      const prevCoords = this.mdsData.coords[prevDims];
+      const newCoords = this.mdsData.coords[newDims];
+
+      // Pad coords to 2D (1D gets y=0)
+      const prevCoords2D = prevCoords.map(c => c.length === 1 ? [c[0], 0] : c);
+      const newCoords2D = newCoords.map(c => c.length === 1 ? [c[0], 0] : c);
+
+      // Save prev state so render2D can animate from old positions
+      this._prevCoords = prevCoords2D;
+      this._prevWords = [...this.words];
+
+      // Clear and rebuild (render2D with animate=false creates fresh SVG,
+      // but we set animate=true so it does enter transitions from prevCoords)
+      el.innerHTML = '';
+      const caption = document.createElement('div');
+      caption.className = 'variance-caption';
+      caption.textContent = `${newDims}D MDS captures ${this.mdsData.variance[newDims].toFixed(1)}% of variance`;
+      el.appendChild(caption);
+
+      // Use render2D for both 1D and 2D targets (1D = 2D with all y≈0)
+      this.render._buildOpts = null;  // force fresh SVG
+      const opts = {
+        highlights: this.highlights,
+        crossGroupLines: this.crossGroupLines,
+        neighborWords: this.neighborWords,
+        neighborLinks: this.neighborLinks,
+        animate: true,
+        prevCoords: prevCoords2D,
+        prevWords: [...this.words],
+      };
+      const self = this;
+      opts.onClick = (idx, word) => {
+        const vec = self.emb.vec(word);
+        if (!vec) return;
+        const existing = new Set(self.words);
+        const neighbors = self.emb.mostSimilar(vec, 5, existing);
+        if (neighbors.length === 0) return;
+        self._prevCoords = self.mdsData.coords[self.dims];
+        self._prevWords = [...self.words];
+        const wordIdx = new Map(self.words.map((w, i) => [w, i]));
+        const parentIdx = wordIdx.get(word);
+        for (const nw of neighbors) {
+          if (!existing.has(nw) && self.emb.has(nw)) {
+            self.words.push(nw);
+            self.neighborWords.add(nw);
+            self.neighborLinks.push({ parent: parentIdx, child: self.words.length - 1 });
+            existing.add(nw);
+          }
+        }
+        self.mdsData = computeAllMDS(self.emb, self.words);
+        self.render(true);
+      };
+
+      render2D(el, this.words, newCoords2D, this.arrows, opts);
+      if (this.eigenSelector) this.eigenSelector.update(this.dims);
+      return;
+    }
+
+    // Transitions involving 3D: cross-fade
+    el.style.transition = 'opacity 0.25s';
+    el.style.opacity = '0';
+    setTimeout(() => {
+      this.render(false);
+      el.style.opacity = '1';
+    }, 250);
   }
 }
 
