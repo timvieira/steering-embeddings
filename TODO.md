@@ -1,3 +1,8 @@
+## Questions:
+
+- Is there a good question to use Three.js kept for hero visualization?
+
+
 ## Article interactivity
 
 - [x] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
@@ -14,14 +19,16 @@
 
 - [ ] Build-your-own word groups explorer (text area → instant MDS plot)
 
-- [ ] Draw the parallelogram in analogy visualizations: show a→b and c→answer
+- [x] Draw the parallelogram in analogy visualizations: show a→b and c→answer
   as parallel arrows to make the vector arithmetic visible.
+  - Added dashed crossGroupLines connecting a→c and b→answer in buildAnalogyViz.
 
 - [ ] Make the eigenvalue bars more discoverable — add a tooltip or small
   "click to change dimensions" hint on first appearance.
 
-- [ ] Replace the plain `<ol>` profession ranking with a horizontal bar chart
+- [x] Replace the plain `<ol>` profession ranking with a horizontal bar chart
   showing shift magnitude, consistent with the rest of the visual style.
+  - D3 horizontal bar chart with orange bars, word labels on left, shift values on right.
 
 
 ## Content
@@ -102,8 +109,9 @@
 - [x] Reorder gendered pairs to be feminine first.
   - All pairs now feminine first (woman/man, queen/king, etc.)
 
-- [ ] move the text "3D MDS captures 42.8% of variance" over to the right of the
+- [x] move the text "3D MDS captures 42.8% of variance" over to the right of the
   plot around the [1,2,3} histogram thing.
+  - Moved variance % into the eigenvalue margin widget (below the bars). Removed from plot container.
 
 - [x] text inside visualizations constantly text selected when I interact with
   the plots; I think it would be better to make that text unselectable.
