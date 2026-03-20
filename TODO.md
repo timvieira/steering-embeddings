@@ -94,9 +94,6 @@
   formula (cosine similarity is the standard metric for these vectors).
   - Added sentence explaining unit-length requirement for cosine similarity.
 
-- [x] under the section "Which Words Changed Most?" show the points using a plot!
-  - Added animated steering plot (renderSteering2D) for professions with joint MDS.
-
 
 ## AWESOMENESS
 
@@ -114,8 +111,6 @@
 
 ## Style
 
-- [x] Content is not correctly centered
-  - Fixed alignment of equations (wrapped in `<p>`), analogy input (margin fix), cooccurrence image (changed to `<figure>`), and plots (48px left margin on plot-container). All elements now align with Distill text column.
 
 - [x] Remove the "waiting for review" thing (not publishing on Distill)
   - Hidden via CSS: `dt-banner { display: none !important; }` (element selector, not class)
@@ -183,9 +178,8 @@
 - [ ] Make plot dimensions responsive — currently hardcoded at 620x450px,
   overflows on narrow screens.
 
-- [x] Add error handling for failed binary loads (fetch error, 404, offline) —
+- [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
   show a user-visible message instead of leaving the loading overlay up forever.
-  - try/catch around loadEmbeddings; on failure shows red progress bar + error message + suggestion to try smaller vocab.
 
 - [x] Clean up the "Large (400K)" vocab option — buttons are commented out in
   HTML but config and data file exist. Either enable it or remove the dead code.

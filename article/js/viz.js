@@ -59,6 +59,14 @@ function computeAllMDS(emb, words) {
 }
 
 
+/** Get responsive width from a container element, with fallback. */
+function getResponsiveWidth(container, fallback = 620) {
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
+  if (!el) return fallback;
+  const w = el.clientWidth || el.getBoundingClientRect().width;
+  return w > 100 ? Math.min(w, 900) : fallback;
+}
+
 /**
  * MDS Eigenvalue selector widget (SVG in the margin).
  */
@@ -141,8 +149,10 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
  * 2D scatter plot with arrows using D3 SVG.
  */
 function render2D(container, words, coords, arrows, options = {}) {
+  const containerEl = typeof container === 'string' ? document.getElementById(container) : container;
+  const defaultW = getResponsiveWidth(containerEl);
   const {
-    highlights = [], crossGroupLines = [], width = 620, height = 450,
+    highlights = [], crossGroupLines = [], width = defaultW, height = Math.round(defaultW * 0.72),
     neighborWords = new Set(), neighborLinks = [],
     animate = false, prevCoords = null, prevWords = null,
     fixedDomain = null,  // optional: [min, max] for both axes (for stable 3D rotation)
@@ -326,7 +336,9 @@ function render2D(container, words, coords, arrows, options = {}) {
  * 3D scatter plot with arrows using Three.js.
  */
 function render3D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], crossGroupLines = [], width = 620, height = 450,
+  const containerEl = typeof container === 'string' ? document.getElementById(container) : container;
+  const defaultW = getResponsiveWidth(containerEl);
+  const { highlights = [], crossGroupLines = [], width = defaultW, height = Math.round(defaultW * 0.72),
     neighborWords = new Set(), neighborLinks = [] } = options;
 
   // Clear
@@ -501,7 +513,9 @@ function render3D(container, words, coords, arrows, options = {}) {
  * 1D strip plot using D3.
  */
 function render1D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], width = 620, height = 120, neighborWords = new Set(), neighborLinks = [] } = options;
+  const containerEl = typeof container === 'string' ? document.getElementById(container) : container;
+  const defaultW = getResponsiveWidth(containerEl);
+  const { highlights = [], width = defaultW, height = 120, neighborWords = new Set(), neighborLinks = [] } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
 
@@ -713,8 +727,10 @@ class EmbeddingViz {
     const normalized = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
 
     const margin = { top: 30, right: 30, bottom: 30, left: 30 };
-    const w = 620 - margin.left - margin.right;
-    const h = 450 - margin.top - margin.bottom;
+    const plotW = getResponsiveWidth(el);
+    const plotH = Math.round(plotW * 0.72);
+    const w = plotW - margin.left - margin.right;
+    const h = plotH - margin.top - margin.bottom;
     // Same fixedDomain as passed to render2D: [-1.15, 1.15]
     const xScale = d3.scaleLinear().domain([-1.15, 1.15]).range([0, w]);
     const yScale = d3.scaleLinear().domain([-1.15, 1.15]).range([h, 0]);
@@ -982,12 +998,13 @@ function renderHero3D(container, wordData, options = {}) {
  * Shows words moving from original to steered positions with fading trails.
  */
 function renderSteering2D(container, wordData, options = {}) {
-  const { width = 620, height = 450, arrows = [] } = options;
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
+  const defaultW = getResponsiveWidth(el);
+  const { width = defaultW, height = Math.round(defaultW * 0.72), arrows = [] } = options;
   const margin = { top: 30, right: 30, bottom: 40, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
 
-  const el = typeof container === 'string' ? document.getElementById(container) : container;
   d3.select(el).selectAll('svg.plot').remove();
   d3.select(el).selectAll('.steer-controls').remove();
 

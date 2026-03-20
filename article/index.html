@@ -88,7 +88,7 @@
 <p style="color: #999; font-size: 13px; line-height: 1.4; margin-bottom: 2em;">
   <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
   <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
- &mdash;Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
+ &mdash;Faded dots show original positions; bright dots show steered positions; trails show how each word moved.
 </p>
 
 <p>
@@ -103,20 +103,20 @@
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar numbers.</p>
+<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
 
-<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> <dt-cite key="harris1954distributional"></dt-cite>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b>, counting how often pairs of words co-occur within a given window.</p>
+<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> <dt-cite key="harris1954distributional"></dt-cite>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
   <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
 </figure>
 
-<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure&mdash;you can't do analogies on them, for example (more on analogies below).</p>
+<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts&mdash;but with approximately linear structure, which is why analogies work and the subspace methods in this article are possible.</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts and add approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
-<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT generate different embeddings for the same word depending on its surrounding sentence. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
+<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
 <p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
 
@@ -125,6 +125,16 @@
 <p>Do embeddings capture meaningful structure? We can check by visualizing groups of related words.</p>
 
 <p>Since our vectors are 100-dimensional, we project them to lower dimensions for plotting using <a href="https://en.wikipedia.org/wiki/Multidimensional_scaling"><b>MDS (multidimensional scaling)</b></a>, which finds a layout that best preserves pairwise distances. Use the eigenvalue bars to the right of each plot to switch between 1D, 2D, and 3D views. The percentage shows how much of the original distance structure is captured.</p>
+
+<p style="color: #7b2d8b;">Given $n$ words with pairwise distances $d_{ij}$, MDS works by double-centering the squared distance matrix to recover a matrix of inner products:</p>
+
+<p style="color: #7b2d8b;">$$B = -\tfrac{1}{2} H D^{(2)} H \quad \text{where} \quad D^{(2)}_{ij} = d_{ij}^2 \quad \text{and} \quad H = I - \tfrac{1}{n}\mathbf{1}\mathbf{1}^T$$</p>
+
+<p style="color: #7b2d8b;">The centering matrix $H$ subtracts row and column means (and adds back the grand mean), converting squared distances into a Gram matrix: $B_{ij} = (\overrightarrow{w}_i - \bar{w}) \cdot (\overrightarrow{w}_j - \bar{w})$. We then take the eigendecomposition $B = U \Lambda U^T$ and extract $m$-dimensional coordinates as:</p>
+
+<p style="color: #7b2d8b;">$$X_i = \big(\sqrt{\lambda_1}\, U_{i1},\;\; \sqrt{\lambda_2}\, U_{i2},\;\; \dots,\;\; \sqrt{\lambda_m}\, U_{im}\big)$$</p>
+
+<p style="color: #7b2d8b;">The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \,/\, \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
 
 <h3>Superlatives</h3>
 <p>Adjective forms trace out parallel paths:</p>
@@ -151,7 +161,7 @@
 
 <h2>Word Analogies</h2>
 
-<p>These regularities give rise to <b>word analogies</b>. The vector difference between related word pairs is roughly constant:</p>
+<p>These parallel structures give rise to <b>word analogies</b>: analogous pairs share roughly the same vector offset.</p>
 
 <p>$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$$</p>
 
@@ -182,7 +192,7 @@
 
 <h2>Identifying Subspaces</h2>
 
-<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't just a pattern between a few word pairs&mdash;it's a consistent axis along which many words vary.</p>
+<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
 
 <p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
 
@@ -191,7 +201,11 @@
   <div class="eigen-margin" id="eigen-gender-pairs"></div>
 </div>
 
-<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs, compute the covariance matrix of their difference vectors, and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that captures the most variance across those pairs&mdash;the directions along which the pairs differ most consistently.</p>
+<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a second-moment matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $d_i = \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The second-moment matrix is:</p>
+
+<p style="color: #7b2d8b;">$$C = \frac{1}{2}\sum_{i=1}^{p} d_i \, d_i^T$$</p>
+
+<p style="color: #7b2d8b;">The factor of $\frac{1}{2}$ arises because each pair has two observations with one degree of freedom. $C$ is a $100 \times 100$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the SVD $C = U \Sigma V^T$ and keeping the top-$k$ columns of $U$ gives an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the pair differences.</p>
 
 <h2>Steering by Subspace Projection</h2>
 
@@ -210,7 +224,7 @@
 <h2>Results</h2>
 
 <h3>Occupation Analogies: Before vs. After</h3>
-<p>Before steering, "man :: woman &rarr; doctor" yields "nurse." After, both directions yield "physician":</p>
+<p>Before steering, the analogy man : woman :: doctor yields "nurse." After steering, both man&rarr;woman and woman&rarr;man yield "physician":</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-before"></div>
@@ -230,11 +244,11 @@
 
 <h2>Discussion</h2>
 
-<p style="color: #7b2d8b;">Subspace projection is a clean and interpretable intervention: it removes a specific direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
+<p style="color: #7b2d8b;">Subspace projection is a surgical intervention: it removes a specific, interpretable direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
 
-<p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately. If some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. The method also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
+<p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
-<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. <dt-cite key="zhao2018gender"></dt-cite> proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. <dt-cite key="ravfogel2020inlp"></dt-cite> introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. <dt-cite key="zhao2018gender"></dt-cite> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and Ravfogel et al. <dt-cite key="ravfogel2020inlp"></dt-cite> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
 
 <h2>Explore</h2>
 
