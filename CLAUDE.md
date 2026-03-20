@@ -40,3 +40,22 @@ The test suite loads the full 50K vocabulary and takes ~60s.
 - `hiddenPoints` in viz.js suppresses circles (r=0) for anchor points but keeps labels
 - The hero visualization uses Three.js; all inline plots use D3 SVG with projected 3D rotation
 - Multiple agents may edit this repo concurrently — prefer editing different files to avoid conflicts
+- `EmbeddingViz` has two embedding references:
+  - `emb` — used for MDS coordinate computation (may be an extended embedding with anchor points)
+  - `searchEmb` — used for click-to-expand neighbor search (should be the full 50K vocabulary)
+  - When `buildVizWithDirection` creates an `extEmb`, always pass `searchEmb: emb` (the global one)
+
+## Workflow rules
+
+- **Always run tests** (`node article/test.mjs`) before committing. If tests fail, fix before committing.
+- **Update TODO.md** after completing each task — mark `[x]` with a brief explanation of what was done.
+- **Re-read files before editing** if another agent may have modified them. Check `git status` and `git log` frequently.
+- **Never edit deploy repos directly** — only edit in this main repo. If a deploy repo exists, copy files out one-way.
+- **Cache-busting**: JS module imports in index.html use `Date.now()` query strings so browsers load fresh code.
+- **Distill template v1 quirks**:
+  - The `dt-banner` ("awaiting review") is hidden via CSS: `dt-banner { display: none !important; }`
+  - Front-matter with authors but no affiliations causes a harmless JS error (suppressed)
+  - Math uses KaTeX loaded separately (not bundled in v1); use `$...$` and `$$...$$` delimiters
+  - `<dt-cite key="...">` for inline citations; bibliography in `<script type="text/bibliography">`
+- **D3 zoom vs orbit**: In 3D projected mode, D3 zoom is NOT attached (would conflict with orbit drag). When reusing an SVG from 2D, stale zoom listeners must be removed: `svg.on('.zoom', null)`.
+- **The user values**: understated writing (no dorky capitalization, no cliché quotes), smoke-tested code, and thorough TODO tracking. Don't present work as done without verifying it works.
