@@ -25,6 +25,9 @@
   /* Hide Distill's draft banner — we're not submitting to Distill */
   dt-banner { display: none !important; }
 
+  /* Prevent text selection when interacting with plots */
+  svg.plot { user-select: none; -webkit-user-select: none; }
+
   .figure-row { position: relative; margin: 1.5em 0; }
   .figure-row .plot-container { margin-left: 48px; }
   .figure-row .eigen-margin { position: absolute; right: 0; top: 0; width: 90px; }

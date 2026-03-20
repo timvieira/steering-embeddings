@@ -589,6 +589,7 @@ class EmbeddingViz {
     }
 
     this._rotationAngle = 0;
+    this._tiltAngle = 0.4;  // initial tilt (same as project3Dto2D default)
     this._rotationAnim = null;
 
     // Create eigen selector
@@ -620,7 +621,7 @@ class EmbeddingViz {
     // 3D: project and normalize to bounding sphere
     const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    return project3Dto2D(normalized, this._rotationAngle);
+    return project3Dto2D(normalized, this._rotationAngle, this._tiltAngle);
   }
 
   _stopRotation() {
@@ -653,18 +654,19 @@ class EmbeddingViz {
 
     // Drag-to-orbit: horizontal drag controls rotation angle
     let dragging = false;
-    let dragStartX = 0;
-    let dragStartAngle = 0;
+    let dragStartX = 0, dragStartY = 0;
+    let dragStartAngle = 0, dragStartTilt = 0;
     let autoRotate = true;
     let resumeTimeout = null;
 
     const svgNode = svg.node();
     svgNode.addEventListener('pointerdown', (e) => {
-      // Only drag from background, not from words/circles
       if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
       dragging = true;
       dragStartX = e.clientX;
+      dragStartY = e.clientY;
       dragStartAngle = self._rotationAngle;
+      dragStartTilt = self._tiltAngle;
       autoRotate = false;
       clearTimeout(resumeTimeout);
       svgNode.style.cursor = 'grabbing';
@@ -674,20 +676,22 @@ class EmbeddingViz {
     svgNode.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
       self._rotationAngle = dragStartAngle + dx * 0.01;
+      self._tiltAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2,
+        dragStartTilt + dy * 0.01));
     });
 
     svgNode.addEventListener('pointerup', () => {
       if (!dragging) return;
       dragging = false;
       svgNode.style.cursor = 'grab';
-      // Resume auto-rotation after 3s
       resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
     });
 
     function tick() {
       if (autoRotate && !dragging) self._rotationAngle += 0.005;
-      const projected = project3Dto2D(normalized, self._rotationAngle);
+      const projected = project3Dto2D(normalized, self._rotationAngle, self._tiltAngle);
       self._currentCoords2D = projected;
 
       // Update positions directly (no transition — this is continuous rotation)
