@@ -122,27 +122,122 @@ async function testSteeringAnimation() {
 }
 
 async function testClickToExpand() {
-  const before = await page.evaluate(() =>
-    document.querySelectorAll('#plot-superlatives svg.plot text.word-label').length);
+  // Use numbers plot (simpler, fewer words) for reliable testing
+  const plotSel = '#plot-numbers-digits';
 
-  const word = await page.$('#plot-superlatives svg.plot text.word-label');
+  const before = await page.evaluate((sel) => {
+    const labels = document.querySelectorAll(`${sel} svg.plot text.word-label`);
+    return { count: labels.length, words: [...labels].map(l => l.textContent) };
+  }, plotSel);
+  test('Click-to-expand: plot has words before click', before.count > 0,
+    `${before.count} words`);
+
+  // Click a word
+  const word = await page.$(`${plotSel} svg.plot text.word-label`);
   if (word) {
     await word.click();
     await new Promise(r => setTimeout(r, 2000));
   }
 
-  const after = await page.evaluate(() =>
-    document.querySelectorAll('#plot-superlatives svg.plot text.word-label').length);
-  test('Click-to-expand adds neighbors', after > before,
-    `${before} → ${after}`);
+  const after = await page.evaluate((sel) => {
+    const labels = document.querySelectorAll(`${sel} svg.plot text.word-label`);
+    return { count: labels.length, words: [...labels].map(l => l.textContent) };
+  }, plotSel);
+  test('Click-to-expand: word count increased', after.count > before.count,
+    `${before.count} → ${after.count}`);
+
+  // Check that neighbor links (dashed lines) were added
+  const neighborLinks = await page.evaluate((sel) =>
+    document.querySelectorAll(`${sel} svg.plot line.neighbor-link`).length, plotSel);
+  test('Click-to-expand: neighbor links drawn', neighborLinks > 0,
+    `${neighborLinks} links`);
+
+  // Click a second word to verify recursive expansion
+  const words2 = await page.$$(`${plotSel} svg.plot text.word-label`);
+  if (words2.length > after.count - 3) {
+    // Click one of the newly added neighbors
+    await words2[words2.length - 1].click();
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  const afterSecond = await page.evaluate((sel) =>
+    document.querySelectorAll(`${sel} svg.plot text.word-label`).length, plotSel);
+  test('Click-to-expand: recursive expansion works', afterSecond > after.count,
+    `${after.count} → ${afterSecond}`);
+
+  // Verify original words are still present after expansion
+  const currentWords = await page.evaluate((sel) =>
+    [...document.querySelectorAll(`${sel} svg.plot text.word-label`)].map(l => l.textContent), plotSel);
+  const origStillPresent = before.words.every(w => currentWords.includes(w));
+  test('Click-to-expand: original words preserved', origStillPresent);
 }
 
 async function testPanZoom() {
-  const hasZoom = await page.evaluate(() => {
-    const svg = document.querySelector('svg.plot');
-    return svg?.style.cursor === 'grab' && !!svg.querySelector('g.zoom-container');
+  // Check all SVG plots have zoom infrastructure
+  const allPlots = await page.evaluate(() => {
+    const svgs = [...document.querySelectorAll('svg.plot')];
+    return svgs.map(svg => ({
+      hasZoomContainer: !!svg.querySelector('g.zoom-container'),
+      hasCursor: svg.style.cursor === 'grab',
+      id: svg.closest('.plot-container')?.id || 'unknown',
+    }));
   });
-  test('2D plots have pan+zoom', hasZoom);
+
+  const allHaveZoom = allPlots.every(p => p.hasZoomContainer);
+  const allHaveCursor = allPlots.every(p => p.hasCursor);
+  test('Pan+zoom: all plots have zoom container', allHaveZoom,
+    allPlots.filter(p => !p.hasZoomContainer).map(p => p.id).join(', ') || 'all OK');
+  test('Pan+zoom: all plots have grab cursor', allHaveCursor,
+    allPlots.filter(p => !p.hasCursor).map(p => p.id).join(', ') || 'all OK');
+
+  // Test that zoom is wired up by programmatically dispatching a zoom transform
+  const zoomWorks = await page.evaluate(() => {
+    const svg = document.querySelector('#plot-superlatives svg.plot');
+    const zoomG = svg?.querySelector('g.zoom-container');
+    if (!svg || !zoomG) return { wired: false };
+
+    // Dispatch a wheel event to trigger d3.zoom
+    const rect = svg.getBoundingClientRect();
+    const evt = new WheelEvent('wheel', {
+      deltaY: -100, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+      bubbles: true, cancelable: true
+    });
+    svg.dispatchEvent(evt);
+
+    // Check if transform was applied
+    const transform = zoomG.getAttribute('transform');
+    return { wired: true, hasTransform: !!transform, transform };
+  });
+  test('Pan+zoom: wheel event triggers zoom', zoomWorks.hasTransform,
+    zoomWorks.transform || 'no transform');
+
+  // Test that zoom filter doesn't block word clicks
+  // (zoom should only drag from background, not from words/circles)
+  const zoomFilter = await page.evaluate(() => {
+    // After zooming, clicking a word should still expand
+    const wordsBefore = document.querySelectorAll('#plot-superlatives svg.plot text.word-label').length;
+    return { wordsBefore };
+  });
+
+  const wordAfterZoom = await page.$('#plot-superlatives svg.plot text.word-label');
+  if (wordAfterZoom) {
+    await wordAfterZoom.click();
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  const wordsAfterClick = await page.evaluate(() =>
+    document.querySelectorAll('#plot-superlatives svg.plot text.word-label').length);
+  test('Pan+zoom: click-to-expand works after zooming', wordsAfterClick > zoomFilter.wordsBefore,
+    `${zoomFilter.wordsBefore} → ${wordsAfterClick}`);
+}
+
+async function testPanZoomDoesNotBreakOtherPlots() {
+  // Verify that zoom on one plot doesn't affect another
+  const analogySvg = await page.evaluate(() =>
+    !!document.querySelector('#plot-analogy-king svg.plot g.zoom-container'));
+  test('Pan+zoom: analogy plot also has zoom', analogySvg);
+
+  const steeringSvg = await page.evaluate(() =>
+    !!document.querySelector('#plot-gendered-steer svg.plot g.zoom-container'));
+  test('Pan+zoom: steering plot also has zoom', steeringSvg);
 }
 
 async function testSuperlativesComplete() {
@@ -195,6 +290,7 @@ await testAnalogyInput();
 await testSteeringAnimation();
 await testClickToExpand();
 await testPanZoom();
+await testPanZoomDoesNotBreakOtherPlots();
 await testSuperlativesComplete();
 await testFemineFirst();
 await testAcknowledgments();

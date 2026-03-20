@@ -22,6 +22,10 @@
   come up with embeddings for words that are not based on co-occurence
   statistics.  We should give citations for that.  Please mark edits in purple.
 
+- [ ] the idea of a matrix factorization is missing: there should be a target
+  matrix and them a way of reconstructing it from a lower dimensional
+  representation.  In this case, the log co-occurence matrix is being
+  reconstructed from the 100-dimensional glove embeddings.
 
 ## Hero visualization
 - [x] Marquee 3D scene at top with gendered pairs + professions, ghost/bright dots, trails
