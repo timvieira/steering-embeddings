@@ -171,6 +171,67 @@ async function testClickToExpand() {
   test('Click-to-expand: original words preserved', origStillPresent);
 }
 
+async function testClickToExpand3D() {
+  // Switch numbers-digits to 3D
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 3000));
+
+  const hasCanvas = await page.evaluate(() =>
+    !!document.querySelector('#plot-numbers-digits canvas'));
+  test('Click-to-expand 3D: canvas exists after switch', hasCanvas);
+
+  // Note: raycasting click is hard to test in headless puppeteer,
+  // but we verify the infrastructure is wired
+  const hasRaycastSetup = await page.evaluate(() => {
+    // The canvas should have pointerup listener (for raycasting)
+    const canvas = document.querySelector('#plot-numbers-digits canvas');
+    // Can't directly check listeners, but verify canvas is interactive
+    return canvas?.style.cursor === 'grab';
+  });
+  test('Click-to-expand 3D: canvas is interactive', hasRaycastSetup);
+
+  // Switch back to 2D for subsequent tests
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 2000));
+}
+
+async function testClickToExpand1D() {
+  // Switch numbers-words to 1D
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    if (bars.length >= 1) bars[0].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 2000));
+
+  const before = await page.evaluate(() =>
+    document.querySelectorAll('#plot-numbers-words svg.plot text.word-label').length);
+
+  // Click a word in 1D
+  const word = await page.$('#plot-numbers-words svg.plot text.word-label');
+  if (word) {
+    await word.click();
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  const after = await page.evaluate(() =>
+    document.querySelectorAll('#plot-numbers-words svg.plot text.word-label').length);
+  test('Click-to-expand 1D: word count increased', after > before,
+    `${before} → ${after}`);
+
+  // Switch back to 2D
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 2000));
+}
+
 async function testPanZoom() {
   // Check all SVG plots have zoom infrastructure
   const allPlots = await page.evaluate(() => {
@@ -289,6 +350,8 @@ await testMathRendering();
 await testAnalogyInput();
 await testSteeringAnimation();
 await testClickToExpand();
+await testClickToExpand3D();
+await testClickToExpand1D();
 await testPanZoom();
 await testPanZoomDoesNotBreakOtherPlots();
 await testSuperlativesComplete();

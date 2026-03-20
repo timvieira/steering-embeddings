@@ -293,7 +293,8 @@ function render3D(container, words, coords, arrows, options = {}) {
 
   const highlightSet = new Set(highlights);
 
-  // Points
+  // Points (store meshes for raycasting)
+  const clickableMeshes = [];
   for (let i = 0; i < words.length; i++) {
     const [x, y, z] = coords[i].map(v => v * scale);
     const isHL = highlightSet.has(i);
@@ -303,7 +304,9 @@ function render3D(container, words, coords, arrows, options = {}) {
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
+    mesh.userData = { index: i, word: words[i] };
     scene.add(mesh);
+    clickableMeshes.push(mesh);
 
     // Label (sprite)
     const canvas = document.createElement('canvas');
@@ -372,6 +375,35 @@ function render3D(container, words, coords, arrows, options = {}) {
   renderer.domElement.addEventListener('pointerdown', pauseOrbit);
   renderer.domElement.addEventListener('wheel', pauseOrbit);
 
+  // Click-to-expand via raycasting
+  if (options.onClick) {
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let pointerDownPos = null;
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+    });
+
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      // Only treat as click if pointer didn't move much (not a drag)
+      if (!pointerDownPos) return;
+      const dx = e.clientX - pointerDownPos.x;
+      const dy = e.clientY - pointerDownPos.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 5) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(clickableMeshes);
+      if (hits.length > 0) {
+        const { index, word } = hits[0].object.userData;
+        options.onClick(index, word);
+      }
+    });
+  }
+
   // Animate
   let animId = null;
   function animate() {
@@ -423,24 +455,30 @@ function render1D(container, words, coords, arrows, options = {}) {
 
   const highlightSet = new Set(highlights);
 
+  const pointData = coords.map((c, i) => ({ c, i, word: words[i] }));
+
   g.selectAll('circle')
-    .data(coords)
+    .data(pointData)
     .enter().append('circle')
-    .attr('cx', d => xScale(d[0]))
+    .attr('cx', d => xScale(d.c[0]))
     .attr('cy', 0)
-    .attr('r', (d, i) => highlightSet.has(i) ? 5 : 3)
-    .attr('fill', (d, i) => highlightSet.has(i) ? COLORS.highlight : COLORS.point);
+    .attr('r', d => highlightSet.has(d.i) ? 5 : 3)
+    .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight : COLORS.point)
+    .style('cursor', options.onClick ? 'pointer' : 'default')
+    .on('click', options.onClick ? (event, d) => { event.stopPropagation(); options.onClick(d.i, d.word); } : null);
 
   g.selectAll('text.word-label')
-    .data(words)
+    .data(pointData)
     .enter().append('text')
     .attr('class', 'word-label')
-    .attr('x', (d, i) => xScale(coords[i][0]))
+    .attr('x', d => xScale(d.c[0]))
     .attr('y', -12)
     .attr('text-anchor', 'middle')
+    .style('cursor', options.onClick ? 'pointer' : 'default')
+    .on('click', options.onClick ? (event, d) => { event.stopPropagation(); options.onClick(d.i, d.word); } : null)
     .attr('font-size', '11px')
     .attr('fill', '#333')
-    .text(d => d);
+    .text(d => d.word);
 }
 
 
