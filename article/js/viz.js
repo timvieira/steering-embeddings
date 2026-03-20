@@ -637,6 +637,32 @@ class EmbeddingViz {
     this.render();
   }
 
+  // Find rotation angle where projected 3D best matches current 2D layout
+  _findBestRotation() {
+    if (!this._prevCoords || !this.mdsData.coords[3]) return;
+    const raw3D = this.mdsData.coords[3];
+    const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const norm3D = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+    const prev = this._prevCoords;
+    const prevAll = prev.flatMap(c => [Math.abs(c[0]), Math.abs(c[1])]);
+    const pm = Math.max(...prevAll) || 1;
+    const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
+    let bestA = 0, bestT = 0.4, bestD = Infinity;
+    for (let ai = 0; ai < 36; ai++) {
+      const a = ai * Math.PI / 18;
+      for (const t of [0.0, 0.3, 0.6, -0.3]) {
+        const p = project3Dto2D(norm3D, a, t);
+        let d = 0;
+        for (let i = 0; i < Math.min(prev.length, p.length); i++) {
+          d += (p[i][0] - prevN[i][0]) ** 2 + (p[i][1] - prevN[i][1]) ** 2;
+        }
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+      }
+    }
+    this._rotationAngle = bestA;
+    this._tiltAngle = bestT;
+  }
+
   // Get current 2D coordinates (projecting 3D if needed).
   // For 3D, normalizes to bounding sphere so scale is stable during rotation.
   _getCoords2D() {
