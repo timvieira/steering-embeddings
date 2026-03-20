@@ -21,6 +21,21 @@ class Embeddings {
     return this.wordIndex.has(word);
   }
 
+  // Add a word with its vector (copies from source embedding if provided)
+  addWord(word, sourceEmb) {
+    if (this.has(word)) return;
+    const srcVec = sourceEmb ? sourceEmb.vec(word) : null;
+    if (!srcVec) return;
+    // Expand the vectors array
+    const newVecs = new Float32Array(this.vectors.length + this.dims);
+    newVecs.set(this.vectors);
+    newVecs.set(srcVec, this.vectors.length);
+    this.vectors = newVecs;
+    this.words.push(word);
+    this.wordIndex.set(word, this.numWords);
+    this.numWords++;
+  }
+
   // Get the vector for a word (returns a Float32Array view)
   vec(word) {
     const idx = this.wordIndex.get(word);

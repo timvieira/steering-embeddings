@@ -589,7 +589,7 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
   arrows.push({ from: anchorNegIdx, to: anchorPosIdx, color: 'red', dashed: true, thick: true });
 
   const viz = new EmbeddingViz({
-    emb: extEmb, words: allWords, groups,
+    emb: extEmb, searchEmb: emb, words: allWords, groups,
     plotEl: document.getElementById(plotId),
     eigenEl: document.getElementById(eigenId),
     arrows,
@@ -748,7 +748,7 @@ function buildVisualizations() {
     arrows.push({ from: a2, to: a3, color: 'red', dashed: true, thick: true });
 
     vizInstances.push(new EmbeddingViz({
-      emb: extEmb, words: allWords, groups: numLinkedPairs,
+      emb: extEmb, searchEmb: emb, words: allWords, groups: numLinkedPairs,
       plotEl: document.getElementById('plot-numbers-linked'),
       eigenEl: document.getElementById('eigen-numbers-linked'),
       arrows,

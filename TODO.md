@@ -7,7 +7,8 @@
 - should we set the aspect ratio to be more equal?  does that make any sense?
 
 - should we try to quantify how much of the variance is accounted for in
-  directions and sterring moves?
+  directions and sterring moves?  (would putting an uncertainty cone around an
+  arrow make sense?  Showing the numerical value would also be nice.)
 
 - is there a measure we can use for how well an analogy worked?  (For example,
   the man:woman analogies after gender steering should all be mostly junk and

@@ -569,6 +569,7 @@ class EmbeddingViz {
     this.hiddenPoints = config.hiddenPoints || new Set();
     this.connectGroups = config.connectGroups || false;
     this.dims = config.initialDims || 2;
+    this.searchEmb = config.searchEmb || config.emb;  // full vocab for neighbor search
     this.neighborWords = new Set();   // words added via click expansion
     this.neighborLinks = [];          // { parent, child } index pairs
     this._prevCoords = null;
@@ -782,10 +783,10 @@ class EmbeddingViz {
   _makeOnClick() {
     const self = this;
     return (idx, word) => {
-      const vec = self.emb.vec(word);
+      const vec = self.searchEmb.vec(word);
       if (!vec) return;
       const existing = new Set(self.words);
-      const neighbors = self.emb.mostSimilar(vec, 5, existing);
+      const neighbors = self.searchEmb.mostSimilar(vec, 5, existing);
       if (neighbors.length === 0) return;
 
       self._stopRotation();
@@ -795,7 +796,11 @@ class EmbeddingViz {
       const wordIdx = new Map(self.words.map((w, i) => [w, i]));
       const parentIdx = wordIdx.get(word);
       for (const nw of neighbors) {
-        if (!existing.has(nw) && self.emb.has(nw)) {
+        if (!existing.has(nw) && self.searchEmb.has(nw)) {
+          // Add neighbor's vector to self.emb if it's not already there
+          if (!self.emb.has(nw)) {
+            self.emb.addWord(nw, self.searchEmb);
+          }
           self.words.push(nw);
           self.neighborWords.add(nw);
           self.neighborLinks.push({ parent: parentIdx, child: self.words.length - 1 });
