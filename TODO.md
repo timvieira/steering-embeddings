@@ -4,6 +4,16 @@
 
 - do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
 
+- should we set the aspect ratio to be more equal?  does that make any sense?
+
+- should we try to quantify how much of the variance is accounted for in
+  directions and sterring moves?
+
+- is there a measure we can use for how well an analogy worked?  (For example,
+  the man:woman analogies after gender steering should all be mostly junk and
+  that should be something we can test for ideally.)
+
+
 ## Article interactivity
 
 - [x] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
