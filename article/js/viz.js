@@ -707,55 +707,47 @@ class EmbeddingViz {
     const pm = Math.max(...prevAll) || 1;
     const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
 
-    // Score a candidate rotation+flip using Procrustes-style alignment.
-    // Returns { dist, flipX, flipY } for the best sign combination.
+    // Score: sum of squared distances after optimal uniform scaling.
     function score(a, t) {
       const p = project3Dto2D(norm3D, a, t);
-      let best = { dist: Infinity, flipX: 1, flipY: 1 };
-      for (const fx of [1, -1]) {
-        for (const fy of [1, -1]) {
-          let dot = 0, pp = 0;
-          for (let i = 0; i < n; i++) {
-            dot += (p[i][0] * fx) * prevN[i][0] + (p[i][1] * fy) * prevN[i][1];
-            pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
-          }
-          const s = pp > 0 ? dot / pp : 1;
-          let d = 0;
-          for (let i = 0; i < n; i++) {
-            d += (s * p[i][0] * fx - prevN[i][0]) ** 2 + (s * p[i][1] * fy - prevN[i][1]) ** 2;
-          }
-          if (d < best.dist) best = { dist: d, flipX: fx, flipY: fy };
-        }
+      let dot = 0, pp = 0;
+      for (let i = 0; i < n; i++) {
+        dot += p[i][0] * prevN[i][0] + p[i][1] * prevN[i][1];
+        pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
       }
-      return best;
+      const s = pp > 0 ? dot / pp : 1;
+      let d = 0;
+      for (let i = 0; i < n; i++) {
+        d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] - prevN[i][1]) ** 2;
+      }
+      return d;
     }
 
-    // Coarse search: 36 angles × 9 tilts
-    let bestA = 0, bestT = 0.4, bestD = Infinity, bestFx = 1, bestFy = 1;
-    for (let ai = 0; ai < 36; ai++) {
-      const a = ai * Math.PI / 18;
-      for (let ti = -4; ti <= 4; ti++) {
-        const t = ti * 0.2;
-        const r = score(a, t);
-        if (r.dist < bestD) { bestD = r.dist; bestA = a; bestT = t; bestFx = r.flipX; bestFy = r.flipY; }
+    // Coarse search: 72 angles (5° steps) × full tilt range [-π/2, π/2]
+    // 72 angles covers X-flip (angle + π). Wide tilt range covers Y-flip.
+    let bestA = 0, bestT = 0.4, bestD = Infinity;
+    for (let ai = 0; ai < 72; ai++) {
+      const a = ai * Math.PI / 36;
+      for (let ti = -7; ti <= 7; ti++) {
+        const t = ti * (Math.PI / 14);  // ~±π/2
+        const d = score(a, t);
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
       }
     }
 
-    // Fine search: refine ±5° around best angle, ±0.1 around best tilt
-    const fineStep = Math.PI / 180;  // 1° steps
-    for (let da = -5; da <= 5; da++) {
-      for (let dt = -2; dt <= 2; dt++) {
+    // Fine search: refine ±3° around best angle, ±0.05 around best tilt
+    const fineStep = Math.PI / 180;
+    for (let da = -3; da <= 3; da++) {
+      for (let dt = -3; dt <= 3; dt++) {
         const a = bestA + da * fineStep;
-        const t = bestT + dt * 0.05;
-        const r = score(a, t);
-        if (r.dist < bestD) { bestD = r.dist; bestA = a; bestT = t; bestFx = r.flipX; bestFy = r.flipY; }
+        const t = bestT + dt * 0.02;
+        const d = score(a, t);
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
       }
     }
 
     this._rotationAngle = bestA;
     this._tiltAngle = bestT;
-    this._flipX = bestFx;
-    this._flipY = bestFy;
   }
 
   // Get current 2D coordinates (projecting 3D if needed).
@@ -774,10 +766,7 @@ class EmbeddingViz {
     // 3D: project and normalize to bounding sphere
     const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    const projected = project3Dto2D(normalized, this._rotationAngle, this._tiltAngle);
-    const fx = this._flipX || 1, fy = this._flipY || 1;
-    if (fx === 1 && fy === 1) return projected;
-    return projected.map(([x, y]) => [x * fx, y * fy]);
+    return project3Dto2D(normalized, this._rotationAngle, this._tiltAngle);
   }
 
   _stopRotation() {
@@ -849,9 +838,7 @@ class EmbeddingViz {
 
     function tick() {
       if (autoRotate && !dragging) self._rotationAngle += 0.005;
-      const raw = project3Dto2D(normalized, self._rotationAngle, self._tiltAngle);
-      const fx = self._flipX || 1, fy = self._flipY || 1;
-      const projected = (fx === 1 && fy === 1) ? raw : raw.map(([x, y]) => [x * fx, y * fy]);
+      const projected = project3Dto2D(normalized, self._rotationAngle, self._tiltAngle);
       self._currentCoords2D = projected;
 
       // Update positions directly (no transition — this is continuous rotation)
