@@ -118,6 +118,7 @@ function render2D(container, words, coords, arrows, options = {}) {
     highlights = [], crossGroupLines = [], width = 620, height = 450,
     neighborWords = new Set(), neighborLinks = [],
     animate = false, prevCoords = null, prevWords = null,
+    fixedDomain = null,  // optional: [min, max] for both axes (for stable 3D rotation)
   } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
@@ -125,18 +126,22 @@ function render2D(container, words, coords, arrows, options = {}) {
   const dur = animate ? 600 : 0;
   const highlightSet = new Set(highlights);
 
-  // Scales (always based on final coords)
-  const xs = coords.map(c => c[0]);
-  const ys = coords.map(c => c[1]);
-  const pad = 0.1;
-  const xRange = [Math.min(...xs), Math.max(...xs)];
-  const yRange = [Math.min(...ys), Math.max(...ys)];
-  const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
-  const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
-  const xScale = d3.scaleLinear()
-    .domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
-  const yScale = d3.scaleLinear()
-    .domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+  // Scales
+  let xScale, yScale;
+  if (fixedDomain) {
+    xScale = d3.scaleLinear().domain(fixedDomain).range([0, w]);
+    yScale = d3.scaleLinear().domain(fixedDomain).range([h, 0]);
+  } else {
+    const xs = coords.map(c => c[0]);
+    const ys = coords.map(c => c[1]);
+    const pad = 0.1;
+    const xRange = [Math.min(...xs), Math.max(...xs)];
+    const yRange = [Math.min(...ys), Math.max(...ys)];
+    const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
+    const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
+    xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
+    yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+  }
 
   // Map previous words to their old MDS coords for animation start positions
   const prevWordIdx = prevWords ? new Map(prevWords.map((ww, i) => [ww, i])) : null;
@@ -599,13 +604,16 @@ class EmbeddingViz {
     this.render();
   }
 
-  // Get current 2D coordinates (projecting 3D if needed)
+  // Get current 2D coordinates (projecting 3D if needed).
+  // For 3D, normalizes to bounding sphere so scale is stable during rotation.
   _getCoords2D() {
     const raw = this.mdsData.coords[this.dims];
     if (this.dims === 1) return raw.map(c => [c[0], 0]);
     if (this.dims === 2) return raw;
-    // 3D: project
-    return project3Dto2D(raw, this._rotationAngle);
+    // 3D: project and normalize to bounding sphere
+    const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+    return project3Dto2D(normalized, this._rotationAngle);
   }
 
   _stopRotation() {
@@ -624,19 +632,21 @@ class EmbeddingViz {
     const g = svg.select('g.main');
     if (g.empty()) return;
 
-    // Compute scales that fit all possible rotations (use bounding sphere)
+    // Use same normalized coords and fixed domain as _getCoords2D and render()
     const raw3D = this.mdsData.coords[3];
     const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const normalized = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+
     const margin = { top: 30, right: 30, bottom: 30, left: 30 };
     const w = 620 - margin.left - margin.right;
     const h = 450 - margin.top - margin.bottom;
-    const pad = maxR * 0.15;
-    const xScale = d3.scaleLinear().domain([-maxR - pad, maxR + pad]).range([0, w]);
-    const yScale = d3.scaleLinear().domain([-maxR - pad, maxR + pad]).range([h, 0]);
+    // Same fixedDomain as passed to render2D: [-1.15, 1.15]
+    const xScale = d3.scaleLinear().domain([-1.15, 1.15]).range([0, w]);
+    const yScale = d3.scaleLinear().domain([-1.15, 1.15]).range([h, 0]);
 
     function tick() {
       self._rotationAngle += 0.005;
-      const projected = project3Dto2D(raw3D, self._rotationAngle);
+      const projected = project3Dto2D(normalized, self._rotationAngle);
       self._currentCoords2D = projected;
 
       // Update positions directly (no transition — this is continuous rotation)
@@ -722,6 +732,9 @@ class EmbeddingViz {
       if (caption) caption.textContent = `${this.dims}D MDS captures ${this.mdsData.variance[this.dims].toFixed(1)}% of variance`;
     }
 
+    // For 3D, use a fixed domain so scale doesn't change during rotation
+    const fixedDomain = this.dims === 3 ? [-1.15, 1.15] : null;
+
     const opts = {
       highlights: this.highlights,
       crossGroupLines: this.crossGroupLines,
@@ -731,6 +744,7 @@ class EmbeddingViz {
       prevCoords: this._prevCoords,
       prevWords: this._prevWords,
       onClick: this._makeOnClick(),
+      fixedDomain,
     };
 
     render2D(el, this.words, coords2D, this.arrows, opts);
