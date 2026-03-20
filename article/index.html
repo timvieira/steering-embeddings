@@ -481,6 +481,17 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
   const dir = new Float64Array(d);
   for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
 
+  // Orient: SVD eigenvector has arbitrary sign. Align with mean pair difference.
+  const meanDiff = new Float64Array(d);
+  for (const [w1, w2] of pairs) {
+    const v1 = emb.vec(w1), v2 = emb.vec(w2);
+    if (!v1 || !v2) continue;
+    for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+  }
+  let dot = 0;
+  for (let i = 0; i < d; i++) dot += dir[i] * meanDiff[i];
+  if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+
   // Centroid of all plotted words in 100-D
   const centroid = new Float64Array(d);
   for (const w of words) {
