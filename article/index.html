@@ -474,13 +474,116 @@ function buildVisualizations() {
   }
 
   // Gender pairs plot: arrows from masculine to feminine show parallel difference vectors
+  // plus a thick arrow showing the mean gender direction
   const genderPairWords = flatWords(GENDERED_WORDS);
   if (genderPairWords.length > 0) {
-    vizInstances.push(new EmbeddingViz({
+    const gpViz = new EmbeddingViz({
       emb, words: genderPairWords, groups: GENDERED_WORDS,
       plotEl: document.getElementById('plot-gender-pairs'),
       eigenEl: document.getElementById('eigen-gender-pairs'),
-    }));
+    });
+    vizInstances.push(gpViz);
+
+    // Overlay the mean gender direction arrow on the plot
+    function overlayGenderDirection() {
+      const coords = gpViz._currentCoords2D;
+      if (!coords || coords.length === 0) return;
+      const wordIdx = new Map(gpViz.words.map((w, i) => [w, i]));
+
+      // Compute mean difference vector in MDS space (feminine - masculine)
+      let dx = 0, dy = 0, count = 0;
+      for (const [fem, masc] of GENDERED_WORDS) {
+        const fi = wordIdx.get(fem), mi = wordIdx.get(masc);
+        if (fi !== undefined && mi !== undefined) {
+          dx += coords[fi][0] - coords[mi][0];
+          dy += coords[fi][1] - coords[mi][1];
+          count++;
+        }
+      }
+      if (count === 0) return;
+      dx /= count; dy /= count;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) return;
+
+      // Centroid of all points
+      let cx = 0, cy = 0;
+      for (const c of coords) { cx += c[0]; cy += c[1]; }
+      cx /= coords.length; cy /= coords.length;
+
+      // Scale and position: draw from centroid - dir to centroid + dir
+      const plotEl = document.getElementById('plot-gender-pairs');
+      const svg = d3.select(plotEl).select('svg.plot');
+      const g = svg.select('g.main');
+      if (g.empty()) return;
+
+      // Remove previous overlay
+      g.selectAll('.gender-direction').remove();
+
+      // Get the scales from the plot's coordinate system
+      const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+      const w = 620 - margin.left - margin.right;
+      const h = 450 - margin.top - margin.bottom;
+      const xs = coords.map(c => c[0]), ys = coords.map(c => c[1]);
+      const pad = 0.1;
+      const xRange = [Math.min(...xs), Math.max(...xs)];
+      const yRange = [Math.min(...ys), Math.max(...ys)];
+      const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
+      const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
+
+      const fixedDomain = gpViz.dims === 3 ? [-1.15, 1.15] : null;
+      let xScale, yScale;
+      if (fixedDomain) {
+        xScale = d3.scaleLinear().domain(fixedDomain).range([0, w]);
+        yScale = d3.scaleLinear().domain(fixedDomain).range([h, 0]);
+      } else {
+        xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
+        yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+      }
+
+      // Extend the direction arrow to span most of the plot
+      const span = Math.max(xRange[1] - xRange[0], yRange[1] - yRange[0]) * 0.4;
+      const ux = dx / len, uy = dy / len;
+
+      // Arrow marker for the direction line
+      const defs = svg.select('defs');
+      defs.selectAll('#arrow-gender-dir').remove();
+      defs.append('marker')
+        .attr('id', 'arrow-gender-dir')
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 8).attr('refY', 5)
+        .attr('markerWidth', 8).attr('markerHeight', 8)
+        .attr('orient', 'auto')
+        .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', '#c44e52');
+
+      g.append('line')
+        .attr('class', 'gender-direction')
+        .attr('x1', xScale(cx - ux * span))
+        .attr('y1', yScale(cy - uy * span))
+        .attr('x2', xScale(cx + ux * span))
+        .attr('y2', yScale(cy + uy * span))
+        .attr('stroke', '#c44e52')
+        .attr('stroke-width', 2.5)
+        .attr('stroke-dasharray', '8,4')
+        .attr('opacity', 0.7)
+        .attr('marker-end', 'url(#arrow-gender-dir)');
+
+      g.append('text')
+        .attr('class', 'gender-direction')
+        .attr('x', xScale(cx + ux * span * 1.05))
+        .attr('y', yScale(cy + uy * span * 1.05) - 10)
+        .attr('font-size', '11px')
+        .attr('fill', '#c44e52')
+        .attr('font-weight', 'bold')
+        .text('gender direction');
+    }
+
+    // Overlay after initial render and on dimension changes
+    setTimeout(overlayGenderDirection, 100);
+    const origRender = gpViz.render.bind(gpViz);
+    gpViz.render = function(animate) {
+      origRender(animate);
+      setTimeout(overlayGenderDirection, animate ? 700 : 100);
+    };
   }
 
   if (emb.has('man') && emb.has('woman') && emb.has('king')) {
