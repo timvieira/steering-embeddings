@@ -175,9 +175,8 @@
 - [ ] Clean up the "Large (400K)" vocab option — buttons are commented out in
   HTML but config and data file exist. Either enable it or remove the dead code.
 
-- [x] Tighten the opening paragraph — lead with something more concrete or
+- [ ] Tighten the opening paragraph — lead with something more concrete or
   surprising rather than the dictionary-definition style.
-  - Rewrote to lead with what embeddings are and why they matter.
 
 
 ## Boo-boos?
