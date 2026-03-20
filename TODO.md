@@ -183,8 +183,9 @@
 - [ ] Make plot dimensions responsive — currently hardcoded at 620x450px,
   overflows on narrow screens.
 
-- [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
+- [x] Add error handling for failed binary loads (fetch error, 404, offline) —
   show a user-visible message instead of leaving the loading overlay up forever.
+  - try/catch around loadEmbeddings; on failure shows red progress bar + error message + suggestion to try smaller vocab.
 
 - [x] Clean up the "Large (400K)" vocab option — buttons are commented out in
   HTML but config and data file exist. Either enable it or remove the dead code.
