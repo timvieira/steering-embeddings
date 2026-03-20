@@ -22,6 +22,13 @@
 </script>
 
 <style>
+  /* Hide Distill's draft banner — we're not submitting to Distill */
+  dt-banner { display: none !important; }
+
+  /* Prevent text selection when interacting with plots */
+  svg.plot { user-select: none; -webkit-user-select: none; }
+  dt-byline { margin-bottom: 0.5em; }
+
   .figure-row { position: relative; margin: 1.5em 0; }
   .figure-row .plot-container { margin-left: 48px; }
   .figure-row .eigen-margin { position: absolute; right: 0; top: 0; width: 90px; }
@@ -65,6 +72,7 @@
     <div class="vocab-selector" id="vocab-selector-loading">
       <button data-size="small">Small (10K, 4MB)</button>
       <button class="active" data-size="medium">Medium (50K, 20MB)</button>
+      <button data-size="large">Large (400K, 160MB)</button>
       
     </div>
   </div>
@@ -74,13 +82,13 @@
 
 <h1>Steering Word Embeddings</h1>
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
-<dt-byline></dt-byline>
+<p style="font-size: 13px; color: rgba(0,0,0,0.5); margin-top: -0.5em;"><a href="http://timvieira.github.io/" style="color: inherit; text-decoration: none; border-bottom: 1px solid rgba(0,0,0,0.2);">Tim Vieira</a></p>
 
-<div id="hero-viz" class="l-page" style="margin: 1em auto;"></div>
-<p style="color: #999; font-size: 13px; margin-bottom: 2em;">
+<div id="hero-viz" class="l-page" style="margin: 0.5em auto 0;"></div>
+<p style="color: #999; font-size: 13px; line-height: 1.4; margin-bottom: 2em;">
   <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
   <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
-  &mdash; Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
+ &mdash;Faded dots show original positions; bright dots show steered positions; trails show how each word moved.
 </p>
 
 <p>
@@ -88,24 +96,27 @@
   <span class="vocab-selector" id="vocab-selector">
     <button data-size="small">10K</button>
     <button class="active" data-size="medium">50K</button>
+    <button data-size="large">400K</button>
     
   </span>
 </p>
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words &mdash; a human-readable representation. A word embedding explains a word using a list of numbers &mdash; a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar numbers.</p>
+<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
 
-<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b>, counting how often pairs of words co-occur within a given window.</p>
+<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> <dt-cite key="harris1954distributional"></dt-cite>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
 <figure>
-  <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="Word co-occurrence matrix">
+  <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
   <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
 </figure>
 
-<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure &mdash; you can't do analogies on them, for example (more on analogies below).</p>
+<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p>Methods like <a href="https://arxiv.org/abs/1301.3781">word2vec</a> and <a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> don't just compress the co-occurrence matrix. They learn low-dimensional vectors with approximately linear structure &mdash; the reason analogies work and the subspace methods in this article are possible.</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts and add approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
+
+<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
 <p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
 
@@ -114,6 +125,16 @@
 <p>Do embeddings capture meaningful structure? We can check by visualizing groups of related words.</p>
 
 <p>Since our vectors are 100-dimensional, we project them to lower dimensions for plotting using <a href="https://en.wikipedia.org/wiki/Multidimensional_scaling"><b>MDS (multidimensional scaling)</b></a>, which finds a layout that best preserves pairwise distances. Use the eigenvalue bars to the right of each plot to switch between 1D, 2D, and 3D views. The percentage shows how much of the original distance structure is captured.</p>
+
+<p style="color: #7b2d8b;">Given $n$ words with pairwise distances $d_{ij}$, MDS works by double-centering the squared distance matrix to recover a matrix of inner products:</p>
+
+<p style="color: #7b2d8b;">$$B = -\tfrac{1}{2} H D^{(2)} H \quad \text{where} \quad D^{(2)}_{ij} = d_{ij}^2 \quad \text{and} \quad H = I - \tfrac{1}{n}\mathbf{1}\mathbf{1}^T$$</p>
+
+<p style="color: #7b2d8b;">The centering matrix $H$ subtracts row and column means (and adds back the grand mean), converting squared distances into a Gram matrix: $B_{ij} = (\overrightarrow{w}_i - \bar{w}) \cdot (\overrightarrow{w}_j - \bar{w})$. We then take the eigendecomposition $B = U \Lambda U^T$ and extract $m$-dimensional coordinates as:</p>
+
+<p style="color: #7b2d8b;">$$X_i = \big(\sqrt{\lambda_1}\, U_{i1},\;\; \sqrt{\lambda_2}\, U_{i2},\;\; \dots,\;\; \sqrt{\lambda_m}\, U_{im}\big)$$</p>
+
+<p style="color: #7b2d8b;">The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \,/\, \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
 
 <h3>Superlatives</h3>
 <p>Adjective forms trace out parallel paths:</p>
@@ -140,11 +161,13 @@
 
 <h2>Word Analogies</h2>
 
-<p>These regularities give rise to <b>word analogies</b>. The vector difference between related word pairs is roughly constant:</p>
+<p>These parallel structures give rise to <b>word analogies</b>: analogous pairs share roughly the same vector offset.</p>
 
 <p>$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$$</p>
 
 <p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
+
+<p style="color: #7b2d8b;">Why does this work? GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j \approx \log X_{ij}$. Differences of log co-occurrences become differences of dot products, which are linear operations on the vectors. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" appearing with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
@@ -169,17 +192,28 @@
 
 <h2>Identifying Subspaces</h2>
 
-<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't just a pattern between a few word pairs &mdash; it's a consistent axis along which many words vary.</p>
+<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
 
-<p>Given groups of word pairs that vary along some concept, we compute the covariance of their embeddings and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the variation within those groups.</p>
+<p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-gender-pairs"></div>
+  <div class="eigen-margin" id="eigen-gender-pairs"></div>
+</div>
+
+<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a second-moment matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $d_i = \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The second-moment matrix is:</p>
+
+<p style="color: #7b2d8b;">$$C = \frac{1}{2}\sum_{i=1}^{p} d_i \, d_i^T$$</p>
+
+<p style="color: #7b2d8b;">The factor of $\frac{1}{2}$ arises because each pair has two observations with one degree of freedom. $C$ is a $100 \times 100$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the SVD $C = U \Sigma V^T$ and keeping the top-$k$ columns of $U$ gives an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the pair differences.</p>
 
 <h2>Steering by Subspace Projection</h2>
 
-<p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out:</p>
+<p style="color: #7b2d8b;">Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
 
 <p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
-<p>This removes each word's component along the chosen subspace while preserving everything else.</p>
+<p style="color: #7b2d8b;">This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity.</p>
 
 <p>We define a gender subspace using pronoun pairs. Press <b>Steer</b> to watch the embeddings shift as the gender direction is projected out:</p>
 
@@ -190,7 +224,7 @@
 <h2>Results</h2>
 
 <h3>Occupation Analogies: Before vs. After</h3>
-<p>Before steering, "man :: woman &rarr; doctor" yields "nurse." After, both directions yield "physician":</p>
+<p>Before steering, the analogy man : woman :: doctor yields "nurse." After steering, both man&rarr;woman and woman&rarr;man yield "physician":</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-before"></div>
@@ -202,24 +236,78 @@
 </div>
 
 <h3>Which Words Changed Most?</h3>
+<p>Press <b>Steer</b> to see how each occupation's embedding shifts when the gender subspace is removed:</p>
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-profession-steer"></div>
+</div>
 <div id="profession-ranking"></div>
+
+<h2>Discussion</h2>
+
+<p style="color: #7b2d8b;">Subspace projection is a surgical intervention: it removes a specific, interpretable direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
+
+<p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
+
+<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. <dt-cite key="zhao2018gender"></dt-cite> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and Ravfogel et al. <dt-cite key="ravfogel2020inlp"></dt-cite> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+
+<h2>Explore</h2>
+
+<p>Type word groups below (one group per line). Use <code>-</code> between two words to define a steering pair &mdash; press <b>Steer</b> to project out that subspace.</p>
+
+<div>
+<textarea id="explorer-input" rows="8" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">doctor nurse programmer teacher scientist
+woman - man
+she - he
+girl - boy
+mother - father</textarea>
+<div style="margin-top: 4px;">
+  <span id="explorer-status" style="font-size: 13px; color: #999;"></span>
+</div>
+</div>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-explorer"></div>
+  <div class="eigen-margin" id="eigen-explorer"></div>
+</div>
 
 </dt-article>
 
 <dt-appendix>
   <h3>Acknowledgments</h3>
   <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
-  <h3>References</h3>
-  <p>This article uses GloVe vectors <dt-cite key="pennington2014glove"></dt-cite>. The steering method follows Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>.</p>
 </dt-appendix>
 
 <script type="text/bibliography">
+  @article{harris1954distributional,
+    title={Distributional Structure},
+    author={Harris, Zellig S.},
+    journal={Word},
+    volume={10},
+    number={2-3},
+    pages={146--162},
+    year={1954},
+    url={https://doi.org/10.1080/00437956.1954.11659520}
+  }
   @inproceedings{pennington2014glove,
     title={GloVe: Global Vectors for Word Representation},
     author={Pennington, Jeffrey and Socher, Richard and Manning, Christopher D},
     booktitle={EMNLP},
     year={2014},
     url={https://nlp.stanford.edu/projects/glove/}
+  }
+  @article{mikolov2013word2vec,
+    title={Efficient Estimation of Word Representations in Vector Space},
+    author={Mikolov, Tomas and Chen, Kai and Corrado, Greg and Dean, Jeffrey},
+    journal={arXiv preprint arXiv:1301.3781},
+    year={2013},
+    url={https://arxiv.org/abs/1301.3781}
+  }
+  @article{devlin2019bert,
+    title={BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding},
+    author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+    journal={arXiv preprint arXiv:1810.04805},
+    year={2019},
+    url={https://arxiv.org/abs/1810.04805}
   }
   @inproceedings{bolukbasi2016man,
     title={Man is to Computer Programmer as Woman is to Homemaker? Debiasing Word Embeddings},
@@ -228,11 +316,26 @@
     year={2016},
     url={https://arxiv.org/abs/1607.06520}
   }
+  @inproceedings{zhao2018gender,
+    title={Learning Gender-Neutral Word Embeddings},
+    author={Zhao, Jieyu and Zhou, Yichao and Li, Zeyu and Wang, Wei and Chang, Kai-Wei},
+    booktitle={EMNLP},
+    year={2018},
+    url={https://arxiv.org/abs/1809.01496}
+  }
+  @inproceedings{ravfogel2020inlp,
+    title={Null It Out: Guarding Protected Attributes by Iterative Nullspace Projection},
+    author={Ravfogel, Shauli and Elazar, Yanai and Gonen, Hila and Twiton, Michael and Goldberg, Yoav},
+    booktitle={ACL},
+    year={2020},
+    url={https://arxiv.org/abs/2004.07667}
+  }
 </script>
 
 <script type="module">
-import { Embeddings, mds, loadEmbeddings } from './js/embeddings.js';
-import { EmbeddingViz, renderHero3D, renderSteering2D } from './js/viz.js';
+const v = Date.now();
+const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${v}`);
+const { EmbeddingViz, renderHero3D, renderSteering2D } = await import(`./js/viz.js?v=${v}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -279,11 +382,23 @@ async function init(size = 'medium') {
   const fill = document.getElementById('progress-fill');
   const text = document.getElementById('loading-text');
   overlay.classList.remove('hidden');
+  fill.style.width = '0%';
+  fill.style.background = '#5778a4';
+  text.textContent = '0%';
 
-  emb = await loadEmbeddings(SIZES[size].url, (pct) => {
-    fill.style.width = `${(pct * 100).toFixed(0)}%`;
-    text.textContent = `${(pct * 100).toFixed(0)}%`;
-  });
+  try {
+    emb = await loadEmbeddings(SIZES[size].url, (pct) => {
+      fill.style.width = `${(pct * 100).toFixed(0)}%`;
+      text.textContent = `${(pct * 100).toFixed(0)}%`;
+    });
+  } catch (err) {
+    fill.style.width = '100%';
+    fill.style.background = '#d9534f';
+    text.innerHTML = `<span style="color:#d9534f">Failed to load vectors: ${err.message}</span><br>` +
+      `<span style="font-size:12px">Check your connection and try again, or choose a smaller vocabulary.</span>`;
+    console.error('Load error:', err);
+    return;
+  }
 
   text.textContent = 'Computing steering vectors...';
   steered = emb.steer(GENDER_PAIRS, 10);
@@ -293,9 +408,19 @@ async function init(size = 'medium') {
 }
 
 
-function flatWords(groups) {
+function warnMissing(words, label) {
+  const missing = words.filter(w => !emb.has(w));
+  if (missing.length > 0) {
+    console.warn(`[${label}] Words not in vocabulary: ${missing.join(', ')}`);
+  }
+  return missing;
+}
+
+function flatWords(groups, label = 'flatWords') {
   const seen = new Set();
   const result = [];
+  const allWords = groups.flat();
+  warnMissing(allWords, label);
   for (const g of groups) {
     for (const w of g) {
       if (!seen.has(w) && emb.has(w)) { seen.add(w); result.push(w); }
@@ -314,8 +439,12 @@ function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
   const arrows = [
     { from: idx.get(a), to: idx.get(b), color: 'red' },
   ];
+  const crossGroupLines = [];
   if (ab.length > 0 && idx.has(ab[0])) {
     arrows.push({ from: idx.get(c), to: idx.get(ab[0]), color: 'red' });
+    // Parallelogram: dashed lines connecting a→c and b→answer
+    crossGroupLines.push([idx.get(a), idx.get(c)]);
+    crossGroupLines.push([idx.get(b), idx.get(ab[0])]);
   }
   return new EmbeddingViz({
     emb: embToUse, words: unique,
@@ -323,6 +452,7 @@ function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
     plotEl: document.getElementById(plotId),
     eigenEl: document.getElementById(eigenId),
     arrows,
+    crossGroupLines,
     highlights: [idx.get(a), idx.get(b), idx.get(c), ...(ab.length > 0 && idx.has(ab[0]) ? [idx.get(ab[0])] : [])],
   });
 }
@@ -385,49 +515,326 @@ function buildHero() {
   });
 }
 
+// Build an EmbeddingViz with an SVD-derived direction arrow overlaid.
+// - words: flat list of words to plot
+// - pairs: array of [w1, w2] pairs whose differences define the direction
+// - groups: grouping for EmbeddingViz (controls default arrows)
+// - label: text label for the direction arrowhead
+// - plotId, eigenId: DOM element IDs
+// - vizConfig: extra config to pass to EmbeddingViz (e.g. connectGroups)
+// Two direction-finding modes:
+//
+// 'pairs' (default): SVD on the covariance of pair difference vectors.
+//   Correct when many word pairs share a consistent direction (gender,
+//   degree). The top eigenvector is the axis that best explains the
+//   paired variation. Oriented to align with mean w1→w2 difference.
+//
+// 'pca': PCA on the word vectors themselves (mean-center, then SVD).
+//   Correct for ordered sequences (numbers) where the words spread
+//   along a principal axis. Oriented so projections increase with
+//   word order (first word → last word).
+//
+function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, vizConfig = {}) {
+  if (words.length === 0) return null;
+  const d = emb.dims;
+  const mode = vizConfig.directionMode || 'pairs';
+  const dir = new Float64Array(d);
+
+  if (mode === 'pairs') {
+    // SVD on covariance of pair differences
+    const C = new Float64Array(d * d);
+    let pairCount = 0;
+    for (const [w1, w2] of pairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      const diff = new Float64Array(d);
+      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += diff[i] * diff[j] / 2;
+      pairCount++;
+    }
+    if (pairCount === 0) return null;
+
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+
+    // Orient: align with mean w1→w2 difference
+    const meanDiff = new Float64Array(d);
+    for (const [w1, w2] of pairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+    }
+    let dot = 0;
+    for (let i = 0; i < d; i++) dot += dir[i] * meanDiff[i];
+    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+
+  } else if (mode === 'pca') {
+    // PCA: mean-center word vectors, then top SVD vector
+    const centroid = new Float64Array(d);
+    const vecs = words.map(w => emb.vec(w));
+    for (const v of vecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
+    for (let i = 0; i < d; i++) centroid[i] /= words.length;
+
+    const C = new Float64Array(d * d);
+    for (const v of vecs) {
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
+    }
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+
+    // Orient: align with first→last word direction
+    const vFirst = vecs[0], vLast = vecs[vecs.length - 1];
+    let dot = 0;
+    for (let i = 0; i < d; i++) dot += dir[i] * (vLast[i] - vFirst[i]);
+    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+  }
+
+  // Centroid of all plotted words in 100-D
+  const centroid = new Float64Array(d);
+  for (const w of words) {
+    const v = emb.vec(w);
+    for (let i = 0; i < d; i++) centroid[i] += v[i];
+  }
+  for (let i = 0; i < d; i++) centroid[i] /= words.length;
+
+  // Anchor points: centroid ± scaled direction
+  let avgDist = 0;
+  for (const w of words) {
+    const v = emb.vec(w);
+    let dd = 0;
+    for (let i = 0; i < d; i++) dd += (v[i] - centroid[i]) ** 2;
+    avgDist += Math.sqrt(dd);
+  }
+  avgDist /= words.length;
+  const scale = avgDist * 1.2;
+
+  const anchorPos = new Float64Array(d);
+  const anchorNeg = new Float64Array(d);
+  for (let i = 0; i < d; i++) {
+    anchorPos[i] = centroid[i] + dir[i] * scale;
+    anchorNeg[i] = centroid[i] - dir[i] * scale;
+  }
+
+  // Build extended embeddings with anchor points
+  const allWords = [...words, ' ', label];
+  const anchorNegIdx = words.length;
+  const anchorPosIdx = words.length + 1;
+  const n = allWords.length;
+
+  const extVecs = new Float32Array(n * d);
+  for (let i = 0; i < words.length; i++) {
+    const v = emb.vec(words[i]);
+    for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
+  }
+  for (let j = 0; j < d; j++) {
+    extVecs[anchorNegIdx * d + j] = anchorNeg[j];
+    extVecs[anchorPosIdx * d + j] = anchorPos[j];
+  }
+  const extEmb = new Embeddings(allWords, extVecs, d);
+
+  // Build arrows from groups + direction arrow
+  const wordIdx = new Map(allWords.map((w, i) => [w, i]));
+  const arrows = [];
+  for (const group of groups) {
+    for (let i = 0; i < group.length - 1; i++) {
+      const a = wordIdx.get(group[i]), b = wordIdx.get(group[i + 1]);
+      if (a !== undefined && b !== undefined) arrows.push({ from: a, to: b });
+    }
+  }
+  arrows.push({ from: anchorNegIdx, to: anchorPosIdx, color: 'red', dashed: true, thick: true });
+
+  const viz = new EmbeddingViz({
+    emb: extEmb, searchEmb: emb, words: allWords, groups,
+    plotEl: document.getElementById(plotId),
+    eigenEl: document.getElementById(eigenId),
+    arrows,
+    hiddenPoints: new Set([anchorNegIdx, anchorPosIdx]),
+    ...vizConfig,
+  });
+  vizInstances.push(viz);
+  return viz;
+}
+
 function buildVisualizations() {
   vizInstances = [];
 
   // Build hero first
   buildHero();
 
-  const supWords = flatWords(SUPERLATIVES);
+  // Superlatives with "degree" direction (consecutive pairs: base→comp, comp→super)
+  const supWords = flatWords(SUPERLATIVES, 'superlatives');
   if (supWords.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: supWords, groups: SUPERLATIVES,
-      plotEl: document.getElementById('plot-superlatives'),
-      eigenEl: document.getElementById('eigen-superlatives'),
-    }));
+    const supPairs = [];
+    for (const group of SUPERLATIVES) {
+      for (let i = 0; i < group.length - 1; i++) supPairs.push([group[i], group[i + 1]]);
+    }
+    buildVizWithDirection(supWords, supPairs, SUPERLATIVES, 'degree',
+      'plot-superlatives', 'eigen-superlatives');
   }
 
-  const digits = '1 2 3 4 5 6 7 8 9 10 11 12 13'.split(' ').filter(w => emb.has(w));
+  // Digits with "counting" direction via PCA (principal axis of the sequence)
+  const allDigits = '1 2 3 4 5 6 7 8 9'.split(' ');
+  warnMissing(allDigits, 'digits');
+  const digits = allDigits.filter(w => emb.has(w));
   if (digits.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: digits, groups: [digits],
-      plotEl: document.getElementById('plot-numbers-digits'),
-      eigenEl: document.getElementById('eigen-numbers-digits'),
-    }));
+    buildVizWithDirection(digits, [], [digits], 'counting',
+      'plot-numbers-digits', 'eigen-numbers-digits', { directionMode: 'pca' });
   }
 
-  const numWords = 'one two three four five six seven eight nine ten eleven twelve thirteen'.split(' ').filter(w => emb.has(w));
+  // Number words with "counting" direction via PCA
+  const allNumWords = 'one two three four five six seven eight nine'.split(' ');
+  warnMissing(allNumWords, 'number words');
+  const numWords = allNumWords.filter(w => emb.has(w));
   if (numWords.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: numWords, groups: [numWords],
-      plotEl: document.getElementById('plot-numbers-words'),
-      eigenEl: document.getElementById('eigen-numbers-words'),
-    }));
+    buildVizWithDirection(numWords, [], [numWords], 'counting',
+      'plot-numbers-words', 'eigen-numbers-words', { directionMode: 'pca' });
   }
 
-  const numPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
+  // Linked numbers: two direction arrows — "word vs digit" (pair SVD) and "counting" (PCA)
+  const numLinkedPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
     ['five','5'],['six','6'],['seven','7'],['eight','8'],['nine','9']];
-  const linkedWords = flatWords(numPairs);
+  const linkedWords = flatWords(numLinkedPairs, 'linked numbers');
   if (linkedWords.length > 0) {
+    const d = emb.dims;
+    const vecs = linkedWords.map(w => emb.vec(w));
+
+    // Direction 1: "word vs digit" via pair-difference SVD
+    const C1 = new Float64Array(d * d);
+    for (const [w1, w2] of numLinkedPairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      const diff = new Float64Array(d);
+      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C1[i * d + j] += diff[i] * diff[j] / 2;
+    }
+    const C1mat = [];
+    for (let i = 0; i < d; i++) { C1mat.push([]); for (let j = 0; j < d; j++) C1mat[i].push(C1[i * d + j]); }
+    const { u: u1 } = SVDJS.SVD(C1mat);
+    const dir1 = new Float64Array(d);
+    for (let i = 0; i < d; i++) dir1[i] = u1[i][0];
+    // Orient to match pair arrows: word→digit (v1 is word, v2 is digit)
+    const meanDiff = new Float64Array(d);
+    for (const [w1, w2] of numLinkedPairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (v1 && v2) for (let i = 0; i < d; i++) meanDiff[i] += v1[i] - v2[i];
+    }
+    let dot1 = 0;
+    for (let i = 0; i < d; i++) dot1 += dir1[i] * meanDiff[i];
+    if (dot1 < 0) for (let i = 0; i < d; i++) dir1[i] = -dir1[i];
+
+    // Direction 2: "counting" via PCA on just written words (not all 18,
+    // since PCA on the combined set would be dominated by word-vs-digit)
+    const wordForms = numLinkedPairs.map(p => p[0]).filter(w => emb.has(w));
+    const wordVecs = wordForms.map(w => emb.vec(w));
+    const centroid = new Float64Array(d);
+    for (const v of wordVecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
+    for (let i = 0; i < d; i++) centroid[i] /= wordVecs.length;
+    const C2 = new Float64Array(d * d);
+    for (const v of wordVecs) {
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C2[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
+    }
+    const C2mat = [];
+    for (let i = 0; i < d; i++) { C2mat.push([]); for (let j = 0; j < d; j++) C2mat[i].push(C2[i * d + j]); }
+    const { u: u2 } = SVDJS.SVD(C2mat);
+    const dir2 = new Float64Array(d);
+    for (let i = 0; i < d; i++) dir2[i] = u2[i][0];
+    // Orient: first→last (one→nine in word order)
+    const vFirst = emb.vec(numLinkedPairs[0][0]), vLast = emb.vec(numLinkedPairs[numLinkedPairs.length - 1][0]);
+    let dot2 = 0;
+    for (let i = 0; i < d; i++) dot2 += dir2[i] * (vLast[i] - vFirst[i]);
+    if (dot2 < 0) for (let i = 0; i < d; i++) dir2[i] = -dir2[i];
+
+    // Anchor scale and centroid over ALL plotted words (both forms)
+    const allCentroid = new Float64Array(d);
+    for (const v of vecs) for (let i = 0; i < d; i++) allCentroid[i] += v[i];
+    for (let i = 0; i < d; i++) allCentroid[i] /= vecs.length;
+    let avgDist = 0;
+    for (const v of vecs) {
+      let dd = 0;
+      for (let i = 0; i < d; i++) dd += (v[i] - allCentroid[i]) ** 2;
+      avgDist += Math.sqrt(dd);
+    }
+    avgDist /= vecs.length;
+    const sc = avgDist * 1.2;
+
+    // 4 anchor points: dir1 neg/pos, dir2 neg/pos
+    const anchors = [
+      { vec: new Float64Array(d), label: ' ' },             // dir1 neg
+      { vec: new Float64Array(d), label: 'word vs digit' }, // dir1 pos
+      { vec: new Float64Array(d), label: '  ' },            // dir2 neg (two spaces to be unique)
+      { vec: new Float64Array(d), label: 'counting' },      // dir2 pos
+    ];
+    for (let i = 0; i < d; i++) {
+      anchors[0].vec[i] = allCentroid[i] - dir1[i] * sc;
+      anchors[1].vec[i] = allCentroid[i] + dir1[i] * sc;
+      anchors[2].vec[i] = allCentroid[i] - dir2[i] * sc;
+      anchors[3].vec[i] = allCentroid[i] + dir2[i] * sc;
+    }
+
+    // Build extended embeddings
+    const allWords = [...linkedWords, ...anchors.map(a => a.label)];
+    const n = allWords.length;
+    const extVecs = new Float32Array(n * d);
+    for (let i = 0; i < linkedWords.length; i++) {
+      const v = emb.vec(linkedWords[i]);
+      for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
+    }
+    for (let ai = 0; ai < anchors.length; ai++) {
+      const off = (linkedWords.length + ai) * d;
+      for (let j = 0; j < d; j++) extVecs[off + j] = anchors[ai].vec[j];
+    }
+    const extEmb = new Embeddings(allWords, extVecs, d);
+
+    const a0 = linkedWords.length;  // dir1 neg
+    const a1 = a0 + 1;             // dir1 pos
+    const a2 = a0 + 2;             // dir2 neg
+    const a3 = a0 + 3;             // dir2 pos
+
+    // Arrows: group arrows + both direction arrows
+    const wordIdx = new Map(allWords.map((w, i) => [w, i]));
+    const arrows = [];
+    for (const group of numLinkedPairs) {
+      for (let i = 0; i < group.length - 1; i++) {
+        const a = wordIdx.get(group[i]), b = wordIdx.get(group[i + 1]);
+        if (a !== undefined && b !== undefined) arrows.push({ from: a, to: b });
+      }
+    }
+    arrows.push({ from: a0, to: a1, color: 'red', dashed: true, thick: true });
+    arrows.push({ from: a2, to: a3, color: 'red', dashed: true, thick: true });
+
     vizInstances.push(new EmbeddingViz({
-      emb, words: linkedWords, groups: numPairs,
+      emb: extEmb, searchEmb: emb, words: allWords, groups: numLinkedPairs,
       plotEl: document.getElementById('plot-numbers-linked'),
       eigenEl: document.getElementById('eigen-numbers-linked'),
+      arrows,
       connectGroups: true,
+      hiddenPoints: new Set([a0, a1, a2, a3]),
     }));
+  }
+
+  // Gender pairs with SVD-derived gender direction
+  const genderPairWords = flatWords(GENDERED_WORDS, 'gendered words');
+  if (genderPairWords.length > 0) {
+    buildVizWithDirection(genderPairWords, GENDERED_WORDS, GENDERED_WORDS, 'gender direction',
+      'plot-gender-pairs', 'eigen-gender-pairs');
   }
 
   if (emb.has('man') && emb.has('woman') && emb.has('king')) {
@@ -435,7 +842,7 @@ function buildVisualizations() {
   }
 
   // Animated steering for gendered words
-  const genWords = flatWords(GENDERED_WORDS);
+  const genWords = flatWords(GENDERED_WORDS, 'steering gendered words');
   if (genWords.length > 0) {
     const n = genWords.length;
     // Joint MDS over [steered_0..n, orig_0..n]
@@ -475,6 +882,33 @@ function buildVisualizations() {
     vizInstances.push(buildAnalogyViz('plot-doctor-after', 'eigen-doctor-after', 'man', 'woman', 'doctor', 10, steered));
   }
 
+  // Profession steering plot
+  warnMissing(PROFESSIONS, 'professions');
+  const profWords = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
+  if (profWords.length > 0) {
+    const n = profWords.length;
+    const nn = 2 * n;
+    const D = new Float64Array(nn * nn);
+    for (let i = 0; i < nn; i++) {
+      for (let j = 0; j < i; j++) {
+        const wi = i < n ? steered.vec(profWords[i]) : emb.vec(profWords[i - n]);
+        const wj = j < n ? steered.vec(profWords[j]) : emb.vec(profWords[j - n]);
+        let dist = 0;
+        for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+        dist = Math.sqrt(dist);
+        D[i * nn + j] = dist;
+        D[j * nn + i] = dist;
+      }
+    }
+    const { coords: profCoords } = mds(D, nn, 2);
+    const profSteerData = profWords.map((w, i) => ({
+      word: w, group: 'occupation',
+      steeredCoord: profCoords[i],
+      origCoord: profCoords[n + i],
+    }));
+    renderSteering2D(document.getElementById('plot-profession-steer'), profSteerData);
+  }
+
   const rankEl = document.getElementById('profession-ranking');
   const profs = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
   const ranked = profs.map(w => {
@@ -484,11 +918,48 @@ function buildVisualizations() {
     return { word: w, shift: Math.sqrt(diff) };
   }).sort((a, b) => b.shift - a.shift);
 
-  rankEl.innerHTML = '<ol>' +
-    ranked.map(r => `<li><b>${r.word}</b> <span style="color:#999">(${r.shift.toFixed(3)})</span></li>`).join('') +
-    '</ol>';
+  // D3 horizontal bar chart for profession ranking
+  rankEl.innerHTML = '';
+  const barW = 500, barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
+  const barH = ranked.length * barRowH + barMargin.top + barMargin.bottom;
+  const maxShift = ranked[0]?.shift || 1;
+  const barXScale = d3.scaleLinear().domain([0, maxShift]).range([0, barW - barMargin.left - barMargin.right]);
+
+  const barSvg = d3.select(rankEl).append('svg')
+    .attr('width', barW).attr('height', barH);
+  const barG = barSvg.append('g')
+    .attr('transform', `translate(${barMargin.left},${barMargin.top})`);
+
+  barG.selectAll('rect').data(ranked).enter().append('rect')
+    .attr('x', 0)
+    .attr('y', (d, i) => i * barRowH)
+    .attr('width', d => barXScale(d.shift))
+    .attr('height', barRowH - 4)
+    .attr('fill', '#e49444')
+    .attr('rx', 2)
+    .attr('opacity', 0.7);
+
+  barG.selectAll('text.label').data(ranked).enter().append('text')
+    .attr('class', 'label')
+    .attr('x', -8)
+    .attr('y', (d, i) => i * barRowH + barRowH / 2 + 1)
+    .attr('text-anchor', 'end')
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', '12px')
+    .attr('fill', '#333')
+    .text(d => d.word);
+
+  barG.selectAll('text.value').data(ranked).enter().append('text')
+    .attr('class', 'value')
+    .attr('x', d => barXScale(d.shift) + 4)
+    .attr('y', (d, i) => i * barRowH + barRowH / 2 + 1)
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', '10px')
+    .attr('fill', '#999')
+    .text(d => d.shift.toFixed(3));
 
   setupAnalogyInput();
+  setupExplorer();
 }
 
 
@@ -517,6 +988,122 @@ function setupAnalogyInput() {
   document.querySelectorAll('.analogy-input input').forEach(el => {
     el.addEventListener('keydown', e => { if (e.key === 'Enter') runAnalogy(); });
   });
+}
+
+
+let explorerViz = null;
+
+function setupExplorer() {
+  const input = document.getElementById('explorer-input');
+  const status = document.getElementById('explorer-status');
+
+  function runExplorer() {
+    const text = input.value.trim();
+    if (!text) { status.textContent = 'Enter some words above.'; return; }
+
+    // Parse lines: "word - word" = steering pair, otherwise a word group
+    const steerPairs = [];
+    const displayGroups = [];
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim().toLowerCase();
+      if (!trimmed) continue;
+      if (trimmed.includes(' - ')) {
+        const parts = trimmed.split(' - ').map(s => s.trim()).filter(Boolean);
+        if (parts.length === 2) {
+          steerPairs.push(parts);
+          // Also add pair words to display
+          displayGroups.push(parts);
+          continue;
+        }
+      }
+      const words = trimmed.split(/\s+/).filter(Boolean);
+      if (words.length > 0) displayGroups.push(words);
+    }
+
+    // Collect all unique words
+    const seen = new Set();
+    const allWords = [];
+    const missing = [];
+    for (const g of displayGroups) {
+      for (const w of g) {
+        if (seen.has(w)) continue;
+        seen.add(w);
+        if (emb.has(w)) allWords.push(w);
+        else missing.push(w);
+      }
+    }
+
+    if (allWords.length < 2) {
+      status.innerHTML = `<span class="error">Need at least 2 words in vocabulary.</span>`;
+      if (missing.length > 0) status.innerHTML += ` Not found: ${missing.join(', ')}`;
+      return;
+    }
+
+    const validGroups = displayGroups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
+    const validPairs = steerPairs.filter(([a, b]) => emb.has(a) && emb.has(b));
+
+    let msg = `${allWords.length} words`;
+    if (validPairs.length > 0) msg += `, ${validPairs.length} steering pairs`;
+    if (missing.length > 0) msg += ` (not found: ${missing.join(', ')})`;
+    status.textContent = msg;
+
+    const plotEl = document.getElementById('plot-explorer');
+    const eigenEl = document.getElementById('eigen-explorer');
+    plotEl.innerHTML = '';
+    eigenEl.innerHTML = '';
+
+    if (validPairs.length > 0) {
+      // Steer and show animated transition
+      const explorerSteered = emb.steer(validPairs, Math.min(10, validPairs.length));
+      const n = allWords.length;
+      const nn = 2 * n;
+      const D = new Float64Array(nn * nn);
+      for (let i = 0; i < nn; i++) {
+        for (let j = 0; j < i; j++) {
+          const wi = i < n ? explorerSteered.vec(allWords[i]) : emb.vec(allWords[i - n]);
+          const wj = j < n ? explorerSteered.vec(allWords[j]) : emb.vec(allWords[j - n]);
+          let dist = 0;
+          for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+          dist = Math.sqrt(dist);
+          D[i * nn + j] = dist;
+          D[j * nn + i] = dist;
+        }
+      }
+      const { coords: jointCoords } = mds(D, nn, 2);
+      const steerData = allWords.map((w, i) => ({
+        word: w,
+        group: validPairs.some(([a, b]) => w === a || w === b) ? 'pair' : 'word',
+        steeredCoord: jointCoords[i],
+        origCoord: jointCoords[n + i],
+      }));
+      // Build arrows from display groups (consecutive words on a line)
+      const wordToIdx = new Map(allWords.map((w, i) => [w, i]));
+      const groupArrows = [];
+      for (const g of validGroups) {
+        for (let i = 0; i < g.length - 1; i++) {
+          const a = wordToIdx.get(g[i]), b = wordToIdx.get(g[i + 1]);
+          if (a !== undefined && b !== undefined) groupArrows.push({ from: a, to: b });
+        }
+      }
+      renderSteering2D(plotEl, steerData, { arrows: groupArrows });
+    } else {
+      // No steering pairs — just plot
+      explorerViz = new EmbeddingViz({
+        emb, searchEmb: emb, words: allWords, groups: validGroups,
+        plotEl, eigenEl,
+      });
+    }
+  }
+
+  // Debounced live update as user types
+  let debounceTimer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(runExplorer, 500);
+  });
+
+  // Run with default content on load
+  runExplorer();
 }
 
 
