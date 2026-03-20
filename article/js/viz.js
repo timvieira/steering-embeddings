@@ -700,21 +700,58 @@ class EmbeddingViz {
     const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const norm3D = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
     const prev = this._prevCoords;
+    const n = Math.min(prev.length, norm3D.length);
+
+    // Normalize prev coords to [-1,1] for comparison
     const prevAll = prev.flatMap(c => [Math.abs(c[0]), Math.abs(c[1])]);
     const pm = Math.max(...prevAll) || 1;
     const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
+
+    // Score a candidate rotation using Procrustes-style alignment:
+    // find best scale+flip to match prevN, return residual distance.
+    function score(a, t) {
+      const p = project3Dto2D(norm3D, a, t);
+      // Try both orientations (flip y) since MDS eigenvectors have arbitrary sign
+      let best = Infinity;
+      for (const flipY of [1, -1]) {
+        // Compute optimal scale via least-squares: s = (sum p·prev) / (sum p·p)
+        let dot = 0, pp = 0;
+        for (let i = 0; i < n; i++) {
+          dot += p[i][0] * prevN[i][0] + (p[i][1] * flipY) * prevN[i][1];
+          pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
+        }
+        const s = pp > 0 ? dot / pp : 1;
+        let d = 0;
+        for (let i = 0; i < n; i++) {
+          d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] * flipY - prevN[i][1]) ** 2;
+        }
+        if (d < best) best = d;
+      }
+      return best;
+    }
+
+    // Coarse search: 36 angles × 9 tilts
     let bestA = 0, bestT = 0.4, bestD = Infinity;
     for (let ai = 0; ai < 36; ai++) {
       const a = ai * Math.PI / 18;
-      for (const t of [0.0, 0.3, 0.6, -0.3]) {
-        const p = project3Dto2D(norm3D, a, t);
-        let d = 0;
-        for (let i = 0; i < Math.min(prev.length, p.length); i++) {
-          d += (p[i][0] - prevN[i][0]) ** 2 + (p[i][1] - prevN[i][1]) ** 2;
-        }
+      for (let ti = -4; ti <= 4; ti++) {
+        const t = ti * 0.2;
+        const d = score(a, t);
         if (d < bestD) { bestD = d; bestA = a; bestT = t; }
       }
     }
+
+    // Fine search: refine ±5° around best angle, ±0.1 around best tilt
+    const fineStep = Math.PI / 180;  // 1° steps
+    for (let da = -5; da <= 5; da++) {
+      for (let dt = -2; dt <= 2; dt++) {
+        const a = bestA + da * fineStep;
+        const t = bestT + dt * 0.05;
+        const d = score(a, t);
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+      }
+    }
+
     this._rotationAngle = bestA;
     this._tiltAngle = bestT;
   }
@@ -723,8 +760,15 @@ class EmbeddingViz {
   // For 3D, normalizes to bounding sphere so scale is stable during rotation.
   _getCoords2D() {
     const raw = this.mdsData.coords[this.dims];
-    if (this.dims === 1) return raw.map(c => [c[0], 0]);
-    if (this.dims === 2) return raw;
+    if (this.dims === 1) {
+      const maxAbs = Math.max(...raw.map(c => Math.abs(c[0]))) || 1;
+      return raw.map(c => [c[0] / maxAbs, 0]);
+    }
+    if (this.dims === 2) {
+      // Normalize to bounding circle, same as 3D, so scale is consistent across transitions
+      const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
+      return raw.map(([x, y]) => [x / maxR, y / maxR]);
+    }
     // 3D: project and normalize to bounding sphere
     const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
