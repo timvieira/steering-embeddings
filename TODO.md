@@ -30,7 +30,10 @@
   - Added `renderSteering2D` in viz.js. Computes joint MDS over original+steered positions, then D3 transitions animate words from original to steered with ghost dots and trails. Steer/Reset buttons. Replaces the two separate before/after gendered pair plots.
 
 - [x] Build-your-own word groups explorer (text area → instant MDS plot)
-  - Added "Explore" section at bottom with textarea, Plot button, and MDS viz. Parses groups by line, handles missing words, click-to-expand/pan/zoom/dimension switching all work. Ctrl+Enter to plot.
+  - Added "Explore" section at bottom with textarea and MDS viz. Live update on input (debounced 500ms).
+  - `word - word` syntax defines steering pairs; Steer button appears when pairs are present.
+  - Words on a line connected by arrows. Ghost arrows + ghost dots show original positions during steering.
+  - Click-to-expand, pan/zoom, dimension switching all work.
 
 - [x] Draw the parallelogram in analogy visualizations: show a→b and c→answer
   as parallel arrows to make the vector arithmetic visible.
