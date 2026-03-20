@@ -77,7 +77,8 @@
   formula (cosine similarity is the standard metric for these vectors).
   - Added sentence explaining unit-length requirement for cosine similarity.
 
-- [ ] under the section "Which Words Changed Most?" show the points using a plot!
+- [x] under the section "Which Words Changed Most?" show the points using a plot!
+  - Added animated steering plot (renderSteering2D) for professions with joint MDS.
 
 
 ## Hero visualization
@@ -125,8 +126,9 @@
   the plots; I think it would be better to make that text unselectable.
   - Added `user-select: none` to `svg.plot` in CSS.
 
-- [ ] animations between 2d and 3d should find the closet 3d view to the current
+- [x] animations between 2d and 3d should find the closet 3d view to the current
   2d view.  There appears to be an unnecessarily large change.
+  - Added _findBestRotation: searches 36 angles × 4 tilts to find projection closest to current 2D layout.
 
 - [x] I cant rotate the points along all axes in 3d.
   - Added vertical drag (tilt angle) to the 3D projected view. Horizontal drag = rotation, vertical drag = tilt (clamped ±90°).
