@@ -125,7 +125,37 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count.</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors reconstruct the log co-occurrence counts:</p>
+
+<p style="color: #7b2d8b;">$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \;\approx\; \log X_{ij}$$</p>
+
+<p style="color: #7b2d8b;">where $b_i$ and $b_j$ are per-word bias terms. The training objective minimizes a weighted least-squares loss over all observed pairs: $\sum_{i,j} f(X_{ij})\big(\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j - \log X_{ij}\big)^2$, where $f$ downweights rare co-occurrences.</p>
+
+<p style="color: #7b2d8b;">In matrix form, this is a low-rank factorization: the $V \times V$ log co-occurrence matrix (where $V$ is the vocabulary size) is approximated by $W W^T$, where $W$ is a $V \times d$ matrix whose rows are the $d$-dimensional word vectors.</p>
+
+<figure style="text-align: center; margin: 1.5em 0;">
+<svg viewBox="0 0 480 100" style="max-width: 480px; width: 100%; height: auto;">
+  <!-- log X matrix -->
+  <rect x="10" y="10" width="80" height="80" fill="none" stroke="#7b2d8b" stroke-width="1.5" rx="2"/>
+  <text x="50" y="55" text-anchor="middle" font-size="13" fill="#7b2d8b">log X</text>
+  <text x="50" y="100" text-anchor="middle" font-size="10" fill="#999">V × V</text>
+  <!-- ≈ -->
+  <text x="115" y="55" text-anchor="middle" font-size="18" fill="#666">≈</text>
+  <!-- W matrix -->
+  <rect x="140" y="10" width="40" height="80" fill="none" stroke="#5778a4" stroke-width="1.5" rx="2"/>
+  <text x="160" y="55" text-anchor="middle" font-size="13" fill="#5778a4">W</text>
+  <text x="160" y="100" text-anchor="middle" font-size="10" fill="#999">V × d</text>
+  <!-- × -->
+  <text x="197" y="55" text-anchor="middle" font-size="14" fill="#666">×</text>
+  <!-- W^T matrix -->
+  <rect x="215" y="25" width="80" height="40" fill="none" stroke="#5778a4" stroke-width="1.5" rx="2"/>
+  <text x="255" y="50" text-anchor="middle" font-size="13" fill="#5778a4">W<tspan baseline-shift="super" font-size="9">T</tspan></text>
+  <text x="255" y="100" text-anchor="middle" font-size="10" fill="#999">d × V</text>
+  <!-- annotation -->
+  <text x="380" y="35" text-anchor="start" font-size="11" fill="#999">V ≈ 50,000 words</text>
+  <text x="380" y="52" text-anchor="start" font-size="11" fill="#999">d = 100 dimensions</text>
+</svg>
+</figure>
 
 <p style="color: #7b2d8b;">This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
@@ -139,15 +169,15 @@
 
 <p>Since our vectors are 100-dimensional, we project them to lower dimensions for plotting using <a href="https://en.wikipedia.org/wiki/Multidimensional_scaling"><b>MDS (multidimensional scaling)</b></a>, which finds a layout that best preserves pairwise distances. Use the eigenvalue bars to the right of each plot to switch between 1D, 2D, and 3D views. The percentage shows how much of the original distance structure is captured.</p>
 
-<p style="color: #7b2d8b;">Given $n$ words with pairwise distances $d_{ij}$, MDS works by double-centering the squared distance matrix to recover a matrix of inner products:</p>
+<p style="color: #7b2d8b;">Given $n$ words with pairwise distances $d_{ij}$, MDS recovers coordinates whose inter-point distances best match the originals. The key insight is that squared distances and inner products are related: if $\overrightarrow{x}_i$ are the (unknown) coordinates, then $d_{ij}^2 = \|\overrightarrow{x}_i\|^2 + \|\overrightarrow{x}_j\|^2 - 2\,\overrightarrow{x}_i \cdot \overrightarrow{x}_j$. Double-centering the squared distance matrix cancels the norm terms and recovers the inner products:</p>
 
 <p style="color: #7b2d8b;">$$B = -\tfrac{1}{2} H D^{(2)} H \quad \text{where} \quad D^{(2)}_{ij} = d_{ij}^2 \quad \text{and} \quad H = I - \tfrac{1}{n}\mathbf{1}\mathbf{1}^T$$</p>
 
-<p style="color: #7b2d8b;">The centering matrix $H$ subtracts row and column means (and adds back the grand mean), converting squared distances into a Gram matrix: $B_{ij} = (\overrightarrow{w}_i - \bar{w}) \cdot (\overrightarrow{w}_j - \bar{w})$. We then take the eigendecomposition $B = U \Lambda U^T$ and extract $m$-dimensional coordinates as:</p>
+<p style="color: #7b2d8b;">The centering matrix $H$ subtracts row and column means (and adds back the grand mean). The result is the Gram matrix of the mean-centered vectors: $B_{ij} = (\overrightarrow{w}_i - \bar{w}) \cdot (\overrightarrow{w}_j - \bar{w})$. Since $B$ is real and symmetric, we take its eigendecomposition $B = U \Lambda U^T$ and extract $m$-dimensional coordinates as:</p>
 
 <p style="color: #7b2d8b;">$$X_i = \big(\sqrt{\lambda_1}\, U_{i1},\;\; \sqrt{\lambda_2}\, U_{i2},\;\; \dots,\;\; \sqrt{\lambda_m}\, U_{im}\big)$$</p>
 
-<p style="color: #7b2d8b;">The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \,/\, \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
+<p style="color: #7b2d8b;">This is equivalent to PCA on the centered word vectors: the eigenvectors of $B$ are the principal directions, and $\sqrt{\lambda_k}$ scales each axis by the standard deviation along that direction. The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \,/\, \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
 
 <h3>Superlatives</h3>
 <p>Adjective forms trace out parallel paths:</p>
@@ -226,6 +256,12 @@
 <p style="color: #7b2d8b;">$$C = \frac{1}{2}\sum_{i=1}^{p} d_i \, d_i^T$$</p>
 
 <p style="color: #7b2d8b;">The factor of $\frac{1}{2}$ arises because each pair has two observations with one degree of freedom. $C$ is a $100 \times 100$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the SVD $C = U \Sigma V^T$ and keeping the top-$k$ columns of $U$ gives an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the pair differences.</p>
+
+<p style="color: #7b2d8b;">The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-subspace-anim"></div>
+</div>
 
 <h2>Steering by Subspace Projection</h2>
 
@@ -361,7 +397,7 @@ mother - father</textarea>
 <script type="module">
 const v = Date.now();
 const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${v}`);
-const { EmbeddingViz, renderHero3D, renderSteering2D } = await import(`./js/viz.js?v=${v}`);
+const { EmbeddingViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${v}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -874,6 +910,24 @@ function buildVisualizations() {
   if (sizePairWords.length > 0) {
     buildVizWithDirection(sizePairWords, SIZE_PAIRS, SIZE_PAIRS, 'size direction',
       'plot-size-pairs', 'eigen-size-pairs');
+  }
+
+  // Subspace identification animation (first 8 gender pairs)
+  const animPairDefs = GENDERED_WORDS.slice(0, 8);
+  const animWords = flatWords(animPairDefs, 'subspace anim');
+  if (animWords.length >= 4) {
+    const animMDS = computeAllMDS(emb, animWords);
+    const animCoords = animMDS.coords[2];
+    const animWordIdx = new Map(animWords.map((w, i) => [w, i]));
+    const animWordData = animWords.map((w, i) => ({ word: w, coord: animCoords[i] }));
+    const animPairIndices = animPairDefs
+      .filter(([a, b]) => animWordIdx.has(a) && animWordIdx.has(b))
+      .map(([a, b]) => ({ from: animWordIdx.get(a), to: animWordIdx.get(b) }));
+    renderSubspaceAnimation(
+      document.getElementById('plot-subspace-anim'),
+      animWordData,
+      { pairs: animPairIndices, directionLabel: 'gender direction' }
+    );
   }
 
   if (emb.has('man') && emb.has('woman') && emb.has('king')) {

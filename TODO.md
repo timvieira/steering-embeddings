@@ -123,20 +123,21 @@
   - 1D↔2D: y-coords collapse/spread. 2D↔3D: points slide to projected positions.
   - Three.js kept only for hero visualization.
 
-- [ ] can we show the subspace being identified from the group's vector, then
+- [x] can we show the subspace being identified from the group's vector, then
   their differences, followed by an (linear) adjustment, all as a
   smooth/informative/instructive animation?
+  Added `renderSubspaceAnimation` in viz.js with 5-step walkthrough:
+  Pairs → Differences (translated to centroid) → Direction → Projection → Steer.
+  Placed after the SVD math, before "Steering by Subspace Projection."
 
 
 ## Style
 
 
-- [ ] animations between 2d and 3d should find the closet 3d view to the current
+- [x] animations between 2d and 3d should find the closet 3d view to the current
   2d view.  There appears to be an unnecessarily large change.
-
-  - claude: Added _findBestRotation: searches 36 angles × 4 tilts to find projection closest to current 2D layout.
-
-  - timv: this still isn't minimal also there is often a funny zooming that happens that seems unncessary
+  - Coarse-to-fine rotation search (72 angles × 15 tilts, then ±3° refinement) with Procrustes-style optimal scaling.
+  - Fixed zoom jump: all dims now normalized to [-1,1] with fixed domain [-1.15,1.15], so viewport doesn't refit during transitions.
 
 
 - [x] I cant rotate the points along all axes in 3d.
