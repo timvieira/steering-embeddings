@@ -183,6 +183,11 @@
 
 <p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
 
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-gender-pairs"></div>
+  <div class="eigen-margin" id="eigen-gender-pairs"></div>
+</div>
+
 <p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs, compute the covariance matrix of their difference vectors, and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that captures the most variance across those pairs&mdash;the directions along which the pairs differ most consistently.</p>
 
 <h2>Steering by Subspace Projection</h2>
@@ -465,6 +470,16 @@ function buildVisualizations() {
       plotEl: document.getElementById('plot-numbers-linked'),
       eigenEl: document.getElementById('eigen-numbers-linked'),
       connectGroups: true,
+    }));
+  }
+
+  // Gender pairs plot: arrows from masculine to feminine show parallel difference vectors
+  const genderPairWords = flatWords(GENDERED_WORDS);
+  if (genderPairWords.length > 0) {
+    vizInstances.push(new EmbeddingViz({
+      emb, words: genderPairWords, groups: GENDERED_WORDS,
+      plotEl: document.getElementById('plot-gender-pairs'),
+      eigenEl: document.getElementById('eigen-gender-pairs'),
     }));
   }
 
