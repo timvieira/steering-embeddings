@@ -635,12 +635,8 @@ function buildVisualizations() {
     ['five','5'],['six','6'],['seven','7'],['eight','8'],['nine','9']];
   const linkedWords = flatWords(numLinkedPairs);
   if (linkedWords.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: linkedWords, groups: numLinkedPairs,
-      plotEl: document.getElementById('plot-numbers-linked'),
-      eigenEl: document.getElementById('eigen-numbers-linked'),
-      connectGroups: true,
-    }));
+    buildVizWithDirection(linkedWords, numLinkedPairs, numLinkedPairs, 'word vs digit',
+      'plot-numbers-linked', 'eigen-numbers-linked', { connectGroups: true });
   }
 
   // Gender pairs with SVD-derived gender direction
