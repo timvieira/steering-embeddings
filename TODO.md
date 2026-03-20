@@ -40,9 +40,11 @@
 
 ## AWESOMENESS
 - [x] Animate changes from 1 -> 2 -> 3 dimensions
-  - 1D↔2D: smooth D3 transitions — coords padded to 2D (y=0 for 1D), points slide between positions.
-  - 2D↔3D: opacity cross-fade (250ms out, render new, fade in).
-  - SVG is rebuilt fresh for dimension changes but enter transitions start at old positions.
+  - Unified all rendering to D3/SVG — no more Three.js for inline plots.
+  - 3D is projected via rotation matrix, auto-rotates with requestAnimationFrame.
+  - All dimension switches are smooth D3 transitions (same SVG, same elements).
+  - 1D↔2D: y-coords collapse/spread. 2D↔3D: points slide to projected positions.
+  - Three.js kept only for hero visualization.
 
 - [ ] can we show the subspace being identified from the group's vector, then
   their differences, followed by an (linear) adjustment, all as a
