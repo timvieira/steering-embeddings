@@ -130,7 +130,8 @@
 - [x] Pick more attractive colors (the specific red and blue colors we have are yucky)
   - Switched to Tableau-inspired muted palette: steel blue (#5778a4) and warm orange (#e49444).
 
-- [ ] Initial zoom on the hero plot could be increased on some platforms. Making it big is good.
+- [x] Initial zoom on the hero plot could be increased on some platforms. Making it big is good.
+  - Moved camera from (3,2,3) to (2,1.3,2), ~35% closer. Reduced title-hero spacing.
 
 - [x] Reorder gendered pairs to be feminine first.
   - All pairs now feminine first (woman/man, queen/king, etc.)
