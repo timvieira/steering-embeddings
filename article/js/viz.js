@@ -188,22 +188,21 @@ function render2D(container, words, coords, arrows, options = {}) {
     g = zoomG.append('g').attr('class', 'main')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Pan + zoom via d3.zoom
-    // In 3D mode (fixedDomain set), disable drag panning — orbit handles it
-    const zoom = d3.zoom()
-      .scaleExtent([0.5, 5])
-      .filter((event) => {
-        if (event.type === 'wheel') return true;
-        if (event.type === 'mousedown' || event.type === 'pointerdown') {
-          // In 3D projected mode, don't let d3.zoom handle drags (orbit does it)
-          if (fixedDomain) return false;
-          const tag = event.target.tagName;
-          return tag !== 'circle' && tag !== 'text';
-        }
-        return !fixedDomain;  // block other drag events in 3D too
-      })
-      .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
-    svg.call(zoom);
+    // Pan + zoom via d3.zoom — but NOT in 3D mode (orbit handles drag there)
+    if (!fixedDomain) {
+      const zoom = d3.zoom()
+        .scaleExtent([0.5, 5])
+        .filter((event) => {
+          if (event.type === 'wheel') return true;
+          if (event.type === 'mousedown' || event.type === 'pointerdown') {
+            const tag = event.target.tagName;
+            return tag !== 'circle' && tag !== 'text';
+          }
+          return true;
+        })
+        .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
+      svg.call(zoom);
+    }
     svg.style('cursor', 'grab');
     svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
     svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
