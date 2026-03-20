@@ -98,13 +98,6 @@
   - Added animated steering plot (renderSteering2D) for professions with joint MDS.
 
 
-## Hero visualization
-
-- [x] Marquee 3D scene at top with gendered pairs + professions, ghost/bright dots, trails
-
-- [ ] Marquee moves into margin on scroll; sections activate/deactivate parts of the scene
-
-
 ## AWESOMENESS
 
 - [x] Animate changes from 1 -> 2 -> 3 dimensions

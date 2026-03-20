@@ -368,11 +368,23 @@ async function init(size = 'medium') {
   const fill = document.getElementById('progress-fill');
   const text = document.getElementById('loading-text');
   overlay.classList.remove('hidden');
+  fill.style.width = '0%';
+  fill.style.background = '#5778a4';
+  text.textContent = '0%';
 
-  emb = await loadEmbeddings(SIZES[size].url, (pct) => {
-    fill.style.width = `${(pct * 100).toFixed(0)}%`;
-    text.textContent = `${(pct * 100).toFixed(0)}%`;
-  });
+  try {
+    emb = await loadEmbeddings(SIZES[size].url, (pct) => {
+      fill.style.width = `${(pct * 100).toFixed(0)}%`;
+      text.textContent = `${(pct * 100).toFixed(0)}%`;
+    });
+  } catch (err) {
+    fill.style.width = '100%';
+    fill.style.background = '#d9534f';
+    text.innerHTML = `<span style="color:#d9534f">Failed to load vectors: ${err.message}</span><br>` +
+      `<span style="font-size:12px">Check your connection and try again, or choose a smaller vocabulary.</span>`;
+    console.error('Load error:', err);
+    return;
+  }
 
   text.textContent = 'Computing steering vectors...';
   steered = emb.steer(GENDER_PAIRS, 10);
