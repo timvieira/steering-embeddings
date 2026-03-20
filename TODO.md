@@ -50,7 +50,7 @@
 - [x] Content is not correctly centered
   - Fixed alignment of equations (wrapped in `<p>`), analogy input (margin fix), cooccurrence image (changed to `<figure>`), and plots (48px left margin on plot-container). All elements now align with Distill text column.
 - [x] Remove the "waiting for review" thing (not publishing on Distill)
-  - Hidden via CSS: `.dt-banner { display: none !important; }`
+  - Hidden via CSS: `dt-banner { display: none !important; }` (element selector, not class)
 - [x] Pick more attractive colors (the specific red and blue colors we have are yucky)
   - Switched to Tableau-inspired muted palette: steel blue (#5778a4) and warm orange (#e49444).
 - [ ] Initial zoom on the hero plot could be increased on some platforms. Making it big is good.
@@ -63,6 +63,11 @@
 - [ ] Improve 2D arrow aesthetics
 - [x] Pan + zoom on all 2D and 1D plots
   - Added d3.zoom to all SVG plots (render2D, render1D, renderSteering2D). Scroll to zoom (0.5x-5x), drag background to pan. Zoom filter excludes clicks on circles/text so click-to-expand still works.
+- [x] Click-to-expand works in all dimensions (1D, 2D, 3D)
+  - 2D: D3 click handlers on circles and text labels.
+  - 3D: Three.js raycasting on sphere meshes with drag-vs-click detection.
+  - 1D: D3 click handlers on circles and text labels with stopPropagation.
+  - Expanded neighbors persist across dimension switches.
 - [x] Auto-orbit all 3D plots
   - Added controls.autoRotate = true to all 3D renders. Pauses on click-drag, resumes after 3s.
 - [x] Larger 3D text labels
