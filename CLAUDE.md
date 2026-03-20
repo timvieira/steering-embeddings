@@ -45,6 +45,24 @@ The test suite loads the full 50K vocabulary and takes ~60s.
   - `searchEmb` — used for click-to-expand neighbor search (should be the full 50K vocabulary)
   - When `buildVizWithDirection` creates an `extEmb`, always pass `searchEmb: emb` (the global one)
 
+## Deploying
+
+The deploy repo is a GitHub Pages site at `/tmp/steering-embeddings` (remote: `git@github.com:timvieira/steering-embeddings.git`). To deploy:
+
+```bash
+# Copy article files (one-way sync, never edit the deploy repo directly)
+cp article/index.html /tmp/steering-embeddings/
+cp article/js/* /tmp/steering-embeddings/js/
+cp article/css/* /tmp/steering-embeddings/css/
+cp article/img/* /tmp/steering-embeddings/img/
+
+# Commit and push
+cd /tmp/steering-embeddings
+git add -A && git commit -m "Sync from main repo" && git push
+```
+
+Note: `data/` (binary vectors) are already in the deploy repo and rarely change. Only copy them if `export_vectors.py` has been re-run.
+
 ## Workflow rules
 
 - **Always run tests** (`node article/test.mjs`) before committing. If tests fail, fix before committing.

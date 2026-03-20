@@ -88,7 +88,7 @@
 <p style="color: #999; font-size: 13px; line-height: 1.4; margin-bottom: 2em;">
   <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
   <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
- &mdash;Faded dots show original positions; bright dots show steered positions; trails show how each word moved.
+ &mdash;Each dot is a word; faded dots show original positions; bright dots show where they land after a gender direction is removed; trails show the shift.
 </p>
 
 <p>
@@ -109,7 +109,7 @@
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
-  <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
+  <figcaption>A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus. (<a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a>)</figcaption>
 </figure>
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
@@ -192,7 +192,7 @@
 
 <h2>Identifying Subspaces</h2>
 
-<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
+<p style="color: #7b2d8b;">The consistency of these analogies suggests that the embedding space contains <b>interpretable subspaces</b>&mdash;directions we can find systematically, not just stumble across in individual word pairs. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
 
 <p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
 
@@ -211,6 +211,8 @@
 
 <p style="color: #7b2d8b;">Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
 
+<p style="color: #7b2d8b;">The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize.</p>
+
 <p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
 <p style="color: #7b2d8b;">This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity.</p>
@@ -221,7 +223,7 @@
   <div class="plot-container" id="plot-gendered-steer"></div>
 </div>
 
-<h2>Results</h2>
+<h2>Steering in Action</h2>
 
 <h3>Occupation Analogies: Before vs. After</h3>
 <p>Before steering, the analogy man : woman :: doctor yields "nurse." After steering, both man&rarr;woman and woman&rarr;man yield "physician":</p>
@@ -252,7 +254,7 @@
 
 <h2>Explore</h2>
 
-<p>Type word groups below (one group per line). Use <code>-</code> between two words to define a steering pair &mdash; press <b>Steer</b> to project out that subspace.</p>
+<p>Type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Use <code>word - word</code> to define a steering pair&mdash;when pairs are present, a <b>Steer</b> button appears to project out that subspace.</p>
 
 <div>
 <textarea id="explorer-input" rows="8" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">doctor nurse programmer teacher scientist

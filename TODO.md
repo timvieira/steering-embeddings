@@ -112,29 +112,13 @@
 ## Style
 
 
-- [x] Remove the "waiting for review" thing (not publishing on Distill)
-  - Hidden via CSS: `dt-banner { display: none !important; }` (element selector, not class)
-
-- [x] Pick more attractive colors (the specific red and blue colors we have are yucky)
-  - Switched to Tableau-inspired muted palette: steel blue (#5778a4) and warm orange (#e49444).
-
-- [x] Initial zoom on the hero plot could be increased on some platforms. Making it big is good.
-  - Moved camera from (3,2,3) to (2,1.3,2), ~35% closer. Reduced title-hero spacing.
-
-- [x] Reorder gendered pairs to be feminine first.
-  - All pairs now feminine first (woman/man, queen/king, etc.)
-
-- [x] move the text "3D MDS captures 42.8% of variance" over to the right of the
-  plot around the [1,2,3} histogram thing.
-  - Moved variance % into the eigenvalue margin widget (below the bars). Removed from plot container.
-
-- [x] text inside visualizations constantly text selected when I interact with
-  the plots; I think it would be better to make that text unselectable.
-  - Added `user-select: none` to `svg.plot` in CSS.
-
-- [x] animations between 2d and 3d should find the closet 3d view to the current
+- [ ] animations between 2d and 3d should find the closet 3d view to the current
   2d view.  There appears to be an unnecessarily large change.
-  - Added _findBestRotation: searches 36 angles × 4 tilts to find projection closest to current 2D layout.
+  
+  - claude: Added _findBestRotation: searches 36 angles × 4 tilts to find projection closest to current 2D layout.
+
+  - timv: this still isn't minimal also there is often a funny zooming that happens that seems unncessary
+  
 
 - [x] I cant rotate the points along all axes in 3d.
   - Added vertical drag (tilt angle) to the 3D projected view. Horizontal drag = rotation, vertical drag = tilt (clamped ±90°).
@@ -175,9 +159,8 @@
   replace the external PNG with an inline SVG/table.
   - Added detailed alt text describing the matrix structure.
 
-- [x] Make plot dimensions responsive — currently hardcoded at 620x450px,
+- [ ] Make plot dimensions responsive — currently hardcoded at 620x450px,
   overflows on narrow screens.
-  - Added getResponsiveWidth() helper; all render functions read container clientWidth. Height uses 0.72 aspect ratio. Capped at 900px, fallback 620px.
 
 - [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
   show a user-visible message instead of leaving the loading overlay up forever.
@@ -188,6 +171,34 @@
 
 - [ ] Tighten the opening paragraph — lead with something more concrete or
   surprising rather than the dictionary-definition style.
+
+- [x] Add context to the hero visualization — readers land on trails and colored
+  dots before they know what embeddings or steering are.
+  - Added orienting caption: "Each dot is a word; faded dots show original positions; bright dots show where they land after a gender direction is removed; trails show the shift."
+
+- [ ] Beef up the Results section — the doctor/nurse example is a single case
+  stated in prose then shown in two plots. A brief table or a couple more
+  occupation examples inline would make it land harder.
+
+- [ ] Un-purple the Discussion section — first paragraph (limitations of
+  projection) should be in black; it's the main takeaway, not supplementary.
+
+- [x] Add a transition into "Identifying Subspaces" — bridging sentence from
+  analogies to subspace identification.
+  - Rewrote opening: "The consistency of these analogies suggests that the embedding space contains interpretable subspaces — directions we can find systematically, not just stumble across in individual word pairs."
+
+- [x] Add an intuitive gloss before the steering formula.
+  - Added: "The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize."
+
+- [x] Improve the co-occurrence figure caption — was just "source".
+  - Added inline description: "A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus."
+
+- [ ] Split the GloVe paragraph — it introduces GloVe, explains the
+  factorization objective, and connects it to linear structure all in one purple
+  block. The "which is why analogies work" payoff should be more prominent.
+
+- [x] Clarify the Explore section syntax.
+  - Rewrote instructions: explains that words on the same line are plotted together and connected by arrows, and that `word - word` defines steering pairs.
 
 
 ## Boo-boos?
