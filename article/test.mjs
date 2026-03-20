@@ -171,6 +171,49 @@ async function testClickToExpand() {
   test('Click-to-expand: original words preserved', origStillPresent);
 }
 
+async function testNeighborStylingAcrossDimensions() {
+  // Expand on numbers-digits (already has neighbors from earlier test)
+  // Check 2D neighbor styling
+  const style2d = await page.evaluate(() => {
+    const points = [...document.querySelectorAll('#plot-numbers-digits svg.plot circle.point')];
+    const fills = points.map(p => p.getAttribute('fill'));
+    const uniqueFills = [...new Set(fills)];
+    return { uniqueFills, hasGray: fills.some(f => f === 'rgb(153, 153, 153)' || f === '#999') };
+  });
+  test('Neighbor styling 2D: neighbors have different color', style2d.hasGray,
+    `fills: ${style2d.uniqueFills.join(', ')}`);
+
+  // Check 2D neighbor links
+  const links2d = await page.evaluate(() =>
+    document.querySelectorAll('#plot-numbers-digits svg.plot line.neighbor-link').length);
+  test('Neighbor styling 2D: dashed links present', links2d > 0, `${links2d} links`);
+
+  // Switch to 1D
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    if (bars.length >= 1) bars[0].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 2000));
+
+  const style1d = await page.evaluate(() => {
+    const circles = [...document.querySelectorAll('#plot-numbers-digits svg.plot circle')];
+    const fills = circles.map(c => c.getAttribute('fill'));
+    const hasGray = fills.some(f => f === '#999' || f === 'rgb(153, 153, 153)');
+    const links = document.querySelectorAll('#plot-numbers-digits svg.plot line.neighbor-link').length;
+    return { hasGray, linkCount: links };
+  });
+  test('Neighbor styling 1D: neighbors have different color', style1d.hasGray);
+  test('Neighbor styling 1D: dashed links present', style1d.linkCount > 0,
+    `${style1d.linkCount} links`);
+
+  // Switch back to 2D for subsequent tests
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 2000));
+}
+
 async function testClickToExpand3D() {
   // Switch numbers-digits to 3D
   await page.evaluate(() => {
@@ -350,6 +393,7 @@ await testMathRendering();
 await testAnalogyInput();
 await testSteeringAnimation();
 await testClickToExpand();
+await testNeighborStylingAcrossDimensions();
 await testClickToExpand3D();
 await testClickToExpand1D();
 await testPanZoom();

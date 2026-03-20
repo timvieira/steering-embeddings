@@ -264,7 +264,8 @@ function render2D(container, words, coords, arrows, options = {}) {
  * 3D scatter plot with arrows using Three.js.
  */
 function render3D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], crossGroupLines = [], width = 620, height = 450 } = options;
+  const { highlights = [], crossGroupLines = [], width = 620, height = 450,
+    neighborWords = new Set(), neighborLinks = [] } = options;
 
   // Clear
   const el = typeof container === 'string' ? document.getElementById(container) : container;
@@ -298,10 +299,10 @@ function render3D(container, words, coords, arrows, options = {}) {
   for (let i = 0; i < words.length; i++) {
     const [x, y, z] = coords[i].map(v => v * scale);
     const isHL = highlightSet.has(i);
+    const isNeighbor = neighborWords.has(words[i]);
+    const pointColor = isHL ? COLORS.highlight : isNeighbor ? '#999' : COLORS.point;
     const geo = new THREE.SphereGeometry(isHL ? 0.06 : 0.04, 16, 16);
-    const mat = new THREE.MeshBasicMaterial({
-      color: isHL ? COLORS.highlight : COLORS.point
-    });
+    const mat = new THREE.MeshBasicMaterial({ color: pointColor });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
     mesh.userData = { index: i, word: words[i] };
@@ -312,8 +313,8 @@ function render3D(container, words, coords, arrows, options = {}) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.width = 512; canvas.height = 128;
-    ctx.font = 'bold 48px sans-serif';
-    ctx.fillStyle = '#333';
+    ctx.font = isNeighbor ? '40px sans-serif' : 'bold 48px sans-serif';
+    ctx.fillStyle = isNeighbor ? '#666' : '#333';
     ctx.textAlign = 'center';
     ctx.fillText(words[i], 256, 80);
     const texture = new THREE.CanvasTexture(canvas);
@@ -340,6 +341,20 @@ function render3D(container, words, coords, arrows, options = {}) {
       dir.normalize(), start, len, arrowColor, headLen, headWidth
     );
     scene.add(arrow);
+  }
+
+  // Neighbor links (dashed lines from parent to child)
+  for (const { parent, child } of neighborLinks) {
+    if (parent >= coords.length || child >= coords.length) continue;
+    const points = [
+      new THREE.Vector3(...coords[parent].map(v => v * scale)),
+      new THREE.Vector3(...coords[child].map(v => v * scale)),
+    ];
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineDashedMaterial({ color: '#ccc', dashSize: 0.04, gapSize: 0.02 });
+    const line = new THREE.Line(geo, mat);
+    line.computeLineDistances();
+    scene.add(line);
   }
 
   // Cross-group lines
@@ -424,7 +439,7 @@ function render3D(container, words, coords, arrows, options = {}) {
  * 1D strip plot using D3.
  */
 function render1D(container, words, coords, arrows, options = {}) {
-  const { highlights = [], width = 620, height = 120 } = options;
+  const { highlights = [], width = 620, height = 120, neighborWords = new Set(), neighborLinks = [] } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
 
@@ -455,6 +470,14 @@ function render1D(container, words, coords, arrows, options = {}) {
 
   const highlightSet = new Set(highlights);
 
+  // Neighbor links (dashed lines from parent to child)
+  const linkData = neighborLinks.filter(l => l.child < coords.length && l.parent < coords.length);
+  g.selectAll('line.neighbor-link').data(linkData).enter().append('line')
+    .attr('class', 'neighbor-link')
+    .attr('x1', d => xScale(coords[d.parent][0])).attr('y1', 0)
+    .attr('x2', d => xScale(coords[d.child][0])).attr('y2', 0)
+    .attr('stroke', '#ccc').attr('stroke-width', 1).attr('stroke-dasharray', '3,2');
+
   const pointData = coords.map((c, i) => ({ c, i, word: words[i] }));
 
   g.selectAll('circle')
@@ -463,7 +486,8 @@ function render1D(container, words, coords, arrows, options = {}) {
     .attr('cx', d => xScale(d.c[0]))
     .attr('cy', 0)
     .attr('r', d => highlightSet.has(d.i) ? 5 : 3)
-    .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight : COLORS.point)
+    .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight :
+      neighborWords.has(d.word) ? '#999' : COLORS.point)
     .style('cursor', options.onClick ? 'pointer' : 'default')
     .on('click', options.onClick ? (event, d) => { event.stopPropagation(); options.onClick(d.i, d.word); } : null);
 
@@ -476,8 +500,8 @@ function render1D(container, words, coords, arrows, options = {}) {
     .attr('text-anchor', 'middle')
     .style('cursor', options.onClick ? 'pointer' : 'default')
     .on('click', options.onClick ? (event, d) => { event.stopPropagation(); options.onClick(d.i, d.word); } : null)
-    .attr('font-size', '11px')
-    .attr('fill', '#333')
+    .attr('font-size', d => neighborWords.has(d.word) ? '10px' : '11px')
+    .attr('fill', d => neighborWords.has(d.word) ? '#666' : '#333')
     .text(d => d.word);
 }
 
