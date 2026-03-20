@@ -88,13 +88,15 @@
 - [ ] move the text "3D MDS captures 42.8% of variance" over to the right of the
   plot around the [1,2,3} histogram thing.
 
-- [ ] text inside visualizations constantly text selected when I interact with
+- [x] text inside visualizations constantly text selected when I interact with
   the plots; I think it would be better to make that text unselectable.
+  - Added `user-select: none` to `svg.plot` in CSS.
 
 - [ ] animations between 2d and 3d should find the closet 3d view to the current
   2d view.  There appears to be an unnecessarily large change.
 
-- [ ] I cant rotate the points along all axes in 3d.
+- [x] I cant rotate the points along all axes in 3d.
+  - Added vertical drag (tilt angle) to the 3D projected view. Horizontal drag = rotation, vertical drag = tilt (clamped ±90°).
 
 
 ## Polish
