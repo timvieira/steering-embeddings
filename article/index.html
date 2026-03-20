@@ -213,7 +213,7 @@
 
 <p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
-<p style="color: #7b2d8b;">This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity (the dot product of unit vectors).</p>
+<p style="color: #7b2d8b;">This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity.</p>
 
 <p>We define a gender subspace using pronoun pairs. Press <b>Steer</b> to watch the embeddings shift as the gender direction is projected out:</p>
 
