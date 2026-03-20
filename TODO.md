@@ -175,8 +175,9 @@
   replace the external PNG with an inline SVG/table.
   - Added detailed alt text describing the matrix structure.
 
-- [ ] Make plot dimensions responsive — currently hardcoded at 620x450px,
+- [x] Make plot dimensions responsive — currently hardcoded at 620x450px,
   overflows on narrow screens.
+  - Added getResponsiveWidth() helper; all render functions read container clientWidth. Height uses 0.72 aspect ratio. Capped at 900px, fallback 620px.
 
 - [ ] Add error handling for failed binary loads (fetch error, 404, offline) —
   show a user-visible message instead of leaving the loading overlay up forever.
