@@ -219,6 +219,10 @@
 </div>
 
 <h3>Which Words Changed Most?</h3>
+<p>Press <b>Steer</b> to see how each occupation's embedding shifts when the gender subspace is removed:</p>
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-profession-steer"></div>
+</div>
 <div id="profession-ranking"></div>
 
 <h2>Discussion</h2>
@@ -569,15 +573,15 @@ function buildVisualizations() {
       const a = wordIdx.get(w1), b = wordIdx.get(w2);
       if (a !== undefined && b !== undefined) gpArrows.push({ from: a, to: b });
     }
-    // Direction arrow (red, from negative to positive end)
-    gpArrows.push({ from: anchorNegIdx, to: anchorPosIdx, color: 'red' });
+    // Direction arrow: dashed, thick, no circles at endpoints
+    gpArrows.push({ from: anchorNegIdx, to: anchorPosIdx, color: 'red', dashed: true, thick: true });
 
     vizInstances.push(new EmbeddingViz({
       emb: extEmb, words: allWords, groups: GENDERED_WORDS,
       plotEl: document.getElementById('plot-gender-pairs'),
       eigenEl: document.getElementById('eigen-gender-pairs'),
       arrows: gpArrows,
-      highlights: [anchorNegIdx, anchorPosIdx],
+      hiddenPoints: new Set([anchorNegIdx, anchorPosIdx]),
     }));
   }
 
@@ -624,6 +628,32 @@ function buildVisualizations() {
   if (emb.has('doctor')) {
     vizInstances.push(buildAnalogyViz('plot-doctor-before', 'eigen-doctor-before', 'man', 'woman', 'doctor', 10, emb));
     vizInstances.push(buildAnalogyViz('plot-doctor-after', 'eigen-doctor-after', 'man', 'woman', 'doctor', 10, steered));
+  }
+
+  // Profession steering plot
+  const profWords = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
+  if (profWords.length > 0) {
+    const n = profWords.length;
+    const nn = 2 * n;
+    const D = new Float64Array(nn * nn);
+    for (let i = 0; i < nn; i++) {
+      for (let j = 0; j < i; j++) {
+        const wi = i < n ? steered.vec(profWords[i]) : emb.vec(profWords[i - n]);
+        const wj = j < n ? steered.vec(profWords[j]) : emb.vec(profWords[j - n]);
+        let dist = 0;
+        for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+        dist = Math.sqrt(dist);
+        D[i * nn + j] = dist;
+        D[j * nn + i] = dist;
+      }
+    }
+    const { coords: profCoords } = mds(D, nn, 2);
+    const profSteerData = profWords.map((w, i) => ({
+      word: w, group: 'occupation',
+      steeredCoord: profCoords[i],
+      origCoord: profCoords[n + i],
+    }));
+    renderSteering2D(document.getElementById('plot-profession-steer'), profSteerData);
   }
 
   const rankEl = document.getElementById('profession-ranking');

@@ -131,6 +131,7 @@ function render2D(container, words, coords, arrows, options = {}) {
     neighborWords = new Set(), neighborLinks = [],
     animate = false, prevCoords = null, prevWords = null,
     fixedDomain = null,  // optional: [min, max] for both axes (for stable 3D rotation)
+    hiddenPoints = new Set(),  // indices of points to hide (no circle or label)
   } = options;
   const margin = { top: 30, right: 30, bottom: 30, left: 30 };
   const w = width - margin.left - margin.right;
@@ -253,8 +254,10 @@ function render2D(container, words, coords, arrows, options = {}) {
   const arrowSel = g.selectAll('line.arrow').data(arrowData, (d, i) => `a-${d.from}-${d.to}`);
   arrowSel.exit().remove();
   const arrowEnter = arrowSel.enter().append('line').attr('class', 'arrow')
-    .attr('stroke-width', 1.5)
+    .attr('stroke-width', d => d.thick ? 2.5 : 1.5)
     .attr('stroke', d => d.color === 'red' ? COLORS.highlight : COLORS.arrow)
+    .attr('stroke-dasharray', d => d.dashed ? '8,4' : null)
+    .attr('opacity', d => d.dashed ? 0.8 : 1)
     .attr('marker-end', d => `url(#arrow${d.color === 'red' ? '-red' : ''}-${cid})`);
   arrowEnter.merge(arrowSel).transition().duration(dur)
     .attr('x1', d => xScale(coords[d.from][0])).attr('y1', d => yScale(coords[d.from][1]))
@@ -272,7 +275,7 @@ function render2D(container, words, coords, arrows, options = {}) {
   circlesEnter.merge(circles).transition().duration(dur)
     .attr('cx', d => xScale(d.c[0]))
     .attr('cy', d => yScale(d.c[1]))
-    .attr('r', d => highlightSet.has(d.i) ? 5 : 3.5)
+    .attr('r', d => hiddenPoints.has(d.i) ? 0 : highlightSet.has(d.i) ? 5 : 3.5)
     .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight :
       neighborWords.has(d.word) ? '#999' : COLORS.point);
 
@@ -288,8 +291,10 @@ function render2D(container, words, coords, arrows, options = {}) {
   labelsEnter.merge(labels).transition().duration(dur)
     .attr('x', d => xScale(d.c[0]))
     .attr('y', d => yScale(d.c[1]) - 8)
-    .attr('font-size', d => neighborWords.has(d.word) ? '10px' : '11px')
-    .attr('fill', d => neighborWords.has(d.word) ? '#666' : '#333')
+    .attr('font-size', d => hiddenPoints.has(d.i) ? '12px' : neighborWords.has(d.word) ? '10px' : '11px')
+    .attr('font-weight', d => hiddenPoints.has(d.i) ? 'bold' : 'normal')
+    .attr('font-style', d => hiddenPoints.has(d.i) ? 'italic' : 'normal')
+    .attr('fill', d => hiddenPoints.has(d.i) ? COLORS.highlight : neighborWords.has(d.word) ? '#666' : '#333')
     .style('opacity', 1);
 
   // --- Click handlers ---
@@ -561,6 +566,7 @@ class EmbeddingViz {
     this.arrows = config.arrows || [];
     this.highlights = config.highlights || [];
     this.crossGroupLines = config.crossGroupLines || [];
+    this.hiddenPoints = config.hiddenPoints || new Set();
     this.connectGroups = config.connectGroups || false;
     this.dims = config.initialDims || 2;
     this.neighborWords = new Set();   // words added via click expansion
@@ -612,11 +618,17 @@ class EmbeddingViz {
         this.mdsData.eigenvalues,
         this.dims,
         (newDims) => {
-          // Save current projected coords as prev for smooth transition
           this._prevCoords = this._currentCoords2D;
           this._prevWords = [...this.words];
+          const prevDims = this.dims;
           this.dims = newDims;
           this._stopRotation();
+
+          // When switching to 3D, find rotation angle that best matches current 2D layout
+          if (newDims === 3 && prevDims <= 2 && this._prevCoords) {
+            this._findBestRotation();
+          }
+
           this.render(true);
         }
       );
@@ -796,6 +808,7 @@ class EmbeddingViz {
       prevWords: this._prevWords,
       onClick: this._makeOnClick(),
       fixedDomain,
+      hiddenPoints: this.hiddenPoints,
     };
 
     render2D(el, this.words, coords2D, this.arrows, opts);
