@@ -68,6 +68,10 @@
   - 3D: Three.js raycasting on sphere meshes with drag-vs-click detection.
   - 1D: D3 click handlers on circles and text labels with stopPropagation.
   - Expanded neighbors persist across dimension switches.
+- [x] Neighbor styling (gray dots, dashed links, smaller labels) propagates to 1D and 3D
+  - 1D: added neighborWords/neighborLinks support, gray fills, dashed lines.
+  - 3D: gray sphere color, lighter label text, LineDashedMaterial links.
+  - Tested: 2D→1D switch preserves gray colors and dashed links.
 - [x] Auto-orbit all 3D plots
   - Added controls.autoRotate = true to all 3D renders. Pauses on click-drag, resumes after 3s.
 - [x] Larger 3D text labels
