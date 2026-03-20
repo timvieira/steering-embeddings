@@ -1387,31 +1387,30 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
     `Project out: ${km('\\overrightarrow{w}_{\\text{steered}} = \\overrightarrow{w} - \\overrightarrow{w}_{\\mathcal{B}}')}`,
   ];
 
+  // --- In-plot description overlay (foreignObject at bottom of SVG) ---
+  const descFO = svg.append('foreignObject')
+    .attr('x', margin.left).attr('y', height - margin.bottom - 6)
+    .attr('width', w).attr('height', margin.bottom + 6);
+  const descDiv = descFO.append('xhtml:div')
+    .style('font-size', '13px').style('color', '#555').style('line-height', '1.3')
+    .style('background', 'rgba(255,255,255,0.85)')
+    .style('padding', '2px 4px').style('border-radius', '3px');
+
+  // --- Button below the plot ---
   const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')
-    .style('margin-top', '8px');
+    .style('margin-top', '4px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
 
-  const btnRow = ctrlDiv.append('div')
-    .style('display', 'flex').style('gap', '8px').style('align-items', 'center');
-
-  const btn = btnRow.append('button')
+  const btn = ctrlDiv.append('button')
     .style('background', COLORS.point).style('color', 'white').style('border', 'none')
     .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
     .style('cursor', 'pointer').text('Next ▶');
 
-  const stepCounter = btnRow.append('span')
+  const stepCounter = ctrlDiv.append('span')
     .style('font-size', '12px').style('color', '#999');
-
-  const descDiv = ctrlDiv.append('div')
-    .style('font-size', '14px').style('color', '#333').style('margin-top', '4px')
-    .style('min-height', '2.5em').style('line-height', '1.4')
-    .style('transition', 'background 0.3s');
 
   function updateStatus() {
     stepCounter.text(`Step ${currentStep + 1} of ${stepDescs.length}`);
     descDiv.html(stepDescs[currentStep]);
-    // Flash background to draw attention to the text change
-    descDiv.style('background', '#fff3cd');
-    setTimeout(() => descDiv.style('background', 'transparent'), 600);
   }
   updateStatus();
 
