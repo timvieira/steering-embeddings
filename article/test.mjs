@@ -359,11 +359,17 @@ async function testPanZoom() {
   // Check all SVG plots have zoom infrastructure
   const allPlots = await page.evaluate(() => {
     const svgs = [...document.querySelectorAll('svg.plot')];
-    return svgs.map(svg => ({
-      hasZoomContainer: !!svg.querySelector('g.zoom-container'),
-      hasCursor: svg.style.cursor === 'grab',
-      id: svg.closest('.plot-container')?.id || 'unknown',
-    }));
+    return svgs
+      .filter(svg => {
+        // Skip non-zoomable plots (e.g., subspace animation has its own controls)
+        const container = svg.closest('.plot-container');
+        return container && !container.id.includes('subspace-anim');
+      })
+      .map(svg => ({
+        hasZoomContainer: !!svg.querySelector('g.zoom-container'),
+        hasCursor: svg.style.cursor === 'grab',
+        id: svg.closest('.plot-container')?.id || 'unknown',
+      }));
   });
 
   const allHaveZoom = allPlots.every(p => p.hasZoomContainer);
