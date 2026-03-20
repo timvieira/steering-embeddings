@@ -453,44 +453,86 @@ function buildHero() {
 // - label: text label for the direction arrowhead
 // - plotId, eigenId: DOM element IDs
 // - vizConfig: extra config to pass to EmbeddingViz (e.g. connectGroups)
+// Two direction-finding modes:
+//
+// 'pairs' (default): SVD on the covariance of pair difference vectors.
+//   Correct when many word pairs share a consistent direction (gender,
+//   degree). The top eigenvector is the axis that best explains the
+//   paired variation. Oriented to align with mean w1→w2 difference.
+//
+// 'pca': PCA on the word vectors themselves (mean-center, then SVD).
+//   Correct for ordered sequences (numbers) where the words spread
+//   along a principal axis. Oriented so projections increase with
+//   word order (first word → last word).
+//
 function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, vizConfig = {}) {
   if (words.length === 0) return null;
   const d = emb.dims;
-
-  // Compute top-1 SVD direction from pair differences in 100-D
-  const C = new Float64Array(d * d);
-  let pairCount = 0;
-  for (const [w1, w2] of pairs) {
-    const v1 = emb.vec(w1), v2 = emb.vec(w2);
-    if (!v1 || !v2) continue;
-    const diff = new Float64Array(d);
-    for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
-    for (let i = 0; i < d; i++)
-      for (let j = 0; j < d; j++)
-        C[i * d + j] += diff[i] * diff[j] / 2;
-    pairCount++;
-  }
-  if (pairCount === 0) return null;
-
-  const Cmat = [];
-  for (let i = 0; i < d; i++) {
-    Cmat.push([]);
-    for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
-  }
-  const { u: svdU } = SVDJS.SVD(Cmat);
+  const mode = vizConfig.directionMode || 'pairs';
   const dir = new Float64Array(d);
-  for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
 
-  // Orient: SVD eigenvector has arbitrary sign. Align with mean pair difference.
-  const meanDiff = new Float64Array(d);
-  for (const [w1, w2] of pairs) {
-    const v1 = emb.vec(w1), v2 = emb.vec(w2);
-    if (!v1 || !v2) continue;
-    for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+  if (mode === 'pairs') {
+    // SVD on covariance of pair differences
+    const C = new Float64Array(d * d);
+    let pairCount = 0;
+    for (const [w1, w2] of pairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      const diff = new Float64Array(d);
+      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += diff[i] * diff[j] / 2;
+      pairCount++;
+    }
+    if (pairCount === 0) return null;
+
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+
+    // Orient: align with mean w1→w2 difference
+    const meanDiff = new Float64Array(d);
+    for (const [w1, w2] of pairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+    }
+    let dot = 0;
+    for (let i = 0; i < d; i++) dot += dir[i] * meanDiff[i];
+    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+
+  } else if (mode === 'pca') {
+    // PCA: mean-center word vectors, then top SVD vector
+    const centroid = new Float64Array(d);
+    const vecs = words.map(w => emb.vec(w));
+    for (const v of vecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
+    for (let i = 0; i < d; i++) centroid[i] /= words.length;
+
+    const C = new Float64Array(d * d);
+    for (const v of vecs) {
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
+    }
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+
+    // Orient: align with first→last word direction
+    const vFirst = vecs[0], vLast = vecs[vecs.length - 1];
+    let dot = 0;
+    for (let i = 0; i < d; i++) dot += dir[i] * (vLast[i] - vFirst[i]);
+    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
   }
-  let dot = 0;
-  for (let i = 0; i < d; i++) dot += dir[i] * meanDiff[i];
-  if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
 
   // Centroid of all plotted words in 100-D
   const centroid = new Float64Array(d);
@@ -575,22 +617,18 @@ function buildVisualizations() {
       'plot-superlatives', 'eigen-superlatives');
   }
 
+  // Digits with "counting" direction via PCA (principal axis of the sequence)
   const digits = '1 2 3 4 5 6 7 8 9 10 11 12 13'.split(' ').filter(w => emb.has(w));
   if (digits.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: digits, groups: [digits],
-      plotEl: document.getElementById('plot-numbers-digits'),
-      eigenEl: document.getElementById('eigen-numbers-digits'),
-    }));
+    buildVizWithDirection(digits, [], [digits], 'counting',
+      'plot-numbers-digits', 'eigen-numbers-digits', { directionMode: 'pca' });
   }
 
+  // Number words with "counting" direction via PCA
   const numWords = 'one two three four five six seven eight nine ten eleven twelve thirteen'.split(' ').filter(w => emb.has(w));
   if (numWords.length > 0) {
-    vizInstances.push(new EmbeddingViz({
-      emb, words: numWords, groups: [numWords],
-      plotEl: document.getElementById('plot-numbers-words'),
-      eigenEl: document.getElementById('eigen-numbers-words'),
-    }));
+    buildVizWithDirection(numWords, [], [numWords], 'counting',
+      'plot-numbers-words', 'eigen-numbers-words', { directionMode: 'pca' });
   }
 
   const numLinkedPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
