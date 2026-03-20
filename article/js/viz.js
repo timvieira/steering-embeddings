@@ -148,7 +148,9 @@ function render2D(container, words, coords, arrows, options = {}) {
     fixedDomain = null,  // optional: [min, max] for both axes (for stable 3D rotation)
     hiddenPoints = new Set(),  // indices of points to hide (no circle or label)
   } = options;
-  const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+  // Detect 1D mode early: all y-coords are ~0 (set by _getCoords2D for dims===1)
+  const is1D = !fixedDomain && coords.every(c => Math.abs(c[1]) < 1e-9);
+  const margin = { top: is1D ? 100 : 30, right: 30, bottom: is1D ? 15 : 30, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
   const dur = animate ? 600 : 0;
@@ -169,34 +171,6 @@ function render2D(container, words, coords, arrows, options = {}) {
     const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
     xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
     yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
-  }
-
-  // Detect 1D mode: all y-coords are ~0 (set by _getCoords2D for dims===1)
-  const is1D = !fixedDomain && coords.every(c => Math.abs(c[1]) < 1e-9);
-
-  // In 1D mode, compute vertical offsets to avoid label collisions.
-  // Sort by x, then greedily assign labels to staggered vertical slots.
-  const labelOffsets = new Float64Array(coords.length);  // extra y-offset per label (in px)
-  if (is1D) {
-    const indices = coords.map((_, i) => i).sort((a, b) => xScale(coords[a][0]) - xScale(coords[b][0]));
-    const minGap = 14;  // minimum horizontal gap in px before displacing
-    // Slots alternate above/below: slot 0 = default (above), 1 = below, 2 = further above, etc.
-    const slotOffsets = [0, 40, -20, 60, -40, 80];
-    const placed = [];  // { x, slot } of already-placed labels
-    for (const idx of indices) {
-      const px = xScale(coords[idx][0]);
-      // Find which slots are taken by nearby labels
-      const takenSlots = new Set();
-      for (const p of placed) {
-        if (Math.abs(p.x - px) < minGap) takenSlots.add(p.slot);
-      }
-      let slot = 0;
-      for (let s = 0; s < slotOffsets.length; s++) {
-        if (!takenSlots.has(s)) { slot = s; break; }
-      }
-      labelOffsets[idx] = slotOffsets[slot] || 0;
-      placed.push({ x: px, slot });
-    }
   }
 
   // Map previous words to their old MDS coords for animation start positions
@@ -323,15 +297,13 @@ function render2D(container, words, coords, arrows, options = {}) {
       neighborWords.has(d.word) ? '#999' : COLORS.point);
 
   // --- Labels (keyed by word) ---
-  // In 1D mode, labels rotate -55° and use text-anchor:end so they fan upward from the point.
-  // All labels use transform (translate + rotate) for positioning so rotation animates smoothly.
-  const labelAngle = is1D ? -55 : 0;
-  const labelAnchor = is1D ? 'end' : 'middle';
+  // In 1D mode, labels rotate -90° (vertical, reading bottom-to-top) with text-anchor:start
+  // so they extend upward from the point. All use transform for smooth animated transitions.
+  const labelAngle = is1D ? -90 : 0;
+  const labelAnchor = is1D ? 'start' : 'middle';
   function labelXY(d) {
     const lx = xScale(d.c[0]);
-    const ly = is1D
-      ? yScale(d.c[1]) - 6 + labelOffsets[d.i]
-      : yScale(d.c[1]) - 8;
+    const ly = yScale(d.c[1]) - (is1D ? 6 : 8);
     return [lx, ly];
   }
 
@@ -909,6 +881,12 @@ class EmbeddingViz {
     // For 3D, use a fixed domain so scale doesn't change during rotation
     const fixedDomain = this.dims === 3 ? [-1.15, 1.15] : null;
 
+    // In 1D mode, use a compact height — the data is a single line
+    const plotWidth = getResponsiveWidth(el);
+    const plotHeight = this.dims === 1
+      ? Math.min(200, Math.round(plotWidth * 0.35))
+      : Math.round(plotWidth * 0.72);
+
     const opts = {
       highlights: this.highlights,
       crossGroupLines: this.crossGroupLines,
@@ -920,6 +898,8 @@ class EmbeddingViz {
       onClick: this._makeOnClick(),
       fixedDomain,
       hiddenPoints: this.hiddenPoints,
+      width: plotWidth,
+      height: plotHeight,
     };
 
     render2D(el, this.words, coords2D, this.arrows, opts);

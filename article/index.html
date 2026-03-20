@@ -1037,7 +1037,10 @@ function setupAnalogyInput() {
     if (!emb.has(c)) { result.innerHTML = `<span class="error">"${c}" not in vocabulary</span>`; return; }
 
     const answers = emb.analogy(a, b, c, 5);
+    const query = `Explain this analogy: "${a} is to ${b} as ${c} is to ${answers[0]}." The other top answers were ${answers.slice(1).join(', ')}. What's the connection? Be concise.`;
+    const perplexityUrl = `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`;
     result.innerHTML = `${a} is to ${b} as ${c} is to <span class="answer">${answers[0]}</span>` +
+      ` <a href="${perplexityUrl}" target="_blank" rel="noopener" title="Explain with AI" style="font-size:13px;color:#999;text-decoration:none;border-bottom:1px dashed #ccc;">explain?</a>` +
       `<br><span style="color:#999;font-size:14px">Also: ${answers.slice(1).join(', ')}</span>`;
 
     buildAnalogyViz('plot-analogy-custom', 'eigen-analogy-custom', a, b, c, 10, emb);

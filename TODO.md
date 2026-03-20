@@ -23,6 +23,16 @@
 - Are there places that are lacking mathematical detail or rigor?  (E.g., matrix
   factorization, and MDS explanation are a bit weak.)
 
+- AI explanation of surprising analogies — currently an "explain?" link that
+  opens Perplexity with a pre-filled query. Inline display would be better but
+  blocked by CORS (can't fetch from perplexity.ai in the browser). Options:
+  - **Link out to Perplexity** (current) — works, no server needed, but leaves the page.
+  - **Proxy server** — would allow inline display but breaks "runs entirely in the browser."
+  - **Perplexity API** — requires API key, not free, can't embed key in client JS.
+  - **iframe** — Perplexity blocks framing (X-Frame-Options).
+  - Could revisit if we ever add a backend, or if a free chat API with CORS support appears.
+
+
 ## Article interactivity
 
 - [x] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
