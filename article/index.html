@@ -631,12 +631,124 @@ function buildVisualizations() {
       'plot-numbers-words', 'eigen-numbers-words', { directionMode: 'pca' });
   }
 
+  // Linked numbers: two direction arrows — "word vs digit" (pair SVD) and "counting" (PCA)
   const numLinkedPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
     ['five','5'],['six','6'],['seven','7'],['eight','8'],['nine','9']];
   const linkedWords = flatWords(numLinkedPairs);
   if (linkedWords.length > 0) {
-    buildVizWithDirection(linkedWords, numLinkedPairs, numLinkedPairs, 'word vs digit',
-      'plot-numbers-linked', 'eigen-numbers-linked', { connectGroups: true });
+    const d = emb.dims;
+    const vecs = linkedWords.map(w => emb.vec(w));
+
+    // Direction 1: "word vs digit" via pair-difference SVD
+    const C1 = new Float64Array(d * d);
+    for (const [w1, w2] of numLinkedPairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (!v1 || !v2) continue;
+      const diff = new Float64Array(d);
+      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C1[i * d + j] += diff[i] * diff[j] / 2;
+    }
+    const C1mat = [];
+    for (let i = 0; i < d; i++) { C1mat.push([]); for (let j = 0; j < d; j++) C1mat[i].push(C1[i * d + j]); }
+    const { u: u1 } = SVDJS.SVD(C1mat);
+    const dir1 = new Float64Array(d);
+    for (let i = 0; i < d; i++) dir1[i] = u1[i][0];
+    // Orient: word→digit
+    const meanDiff = new Float64Array(d);
+    for (const [w1, w2] of numLinkedPairs) {
+      const v1 = emb.vec(w1), v2 = emb.vec(w2);
+      if (v1 && v2) for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+    }
+    let dot1 = 0;
+    for (let i = 0; i < d; i++) dot1 += dir1[i] * meanDiff[i];
+    if (dot1 < 0) for (let i = 0; i < d; i++) dir1[i] = -dir1[i];
+
+    // Direction 2: "counting" via PCA on all word vectors
+    const centroid = new Float64Array(d);
+    for (const v of vecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
+    for (let i = 0; i < d; i++) centroid[i] /= vecs.length;
+    const C2 = new Float64Array(d * d);
+    for (const v of vecs) {
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C2[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
+    }
+    const C2mat = [];
+    for (let i = 0; i < d; i++) { C2mat.push([]); for (let j = 0; j < d; j++) C2mat[i].push(C2[i * d + j]); }
+    const { u: u2 } = SVDJS.SVD(C2mat);
+    const dir2 = new Float64Array(d);
+    for (let i = 0; i < d; i++) dir2[i] = u2[i][0];
+    // Orient: first→last (one→nine in word order)
+    const vFirst = emb.vec(numLinkedPairs[0][0]), vLast = emb.vec(numLinkedPairs[numLinkedPairs.length - 1][0]);
+    let dot2 = 0;
+    for (let i = 0; i < d; i++) dot2 += dir2[i] * (vLast[i] - vFirst[i]);
+    if (dot2 < 0) for (let i = 0; i < d; i++) dir2[i] = -dir2[i];
+
+    // Anchor scale
+    let avgDist = 0;
+    for (const v of vecs) {
+      let dd = 0;
+      for (let i = 0; i < d; i++) dd += (v[i] - centroid[i]) ** 2;
+      avgDist += Math.sqrt(dd);
+    }
+    avgDist /= vecs.length;
+    const sc = avgDist * 1.2;
+
+    // 4 anchor points: dir1 neg/pos, dir2 neg/pos
+    const anchors = [
+      { vec: new Float64Array(d), label: ' ' },             // dir1 neg
+      { vec: new Float64Array(d), label: 'word vs digit' }, // dir1 pos
+      { vec: new Float64Array(d), label: '  ' },            // dir2 neg (two spaces to be unique)
+      { vec: new Float64Array(d), label: 'counting' },      // dir2 pos
+    ];
+    for (let i = 0; i < d; i++) {
+      anchors[0].vec[i] = centroid[i] - dir1[i] * sc;
+      anchors[1].vec[i] = centroid[i] + dir1[i] * sc;
+      anchors[2].vec[i] = centroid[i] - dir2[i] * sc;
+      anchors[3].vec[i] = centroid[i] + dir2[i] * sc;
+    }
+
+    // Build extended embeddings
+    const allWords = [...linkedWords, ...anchors.map(a => a.label)];
+    const n = allWords.length;
+    const extVecs = new Float32Array(n * d);
+    for (let i = 0; i < linkedWords.length; i++) {
+      const v = emb.vec(linkedWords[i]);
+      for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
+    }
+    for (let ai = 0; ai < anchors.length; ai++) {
+      const off = (linkedWords.length + ai) * d;
+      for (let j = 0; j < d; j++) extVecs[off + j] = anchors[ai].vec[j];
+    }
+    const extEmb = new Embeddings(allWords, extVecs, d);
+
+    const a0 = linkedWords.length;  // dir1 neg
+    const a1 = a0 + 1;             // dir1 pos
+    const a2 = a0 + 2;             // dir2 neg
+    const a3 = a0 + 3;             // dir2 pos
+
+    // Arrows: group arrows + both direction arrows
+    const wordIdx = new Map(allWords.map((w, i) => [w, i]));
+    const arrows = [];
+    for (const group of numLinkedPairs) {
+      for (let i = 0; i < group.length - 1; i++) {
+        const a = wordIdx.get(group[i]), b = wordIdx.get(group[i + 1]);
+        if (a !== undefined && b !== undefined) arrows.push({ from: a, to: b });
+      }
+    }
+    arrows.push({ from: a0, to: a1, color: 'red', dashed: true, thick: true });
+    arrows.push({ from: a2, to: a3, color: 'red', dashed: true, thick: true });
+
+    vizInstances.push(new EmbeddingViz({
+      emb: extEmb, words: allWords, groups: numLinkedPairs,
+      plotEl: document.getElementById('plot-numbers-linked'),
+      eigenEl: document.getElementById('eigen-numbers-linked'),
+      arrows,
+      connectGroups: true,
+      hiddenPoints: new Set([a0, a1, a2, a3]),
+    }));
   }
 
   // Gender pairs with SVD-derived gender direction
