@@ -91,6 +91,12 @@
 - [ ] text inside visualizations constantly text selected when I interact with
   the plots; I think it would be better to make that text unselectable.
 
+- [ ] animations between 2d and 3d should find the closet 3d view to the current
+  2d view.  There appears to be an unnecessarily large change.
+
+- [ ] I cant rotate the points along all axes in 3d.
+
+
 ## Polish
 
 - [x] Fix plot horizontal alignment with Distill column
