@@ -100,18 +100,20 @@
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words &mdash; a human-readable representation. A word embedding explains a word using a list of numbers &mdash; a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar numbers.</p>
+<p>Word embeddings represent words as lists of numbers &mdash; vectors in a high-dimensional space &mdash; learned from data so that words with similar meanings end up nearby. They are one of the core building blocks of modern NLP: a way to turn text into geometry that machines can reason about.</p>
 
 <p>The learning principle behind word embeddings is the <em>distributional hypothesis</em>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b>, counting how often pairs of words co-occur within a given window.</p>
 
 <figure>
-  <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="Word co-occurrence matrix">
+  <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
   <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
 </figure>
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure &mdash; you can't do analogies on them, for example (more on analogies below).</p>
 
-<p>Methods like <a href="https://arxiv.org/abs/1301.3781">word2vec</a> and <a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> don't just compress the co-occurrence matrix. They learn low-dimensional vectors with approximately linear structure &mdash; the reason analogies work and the subspace methods in this article are possible.</p>
+<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts &mdash; but with approximately linear structure, which is why analogies work and the subspace methods in this article are possible.</p>
+
+<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT generate different embeddings for the same word depending on its surrounding sentence. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
 <p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
 
@@ -152,6 +154,8 @@
 
 <p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
 
+<p>Why does this work? GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j \approx \log X_{ij}$. Differences of log co-occurrences become differences of dot products, which are linear operations on the vectors. So relationships that show up as consistent ratios of co-occurrence counts &mdash; like "king" appearing with royal words at similar rates as "queen" &mdash; become consistent vector offsets in the embedding space.</p>
+
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
   <div class="eigen-margin" id="eigen-analogy-king"></div>
@@ -177,15 +181,17 @@
 
 <p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't just a pattern between a few word pairs &mdash; it's a consistent axis along which many words vary.</p>
 
-<p>Given groups of word pairs that vary along some concept, we compute the covariance of their embeddings and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that best explains the variation within those groups.</p>
+<p>Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do &mdash; they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
+
+<p>To find this subspace systematically, we collect many such pairs, compute the covariance matrix of their difference vectors, and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that captures the most variance across those pairs &mdash; the directions along which the pairs differ most consistently.</p>
 
 <h2>Steering by Subspace Projection</h2>
 
-<p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out:</p>
+<p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
 
 <p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
-<p>This removes each word's component along the chosen subspace while preserving everything else.</p>
+<p>This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity (the dot product of unit vectors).</p>
 
 <p>We define a gender subspace using pronoun pairs. Press <b>Steer</b> to watch the embeddings shift as the gender direction is projected out:</p>
 
@@ -210,13 +216,21 @@
 <h3>Which Words Changed Most?</h3>
 <div id="profession-ranking"></div>
 
+<h2>Discussion</h2>
+
+<p>Subspace projection is a clean and interpretable intervention: it removes a specific direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
+
+<p>Projecting out a subspace discards information indiscriminately. If some gender-correlated information is genuinely useful for a downstream task &mdash; distinguishing "actress" from "actor," for example &mdash; it will be lost along with the unwanted stereotypical associations. The method also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
+
+<p>More recent work has explored alternatives: Zhao et al. (2018) proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. (2020) introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea &mdash; that embeddings contain interpretable subspaces we can identify and manipulate &mdash; remains foundational.</p>
+
 </dt-article>
 
 <dt-appendix>
   <h3>Acknowledgments</h3>
   <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
   <h3>References</h3>
-  <p>This article uses GloVe vectors <dt-cite key="pennington2014glove"></dt-cite>. The steering method follows Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>.</p>
+  <p>This article uses GloVe vectors <dt-cite key="pennington2014glove"></dt-cite>. The steering method follows Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>. We also reference word2vec <dt-cite key="mikolov2013word2vec"></dt-cite> and BERT <dt-cite key="devlin2019bert"></dt-cite>.</p>
 </dt-appendix>
 
 <script type="text/bibliography">
@@ -226,6 +240,20 @@
     booktitle={EMNLP},
     year={2014},
     url={https://nlp.stanford.edu/projects/glove/}
+  }
+  @article{mikolov2013word2vec,
+    title={Efficient Estimation of Word Representations in Vector Space},
+    author={Mikolov, Tomas and Chen, Kai and Corrado, Greg and Dean, Jeffrey},
+    journal={arXiv preprint arXiv:1301.3781},
+    year={2013},
+    url={https://arxiv.org/abs/1301.3781}
+  }
+  @article{devlin2019bert,
+    title={BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding},
+    author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+    journal={arXiv preprint arXiv:1810.04805},
+    year={2019},
+    url={https://arxiv.org/abs/1810.04805}
   }
   @inproceedings{bolukbasi2016man,
     title={Man is to Computer Programmer as Woman is to Homemaker? Debiasing Word Embeddings},

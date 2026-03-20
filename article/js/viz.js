@@ -604,8 +604,9 @@ class EmbeddingViz {
     this._tiltAngle = 0.4;  // initial tilt (same as project3Dto2D default)
     this._rotationAnim = null;
 
-    // Create eigen selector
+    // Create eigen selector (clear any previous one)
     if (this.eigenEl) {
+      this.eigenEl.innerHTML = '';
       this.eigenSelector = createEigenSelector(
         this.eigenEl,
         this.mdsData.eigenvalues,
