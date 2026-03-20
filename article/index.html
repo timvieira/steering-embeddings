@@ -86,7 +86,7 @@
 <p style="color: #999; font-size: 13px; margin-bottom: 2em;">
   <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
   <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
-  &mdash; Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
+ &mdash;Faded dots show original positions; bright dots show steered positions. Trails show how each word moved.
 </p>
 
 <p>
@@ -100,7 +100,7 @@
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words &mdash; a human-readable representation. A word embedding explains a word using a list of numbers &mdash; a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar numbers.</p>
+<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar numbers.</p>
 
 <p>The learning principle behind word embeddings is the <em>distributional hypothesis</em>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b>, counting how often pairs of words co-occur within a given window.</p>
 
@@ -109,9 +109,9 @@
   <figcaption><a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a></figcaption>
 </figure>
 
-<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure &mdash; you can't do analogies on them, for example (more on analogies below).</p>
+<p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so there is some notion of similarity here, but the raw counts don't have much useful geometric structure&mdash;you can't do analogies on them, for example (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts &mdash; but with approximately linear structure, which is why analogies work and the subspace methods in this article are possible.</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>: it finds low-dimensional vectors $\overrightarrow{w}_i$ and $\overrightarrow{w}_j$ such that their dot product $\overrightarrow{w}_i \cdot \overrightarrow{w}_j$ reconstructs $\log X_{ij}$, where $X_{ij}$ is the co-occurrence count. The result is a compact set of vectors that preserve the statistical relationships in the original high-dimensional counts&mdash;but with approximately linear structure, which is why analogies work and the subspace methods in this article are possible.</p>
 
 <p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (CBOW), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT generate different embeddings for the same word depending on its surrounding sentence. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
@@ -154,7 +154,7 @@
 
 <p>More generally, if $w_1 : w_2 :: w_3 : w_4$, then $w_4 \approx w_2 - w_1 + w_3$.</p>
 
-<p style="color: #7b2d8b;">Why does this work? GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j \approx \log X_{ij}$. Differences of log co-occurrences become differences of dot products, which are linear operations on the vectors. So relationships that show up as consistent ratios of co-occurrence counts &mdash; like "king" appearing with royal words at similar rates as "queen" &mdash; become consistent vector offsets in the embedding space.</p>
+<p style="color: #7b2d8b;">Why does this work? GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j \approx \log X_{ij}$. Differences of log co-occurrences become differences of dot products, which are linear operations on the vectors. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" appearing with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
@@ -179,11 +179,11 @@
 
 <h2>Identifying Subspaces</h2>
 
-<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't just a pattern between a few word pairs &mdash; it's a consistent axis along which many words vary.</p>
+<p>The analogy examples hint at something deeper: the embedding space contains <b>interpretable subspaces</b>. The "gender direction" isn't just a pattern between a few word pairs&mdash;it's a consistent axis along which many words vary.</p>
 
-<p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do &mdash; they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
+<p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
 
-<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs, compute the covariance matrix of their difference vectors, and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that captures the most variance across those pairs &mdash; the directions along which the pairs differ most consistently.</p>
+<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs, compute the covariance matrix of their difference vectors, and extract the top-$k$ singular vectors via SVD. This gives us an orthogonal basis $\mathcal{B} = \{b_1, \dots, b_k\}$ for the subspace that captures the most variance across those pairs&mdash;the directions along which the pairs differ most consistently.</p>
 
 <h2>Steering by Subspace Projection</h2>
 
@@ -220,9 +220,9 @@
 
 <p style="color: #7b2d8b;">Subspace projection is a clean and interpretable intervention: it removes a specific direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
 
-<p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately. If some gender-correlated information is genuinely useful for a downstream task &mdash; distinguishing "actress" from "actor," for example &mdash; it will be lost along with the unwanted stereotypical associations. The method also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
+<p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately. If some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. The method also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
-<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. (2018) proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. (2020) introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea &mdash; that embeddings contain interpretable subspaces we can identify and manipulate &mdash; remains foundational.</p>
+<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. (2018) proposed learning gender-neutral embeddings during training rather than post-hoc correction, and Ravfogel et al. (2020) introduced iterative null-space projection (INLP), which removes a concept more thoroughly by repeatedly identifying and projecting out the directions a classifier can exploit. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
 
 </dt-article>
 
