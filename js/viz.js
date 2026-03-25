@@ -1252,19 +1252,30 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
   // Scales: fit all positions (original, steered, translated arrows, direction arrow)
   const allX = wordData.flatMap(d => [d.coord[0], d.steeredCoord[0]]);
   const allY = wordData.flatMap(d => [d.coord[1], d.steeredCoord[1]]);
-  allX.push(cx - dirX * arrowHalfLen, cx + dirX * arrowHalfLen);
-  allY.push(cy - dirY * arrowHalfLen, cy + dirY * arrowHalfLen);
+  const dirArrowLen = arrowHalfLen * 1.6;
+  allX.push(cx + dirX * dirArrowLen);
+  allY.push(cy + dirY * dirArrowLen);
   for (const p of pairs) {
     allX.push(cx + wordData[p.to].coord[0] - wordData[p.from].coord[0]);
     allY.push(cy + wordData[p.to].coord[1] - wordData[p.from].coord[1]);
   }
+  // Use equal scaling so perpendicular angles look like 90°.
   const pad = 0.12;
-  const xDom = [Math.min(...allX), Math.max(...allX)];
-  const yDom = [Math.min(...allY), Math.max(...allY)];
-  const xPad = (xDom[1] - xDom[0]) * pad || 0.1;
-  const yPad = (yDom[1] - yDom[0]) * pad || 0.1;
-  const xScale = d3.scaleLinear().domain([xDom[0] - xPad, xDom[1] + xPad]).range([0, w]);
-  const yScale = d3.scaleLinear().domain([yDom[0] - yPad, yDom[1] + yPad]).range([h, 0]);
+  const xMin = Math.min(...allX), xMax = Math.max(...allX);
+  const yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
+  const xPad = xSpan * pad, yPad = ySpan * pad;
+  const dataW = xSpan + 2 * xPad, dataH = ySpan + 2 * yPad;
+  const aspect = w / h;
+  let domW = dataW, domH = dataH;
+  if (dataW / dataH > aspect) {
+    domH = domW / aspect;
+  } else {
+    domW = domH * aspect;
+  }
+  const cxDom = (xMin + xMax) / 2, cyDom = (yMin + yMax) / 2;
+  const xScale = d3.scaleLinear().domain([cxDom - domW / 2, cxDom + domW / 2]).range([0, w]);
+  const yScale = d3.scaleLinear().domain([cyDom - domH / 2, cyDom + domH / 2]).range([h, 0]);
 
   const svg = d3.select(el).append('svg')
     .attr('class', 'plot').attr('width', width).attr('height', height);
@@ -1293,33 +1304,49 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
     .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
     .attr('marker-end', `url(#arrow-${cid})`);
 
-  // --- Translated arrows at centroid (appear in step 1) ---
+  // --- Translated arrows (start at pair positions, glide to centroid in step 1) ---
   const transArrows = mainG.selectAll('line.trans-arrow').data(pairs).enter().append('line')
     .attr('class', 'trans-arrow')
-    .attr('x1', xScale(cx)).attr('y1', yScale(cy))
-    .attr('x2', d => xScale(cx + wordData[d.to].coord[0] - wordData[d.from].coord[0]))
-    .attr('y2', d => yScale(cy + wordData[d.to].coord[1] - wordData[d.from].coord[1]))
+    .attr('x1', d => xScale(wordData[d.from].coord[0]))
+    .attr('y1', d => yScale(wordData[d.from].coord[1]))
+    .attr('x2', d => xScale(wordData[d.to].coord[0]))
+    .attr('y2', d => yScale(wordData[d.to].coord[1]))
     .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
     .attr('marker-end', `url(#arrow-${cid})`)
     .attr('opacity', 0);
 
-  // --- Direction arrow (appears in step 2) ---
+  // --- Direction arrow: starts at centroid, extends along direction (like translated arrows) ---
   const dirArrow = mainG.append('line')
-    .attr('x1', xScale(cx - dirX * arrowHalfLen))
-    .attr('y1', yScale(cy - dirY * arrowHalfLen))
-    .attr('x2', xScale(cx + dirX * arrowHalfLen))
-    .attr('y2', yScale(cy + dirY * arrowHalfLen))
+    .attr('x1', xScale(cx))
+    .attr('y1', yScale(cy))
+    .attr('x2', xScale(cx + dirX * dirArrowLen))
+    .attr('y2', yScale(cy + dirY * dirArrowLen))
     .attr('stroke', '#c0392b').attr('stroke-width', 2.5)
     .attr('stroke-dasharray', '8,4')
     .attr('marker-end', `url(#arrow-dir-${cid})`)
     .attr('opacity', 0);
 
   const dirLabelEl = mainG.append('text')
-    .attr('x', xScale(cx + dirX * arrowHalfLen * 1.05))
-    .attr('y', yScale(cy + dirY * arrowHalfLen * 1.05) - 10)
+    .attr('x', xScale(cx + dirX * dirArrowLen * 1.05))
+    .attr('y', yScale(cy + dirY * dirArrowLen * 1.05) - 10)
     .attr('text-anchor', 'middle')
     .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
     .attr('fill', '#c0392b').text(directionLabel)
+    .attr('opacity', 0);
+
+  // --- Perpendicular axis (the line words project onto after removing gender component) ---
+  // perpDir is 90° to the gender direction: (-dirY, dirX)
+  const perpExtent = Math.max(...wordData.map(d => {
+    const vx = d.steeredCoord[0] - cx, vy = d.steeredCoord[1] - cy;
+    return Math.abs(vx * (-dirY) + vy * dirX);
+  })) * 1.2 || 1;
+  const perpAxis = mainG.append('line')
+    .attr('class', 'perp-axis')
+    .attr('x1', xScale(cx - (-dirY) * perpExtent))
+    .attr('y1', yScale(cy - dirX * perpExtent))
+    .attr('x2', xScale(cx + (-dirY) * perpExtent))
+    .attr('y2', yScale(cy + dirX * perpExtent))
+    .attr('stroke', '#999').attr('stroke-width', 1).attr('stroke-dasharray', '6,4')
     .attr('opacity', 0);
 
   // --- Projection lines: word → steered position, parallel to direction (step 3) ---
@@ -1351,21 +1378,39 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
 
   // --- Step-through controls ---
   let currentStep = 0;
-  const stepNames = ['Pairs', 'Differences', 'Direction', 'Projection', 'Steer'];
+  const km = (tex) => katex.renderToString(tex, { throwOnError: false });
+  const stepDescs = [
+    `Each arrow connects a word pair — e.g. ${km('\\overrightarrow{\\text{woman}}')} to ${km('\\overrightarrow{\\text{man}}')}.`,
+    `Translate each pair\u2019s difference vector ${km('d_i = \\overrightarrow{w}_i^+ - \\overrightarrow{w}_i^-')} to a common origin. They point in roughly the same direction.`,
+    `The top eigenvector of ${km('C = \\tfrac{1}{2}\\sum d_i\\,d_i^T')} gives the direction that best explains these differences.`,
+    `Each word\u2019s component along the direction (its \u201cgender component\u201d ${km('\\overrightarrow{w}_{\\mathcal{B}}')}) is shown as a dashed line.`,
+    `Project out: ${km('\\overrightarrow{w}_{\\text{steered}} = \\overrightarrow{w} - \\overrightarrow{w}_{\\mathcal{B}}')}`,
+  ];
 
+  // --- In-plot description overlay (foreignObject at bottom of SVG) ---
+  const descFO = svg.append('foreignObject')
+    .attr('x', margin.left).attr('y', height - margin.bottom - 6)
+    .attr('width', w).attr('height', margin.bottom + 6);
+  const descDiv = descFO.append('xhtml:div')
+    .style('font-size', '13px').style('color', '#555').style('line-height', '1.3')
+    .style('background', 'rgba(255,255,255,0.85)')
+    .style('padding', '2px 4px').style('border-radius', '3px');
+
+  // --- Button below the plot ---
   const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')
-    .style('margin-top', '8px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+    .style('margin-top', '4px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
 
   const btn = ctrlDiv.append('button')
     .style('background', COLORS.point).style('color', 'white').style('border', 'none')
     .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
     .style('cursor', 'pointer').text('Next ▶');
 
-  const statusSpan = ctrlDiv.append('span')
+  const stepCounter = ctrlDiv.append('span')
     .style('font-size', '12px').style('color', '#999');
 
   function updateStatus() {
-    statusSpan.text(`${currentStep + 1}/${stepNames.length}: ${stepNames[currentStep]}`);
+    stepCounter.text(`Step ${currentStep + 1} of ${stepDescs.length}`);
+    descDiv.html(stepDescs[currentStep]);
   }
   updateStatus();
 
@@ -1376,10 +1421,16 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
 
     if (s === 0) {
       btn.text('Next ▶').style('background', COLORS.point).style('color', 'white');
-      pairArrows.transition().duration(dur).attr('opacity', 1);
-      transArrows.transition().duration(dur).attr('opacity', 0);
+      pairArrows.transition().duration(dur).attr('opacity', 1)
+        .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+      transArrows.transition().duration(dur).attr('opacity', 0)
+        .attr('x1', d => xScale(wordData[d.from].coord[0]))
+        .attr('y1', d => yScale(wordData[d.from].coord[1]))
+        .attr('x2', d => xScale(wordData[d.to].coord[0]))
+        .attr('y2', d => yScale(wordData[d.to].coord[1]));
       dirArrow.transition().duration(dur).attr('opacity', 0);
       dirLabelEl.transition().duration(dur).attr('opacity', 0);
+      perpAxis.transition().duration(dur).attr('opacity', 0);
       projLines.transition().duration(dur).attr('opacity', 0)
         .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
         .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]));
@@ -1390,23 +1441,32 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8);
 
     } else if (s === 1) {
-      pairArrows.transition().duration(dur).attr('opacity', 0.15);
-      transArrows.transition().duration(dur).attr('opacity', 0.7);
+      // Fade pair arrows to ghosts; show translated copies at pair positions then glide to centroid.
+      pairArrows.transition().duration(dur).attr('opacity', 0.3);
+      transArrows
+        .attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
+      transArrows.transition().duration(dur * 1.5).ease(d3.easeCubicInOut)
+        .attr('x1', xScale(cx)).attr('y1', yScale(cy))
+        .attr('x2', d => xScale(cx + wordData[d.to].coord[0] - wordData[d.from].coord[0]))
+        .attr('y2', d => yScale(cy + wordData[d.to].coord[1] - wordData[d.from].coord[1]))
+        .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
 
     } else if (s === 2) {
-      transArrows.transition().duration(dur).attr('opacity', 0);
-      dirArrow.transition().duration(dur).attr('opacity', 0.8);
+      transArrows.transition().duration(dur).attr('opacity', 0.35);
+      dirArrow.transition().duration(dur).attr('opacity', 0.9);
       dirLabelEl.transition().duration(dur).attr('opacity', 1);
 
     } else if (s === 3) {
+      transArrows.transition().duration(dur).attr('opacity', 0);
+      perpAxis.transition().duration(dur).attr('opacity', 0.5);
       projLines.transition().duration(dur)
         .attr('x2', d => xScale(d.steeredCoord[0]))
         .attr('y2', d => yScale(d.steeredCoord[1]))
-        .attr('opacity', 0.5);
+        .attr('opacity', 0.6);
 
     } else if (s === 4) {
       btn.text('Reset').style('background', '#ddd').style('color', '#333');
-      ghosts.transition().duration(300).attr('opacity', 0.25);
+      ghosts.transition().duration(300).attr('opacity', 0.4);
       pairArrows.transition().duration(dur).attr('opacity', 0);
       dots.transition().duration(1200).ease(d3.easeCubicInOut)
         .attr('cx', d => xScale(d.steeredCoord[0]))
@@ -1414,6 +1474,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       labelEls.transition().duration(1200).ease(d3.easeCubicInOut)
         .attr('x', d => xScale(d.steeredCoord[0]))
         .attr('y', d => yScale(d.steeredCoord[1]) - 8);
+      perpAxis.transition().delay(800).duration(600).attr('opacity', 0);
       projLines.transition().delay(500).duration(800)
         .attr('x1', d => xScale(d.steeredCoord[0]))
         .attr('y1', d => yScale(d.steeredCoord[1]))
