@@ -146,6 +146,8 @@ function render2D(container, words, coords, arrows, options = {}) {
     neighborWords = new Set(), neighborLinks = [],
     animate = false, prevCoords = null, prevWords = null,
     fixedDomain = null,  // optional: [min, max] for both axes (for stable transitions)
+    fixedDomainX = null, // optional: separate X domain (overrides fixedDomain)
+    fixedDomainY = null, // optional: separate Y domain (overrides fixedDomain)
     disableZoom = false,  // true in 3D mode (orbit handles interaction)
     hiddenPoints = new Set(),  // indices of points to hide (no circle or label)
   } = options;
@@ -157,11 +159,13 @@ function render2D(container, words, coords, arrows, options = {}) {
   const dur = animate ? 600 : 0;
   const highlightSet = new Set(highlights);
 
-  // Scales
+  // Scales — support separate X/Y domains for equal-aspect mode
   let xScale, yScale;
-  if (fixedDomain) {
-    xScale = d3.scaleLinear().domain(fixedDomain).range([0, w]);
-    yScale = d3.scaleLinear().domain(fixedDomain).range([h, 0]);
+  const domX = fixedDomainX || fixedDomain;
+  const domY = fixedDomainY || fixedDomain;
+  if (domX || domY) {
+    xScale = d3.scaleLinear().domain(domX || [-1.15, 1.15]).range([0, w]);
+    yScale = d3.scaleLinear().domain(domY || [-1.15, 1.15]).range([h, 0]);
   } else {
     const xs = coords.map(c => c[0]);
     const ys = coords.map(c => c[1]);
@@ -626,6 +630,7 @@ class EmbeddingViz {
     this.connectGroups = config.connectGroups || false;
     this.dims = config.initialDims || 2;
     this.searchEmb = config.searchEmb || config.emb;  // full vocab for neighbor search
+    this.equalAspect = config.equalAspect !== undefined ? config.equalAspect : true;
     this.neighborWords = new Set();   // words added via click expansion
     this.neighborLinks = [];          // { parent, child } index pairs
     this._prevCoords = null;
@@ -760,7 +765,7 @@ class EmbeddingViz {
       return raw.map(c => [c[0] / maxAbs, 0]);
     }
     if (this.dims === 2) {
-      // Normalize to bounding circle, same as 3D, so scale is consistent across transitions
+      // Always normalize to bounding circle — keeps scale consistent with 3D for smooth transitions
       const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
       return raw.map(([x, y]) => [x / maxR, y / maxR]);
     }
@@ -796,9 +801,22 @@ class EmbeddingViz {
     const plotH = Math.round(plotW * 0.72);
     const w = plotW - margin.left - margin.right;
     const h = plotH - margin.top - margin.bottom;
-    // Same fixedDomain as passed to render2D: [-1.15, 1.15]
-    const xScale = d3.scaleLinear().domain([-1.15, 1.15]).range([0, w]);
-    const yScale = d3.scaleLinear().domain([-1.15, 1.15]).range([h, 0]);
+    // Same domain logic as render() — expand the wider axis for equal aspect
+    const baseDom = [-1.15, 1.15];
+    let domX = baseDom, domY = baseDom;
+    if (this.equalAspect) {
+      const baseSpan = baseDom[1] - baseDom[0];
+      const mid = (baseDom[0] + baseDom[1]) / 2;
+      if (w > h) {
+        const s = baseSpan * (w / h);
+        domX = [mid - s / 2, mid + s / 2];
+      } else {
+        const s = baseSpan * (h / w);
+        domY = [mid - s / 2, mid + s / 2];
+      }
+    }
+    const xScale = d3.scaleLinear().domain(domX).range([0, w]);
+    const yScale = d3.scaleLinear().domain(domY).range([h, 0]);
 
     // Drag-to-orbit: horizontal drag controls rotation angle
     let dragging = false;
@@ -923,13 +941,31 @@ class EmbeddingViz {
 
     // Fixed domain for all dims — coords are normalized to [-1,1],
     // so a consistent domain prevents zoom jumps during dimension transitions.
-    const fixedDomain = [-1.15, 1.15];
+    const baseDomain = [-1.15, 1.15];
 
     // In 1D mode, use a compact height — the data is a single line
     const plotWidth = getResponsiveWidth(el);
     const plotHeight = this.dims === 1
       ? Math.min(200, Math.round(plotWidth * 0.35))
       : Math.round(plotWidth * 0.72);
+
+    // Equal aspect: expand the domain on the longer axis so 1 data-unit = same pixels on both axes
+    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
+    const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+    const innerW = plotWidth - margin.left - margin.right;
+    const innerH = plotHeight - margin.top - margin.bottom;
+    if (this.equalAspect && this.dims >= 2) {
+      const baseSpan = baseDomain[1] - baseDomain[0];  // 2.3
+      if (innerW > innerH) {
+        const expandedSpan = baseSpan * (innerW / innerH);
+        const mid = (baseDomain[0] + baseDomain[1]) / 2;
+        fixedDomainX = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      } else {
+        const expandedSpan = baseSpan * (innerH / innerW);
+        const mid = (baseDomain[0] + baseDomain[1]) / 2;
+        fixedDomainY = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      }
+    }
 
     const opts = {
       highlights: this.highlights,
@@ -940,7 +976,7 @@ class EmbeddingViz {
       prevCoords: this._prevCoords,
       prevWords: this._prevWords,
       onClick: this._makeOnClick(),
-      fixedDomain,
+      fixedDomainX, fixedDomainY,
       disableZoom: this.dims === 3,
       hiddenPoints: this.hiddenPoints,
       width: plotWidth,
@@ -1085,12 +1121,22 @@ function renderSteering2D(container, wordData, options = {}) {
   const allX = wordData.flatMap(d => [d.origCoord[0], d.steeredCoord[0]]);
   const allY = wordData.flatMap(d => [d.origCoord[1], d.steeredCoord[1]]);
   const pad = 0.1;
-  const xRange = [Math.min(...allX), Math.max(...allX)];
-  const yRange = [Math.min(...allY), Math.max(...allY)];
-  const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
-  const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
-  const xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
-  const yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+  const xMin = Math.min(...allX), xMax = Math.max(...allX);
+  const yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
+  const xPad = xSpan * pad, yPad = ySpan * pad;
+  // Equal scaling: expand the smaller axis to match the aspect ratio
+  const dataW = xSpan + 2 * xPad, dataH = ySpan + 2 * yPad;
+  const aspect = w / h;
+  let domW = dataW, domH = dataH;
+  if (dataW / dataH > aspect) {
+    domH = domW / aspect;
+  } else {
+    domW = domH * aspect;
+  }
+  const cxDom = (xMin + xMax) / 2, cyDom = (yMin + yMax) / 2;
+  const xScale = d3.scaleLinear().domain([cxDom - domW / 2, cxDom + domW / 2]).range([0, w]);
+  const yScale = d3.scaleLinear().domain([cyDom - domH / 2, cyDom + domH / 2]).range([h, 0]);
 
   const groupNames = [...new Set(wordData.map(d => d.group))];
   const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];

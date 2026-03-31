@@ -4,7 +4,28 @@
 
 - do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
 
-- should we set the aspect ratio to be more equal?  does that make any sense?
+- [x] should we set the aspect ratio to be more equal?  does that make any sense?
+  - Yes. Equal aspect (1 data-unit = same pixels on both axes) is correct for MDS since it preserves distances. Implemented as default for all plots. See checklist below.
+
+## Equal aspect ratio — all plots
+
+1. [x] Hero 3D (Three.js) — `renderHero3D` — Three.js PerspectiveCamera + uniform scaling inherently preserves equal aspect; no change needed
+2. [x] Superlatives — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
+3. [x] Numbers: digits — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
+4. [x] Numbers: words — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
+5. [x] Numbers: linked — `EmbeddingViz` direct — default `equalAspect: true`
+6. [x] Gender pairs — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
+7. [x] Size pairs — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
+8. [x] Subspace animation — `renderSubspaceAnimation` — already used equal scaling
+9. [x] Analogy: king — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
+10. [x] Analogy: custom — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
+11. [x] Steering: gendered words — `renderSteering2D` — added equal scaling to renderSteering2D
+12. [x] Doctor before — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
+13. [x] Doctor after — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
+14. [x] Steering: professions — `renderSteering2D` — shares fix with item 11
+15. [x] Explorer (static) — `EmbeddingViz` direct — default `equalAspect: true`
+16. [x] Explorer (steering) — `renderSteering2D` — shares fix with item 11
+17. [x] Profession ranking bar chart — N/A: 1D bar chart, not a scatter plot
 
 - should we try to quantify how much of the variance is accounted for in
   directions and sterring moves?  (would putting an uncertainty cone around an
@@ -31,6 +52,24 @@
   - **Perplexity API** — requires API key, not free, can't embed key in client JS.
   - **iframe** — Perplexity blocks framing (X-Frame-Options).
   - Could revisit if we ever add a backend, or if a free chat API with CORS support appears.
+
+
+## Remember this
+
+- Please make sure that when transition between 1d <-> 2d <-> 3d plots that
+  there isn't an unncessary change in zooming.  We worked really hard to getting
+  this detail right in previous iterations - I would hate for that to get lost
+  in this change.
+
+  [ ] TODO [2026-03-31 Tue] This issue reemerged when we switched to using equal
+      aspect ratio.
+
+
+## Visual Design
+
+- [ ] I don't want to see unncessary labels collisions.  Please improve the
+      layout, as it doesn't appear to try any alternative label placements to
+      avoid collisions.
 
 
 ## Article interactivity
@@ -174,6 +213,17 @@
   - Changed default from small (10K) to medium (50K). 10K was missing too many words (superlatives, gendered pairs).
 
 ## Technical polish
+
+- [ ] Define a `\defeq` macro for definitional equalities (as opposed to plain
+  `=`). Use KaTeX's `macros` option in the `renderMathInElement` call — not
+  `\newcommand` in the document body.
+
+- [ ] some places write w_i^\top w_j \approx \log X_{ij}, but that isn't quite
+  right as there is b_i and b_j.
+
+  Some rules:
+    Don't say imprecise things.
+    Don't say things imprecisely.
 
 - [x] Improve co-occurrence image accessibility: add descriptive alt text, or
   replace the external PNG with an inline SVG/table.
