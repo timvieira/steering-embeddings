@@ -1260,278 +1260,493 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
   const defaultW = getResponsiveWidth(el);
   const { width = defaultW, height = Math.round(defaultW * 0.72) } = options;
   const { pairs = [], directionLabel = 'direction' } = options;
+  const { mdsData = null, eigenContainer = null } = options;
   const margin = { top: 30, right: 30, bottom: 40, left: 30 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
 
-  d3.select(el).selectAll('svg.plot').remove();
-  d3.select(el).selectAll('.anim-controls').remove();
+  // Mutable state shared across rebuilds
+  let dims = 2;
+  let rotationAngle = 0, tiltAngle = 0.4;
+  let rotationAnim = null;
 
-  // Centroid of all words in MDS space
-  const cx = d3.mean(wordData, d => d.coord[0]);
-  const cy = d3.mean(wordData, d => d.coord[1]);
-
-  // Direction from mean pair difference (from → to) in 2D
-  let ddx = 0, ddy = 0;
-  for (const p of pairs) {
-    ddx += wordData[p.to].coord[0] - wordData[p.from].coord[0];
-    ddy += wordData[p.to].coord[1] - wordData[p.from].coord[1];
-  }
-  const dLen = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
-  const dirX = ddx / dLen, dirY = ddy / dLen;
-
-  // Steered coords: remove component along direction relative to centroid
-  for (const d of wordData) {
-    const vx = d.coord[0] - cx, vy = d.coord[1] - cy;
-    const proj = vx * dirX + vy * dirY;
-    d.steeredCoord = [d.coord[0] - proj * dirX, d.coord[1] - proj * dirY];
+  function stopRotation() {
+    if (rotationAnim) { cancelAnimationFrame(rotationAnim); rotationAnim = null; }
   }
 
-  // Direction arrow half-length
-  const maxPairLen = Math.max(...pairs.map(p => {
-    const px = wordData[p.to].coord[0] - wordData[p.from].coord[0];
-    const py = wordData[p.to].coord[1] - wordData[p.from].coord[1];
-    return Math.sqrt(px * px + py * py);
-  })) || 1;
-  const arrowHalfLen = maxPairLen * 0.8;
+  // Compute direction + steered coords in the given dimensionality
+  function computeDerived(ndims, rawCoords) {
+    for (let i = 0; i < wordData.length; i++) {
+      wordData[i].coord = rawCoords[i].slice(0, ndims);
+    }
+    const centroid = [];
+    for (let k = 0; k < ndims; k++) centroid.push(d3.mean(wordData, d => d.coord[k]));
 
-  // Scales: fit all positions (original, steered, translated arrows, direction arrow)
-  const allX = wordData.flatMap(d => [d.coord[0], d.steeredCoord[0]]);
-  const allY = wordData.flatMap(d => [d.coord[1], d.steeredCoord[1]]);
-  const dirArrowLen = arrowHalfLen * 1.6;
-  allX.push(cx + dirX * dirArrowLen);
-  allY.push(cy + dirY * dirArrowLen);
-  for (const p of pairs) {
-    allX.push(cx + wordData[p.to].coord[0] - wordData[p.from].coord[0]);
-    allY.push(cy + wordData[p.to].coord[1] - wordData[p.from].coord[1]);
-  }
-  // Use equal scaling so perpendicular angles look like 90°.
-  const pad = 0.12;
-  const xMin = Math.min(...allX), xMax = Math.max(...allX);
-  const yMin = Math.min(...allY), yMax = Math.max(...allY);
-  const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
-  const xPad = xSpan * pad, yPad = ySpan * pad;
-  const dataW = xSpan + 2 * xPad, dataH = ySpan + 2 * yPad;
-  const aspect = w / h;
-  let domW = dataW, domH = dataH;
-  if (dataW / dataH > aspect) {
-    domH = domW / aspect;
-  } else {
-    domW = domH * aspect;
-  }
-  const cxDom = (xMin + xMax) / 2, cyDom = (yMin + yMax) / 2;
-  const xScale = d3.scaleLinear().domain([cxDom - domW / 2, cxDom + domW / 2]).range([0, w]);
-  const yScale = d3.scaleLinear().domain([cyDom - domH / 2, cyDom + domH / 2]).range([h, 0]);
+    const dd = new Array(ndims).fill(0);
+    for (const p of pairs) {
+      for (let k = 0; k < ndims; k++) dd[k] += wordData[p.to].coord[k] - wordData[p.from].coord[k];
+    }
+    const dLen = Math.sqrt(dd.reduce((s, v) => s + v * v, 0)) || 1;
+    const dirVec = dd.map(v => v / dLen);
 
-  const svg = d3.select(el).append('svg')
-    .attr('class', 'plot').attr('width', width).attr('height', height);
-  const cid = el.id || 'anim';
-  const defs = svg.append('defs');
-  for (const [suffix, color] of [['', COLORS.arrow], ['-dir', '#c0392b']]) {
-    defs.append('marker')
-      .attr('id', `arrow${suffix}-${cid}`)
-      .attr('viewBox', '0 0 10 10')
-      .attr('refX', 8).attr('refY', 5)
-      .attr('markerWidth', 6).attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', color);
+    for (const d of wordData) {
+      const v = d.coord.map((c, k) => c - centroid[k]);
+      const proj = v.reduce((s, vi, k) => s + vi * dirVec[k], 0);
+      d.steeredCoord = d.coord.map((c, k) => c - proj * dirVec[k]);
+    }
+    return { centroid, dirVec };
   }
 
-  const mainG = svg.append('g')
-    .attr('transform', `translate(${margin.left},${margin.top})`);
+  // Build the full scene; called on init and when switching dims.
+  function buildScene() {
+    stopRotation();
+    d3.select(el).selectAll('svg.plot').remove();
+    d3.select(el).selectAll('.anim-controls').remove();
 
-  // --- Pair arrows (visible in step 0) ---
-  const pairArrows = mainG.selectAll('line.pair-arrow').data(pairs).enter().append('line')
-    .attr('class', 'pair-arrow')
-    .attr('x1', d => xScale(wordData[d.from].coord[0]))
-    .attr('y1', d => yScale(wordData[d.from].coord[1]))
-    .attr('x2', d => xScale(wordData[d.to].coord[0]))
-    .attr('y2', d => yScale(wordData[d.to].coord[1]))
-    .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
-    .attr('marker-end', `url(#arrow-${cid})`);
+    const rawCoords = mdsData ? mdsData.coords[dims] : wordData.map(d => d.coord);
+    const { centroid, dirVec } = computeDerived(dims, rawCoords);
 
-  // --- Translated arrows (start at pair positions, glide to centroid in step 1) ---
-  const transArrows = mainG.selectAll('line.trans-arrow').data(pairs).enter().append('line')
-    .attr('class', 'trans-arrow')
-    .attr('x1', d => xScale(wordData[d.from].coord[0]))
-    .attr('y1', d => yScale(wordData[d.from].coord[1]))
-    .attr('x2', d => xScale(wordData[d.to].coord[0]))
-    .attr('y2', d => yScale(wordData[d.to].coord[1]))
-    .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
-    .attr('marker-end', `url(#arrow-${cid})`)
-    .attr('opacity', 0);
+    // Direction arrow length
+    const maxPairLen = Math.max(...pairs.map(p => {
+      const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
+      return Math.sqrt(diff.reduce((s, v) => s + v * v, 0));
+    })) || 1;
+    const dirArrowLen = maxPairLen * 0.8 * 1.6;
 
-  // --- Direction arrow: starts at centroid, extends along direction (like translated arrows) ---
-  const dirArrow = mainG.append('line')
-    .attr('x1', xScale(cx))
-    .attr('y1', yScale(cy))
-    .attr('x2', xScale(cx + dirX * dirArrowLen))
-    .attr('y2', yScale(cy + dirY * dirArrowLen))
-    .attr('stroke', '#c0392b').attr('stroke-width', 2.5)
-    .attr('stroke-dasharray', '8,4')
-    .attr('marker-end', `url(#arrow-dir-${cid})`)
-    .attr('opacity', 0);
+    // --- Scales ---
+    let xScale, yScale;
+    let norm3D = null, normSteered3D = null, normCentroid3D = null;
+    let normDirEnd3D = null, normDiffEnds3D = null;
 
-  const dirLabelEl = mainG.append('text')
-    .attr('x', xScale(cx + dirX * dirArrowLen * 1.05))
-    .attr('y', yScale(cy + dirY * dirArrowLen * 1.05) - 10)
-    .attr('text-anchor', 'middle')
-    .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
-    .attr('fill', '#c0392b').text(directionLabel)
-    .attr('opacity', 0);
+    if (dims === 3) {
+      // Collect every 3D point that will be drawn, normalize together
+      const allPts = [];
+      for (const d of wordData) { allPts.push(d.coord); allPts.push(d.steeredCoord); }
+      allPts.push(centroid);
+      allPts.push(centroid.map((c, k) => c + dirVec[k] * dirArrowLen));
+      for (const p of pairs) {
+        const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
+        allPts.push(centroid.map((c, k) => c + diff[k]));
+      }
+      const maxR = Math.max(...allPts.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+      const nf = pt => pt.map(v => v / maxR);
+      norm3D = wordData.map(d => nf(d.coord));
+      normSteered3D = wordData.map(d => nf(d.steeredCoord));
+      normCentroid3D = nf(centroid);
+      normDirEnd3D = nf(centroid.map((c, k) => c + dirVec[k] * dirArrowLen));
+      normDiffEnds3D = pairs.map(p => {
+        const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
+        return nf(centroid.map((c, k) => c + diff[k]));
+      });
 
-  // --- Perpendicular axis (the line words project onto after removing gender component) ---
-  // perpDir is 90° to the gender direction: (-dirY, dirX)
-  const perpExtent = Math.max(...wordData.map(d => {
-    const vx = d.steeredCoord[0] - cx, vy = d.steeredCoord[1] - cy;
-    return Math.abs(vx * (-dirY) + vy * dirX);
-  })) * 1.2 || 1;
-  const perpAxis = mainG.append('line')
-    .attr('class', 'perp-axis')
-    .attr('x1', xScale(cx - (-dirY) * perpExtent))
-    .attr('y1', yScale(cy - dirX * perpExtent))
-    .attr('x2', xScale(cx + (-dirY) * perpExtent))
-    .attr('y2', yScale(cy + dirX * perpExtent))
-    .attr('stroke', '#999').attr('stroke-width', 1).attr('stroke-dasharray', '6,4')
-    .attr('opacity', 0);
+      const baseDom = [-1.15, 1.15];
+      let domX = baseDom, domY = baseDom;
+      const baseSpan = baseDom[1] - baseDom[0];
+      const mid = (baseDom[0] + baseDom[1]) / 2;
+      if (w > h) { const s = baseSpan * (w / h); domX = [mid - s/2, mid + s/2]; }
+      else { const s = baseSpan * (h / w); domY = [mid - s/2, mid + s/2]; }
+      xScale = d3.scaleLinear().domain(domX).range([0, w]);
+      yScale = d3.scaleLinear().domain(domY).range([h, 0]);
+    } else {
+      // 2D: data-driven domain with equal scaling
+      const allX = wordData.flatMap(d => [d.coord[0], d.steeredCoord[0]]);
+      const allY = wordData.flatMap(d => [d.coord[1], d.steeredCoord[1]]);
+      allX.push(centroid[0] + dirVec[0] * dirArrowLen);
+      allY.push(centroid[1] + dirVec[1] * dirArrowLen);
+      for (const p of pairs) {
+        allX.push(centroid[0] + wordData[p.to].coord[0] - wordData[p.from].coord[0]);
+        allY.push(centroid[1] + wordData[p.to].coord[1] - wordData[p.from].coord[1]);
+      }
+      const pad = 0.12;
+      const xMin = Math.min(...allX), xMax = Math.max(...allX);
+      const yMin = Math.min(...allY), yMax = Math.max(...allY);
+      const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
+      const dataW = xSpan + 2 * xSpan * pad, dataH = ySpan + 2 * ySpan * pad;
+      const aspect = w / h;
+      let domW = dataW, domH = dataH;
+      if (dataW / dataH > aspect) domH = domW / aspect;
+      else domW = domH * aspect;
+      const cxDom = (xMin + xMax) / 2, cyDom = (yMin + yMax) / 2;
+      xScale = d3.scaleLinear().domain([cxDom - domW/2, cxDom + domW/2]).range([0, w]);
+      yScale = d3.scaleLinear().domain([cyDom - domH/2, cyDom + domH/2]).range([h, 0]);
+    }
 
-  // --- Projection lines: word → steered position, parallel to direction (step 3) ---
-  const projLines = mainG.selectAll('line.proj-line').data(wordData).enter().append('line')
-    .attr('class', 'proj-line')
-    .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
-    .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]))
-    .attr('stroke', '#c0392b').attr('stroke-width', 1).attr('stroke-dasharray', '3,2')
-    .attr('opacity', 0);
+    // --- Projection helpers (3D only) ---
+    function getProjected() {
+      return {
+        words: project3Dto2D(norm3D, rotationAngle, tiltAngle),
+        steered: project3Dto2D(normSteered3D, rotationAngle, tiltAngle),
+        centroid: project3Dto2D([normCentroid3D], rotationAngle, tiltAngle)[0],
+        dirEnd: project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0],
+        diffs: project3Dto2D(normDiffEnds3D, rotationAngle, tiltAngle),
+      };
+    }
 
-  // --- Ghost dots (appear in step 4 at original positions) ---
-  const ghosts = mainG.selectAll('circle.ghost').data(wordData).enter().append('circle')
-    .attr('class', 'ghost')
-    .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]))
-    .attr('r', 3).attr('fill', COLORS.point).attr('opacity', 0);
+    function wordXY(d, i) {
+      if (dims === 2) return [xScale(d.coord[0]), yScale(d.coord[1])];
+      const p = project3Dto2D([norm3D[i]], rotationAngle, tiltAngle)[0];
+      return [xScale(p[0]), yScale(p[1])];
+    }
 
-  // --- Word dots ---
-  const dots = mainG.selectAll('circle.word-dot').data(wordData).enter().append('circle')
-    .attr('class', 'word-dot')
-    .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]))
-    .attr('r', 3.5).attr('fill', COLORS.point);
+    // --- SVG setup ---
+    const svg = d3.select(el).append('svg')
+      .attr('class', 'plot').attr('width', width).attr('height', height);
+    if (dims === 3) svg.style('cursor', 'grab');
+    const cid = el.id || 'anim';
+    const defs = svg.append('defs');
+    for (const [suffix, color] of [['', COLORS.arrow], ['-dir', '#c0392b']]) {
+      defs.append('marker')
+        .attr('id', `arrow${suffix}-${cid}`)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 8).attr('refY', 5)
+        .attr('markerWidth', 6).attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', color);
+    }
 
-  // --- Labels ---
-  const labelEls = mainG.selectAll('text.word-label').data(wordData).enter().append('text')
-    .attr('class', 'word-label')
-    .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8)
-    .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
-    .text(d => d.word);
+    const mainG = svg.append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
 
-  // --- Step-through controls ---
-  let currentStep = 0;
-  const km = (tex) => katex.renderToString(tex, { throwOnError: false });
-  const stepDescs = [
-    `Each arrow connects a word pair — e.g. ${km('\\overrightarrow{\\text{woman}}')} to ${km('\\overrightarrow{\\text{man}}')}.`,
-    `Translate each pair\u2019s difference vector ${km('d_i = \\overrightarrow{w}_i^+ - \\overrightarrow{w}_i^-')} to a common origin. They point in roughly the same direction.`,
-    `The top eigenvector of ${km('C = \\tfrac{1}{2}\\sum d_i\\,d_i^T')} gives the direction that best explains these differences.`,
-    `Each word\u2019s component along the direction (its \u201cgender component\u201d ${km('\\overrightarrow{w}_{\\mathcal{B}}')}) is shown as a dashed line.`,
-    `Project out: ${km('\\overrightarrow{w}_{\\text{steered}} = \\overrightarrow{w} - \\overrightarrow{w}_{\\mathcal{B}}')}`,
-  ];
+    // --- Create all SVG elements ---
+    const pairArrows = mainG.selectAll('line.pair-arrow').data(pairs).enter().append('line')
+      .attr('class', 'pair-arrow')
+      .attr('x1', d => wordXY(wordData[d.from], d.from)[0])
+      .attr('y1', d => wordXY(wordData[d.from], d.from)[1])
+      .attr('x2', d => wordXY(wordData[d.to], d.to)[0])
+      .attr('y2', d => wordXY(wordData[d.to], d.to)[1])
+      .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
+      .attr('marker-end', `url(#arrow-${cid})`);
 
-  // --- In-plot description overlay (foreignObject at bottom of SVG) ---
-  const descFO = svg.append('foreignObject')
-    .attr('x', margin.left).attr('y', height - margin.bottom - 6)
-    .attr('width', w).attr('height', margin.bottom + 6);
-  const descDiv = descFO.append('xhtml:div')
-    .style('font-size', '13px').style('color', '#555').style('line-height', '1.3')
-    .style('background', 'rgba(255,255,255,0.85)')
-    .style('padding', '2px 4px').style('border-radius', '3px');
+    const transArrows = mainG.selectAll('line.trans-arrow').data(pairs).enter().append('line')
+      .attr('class', 'trans-arrow')
+      .attr('x1', d => wordXY(wordData[d.from], d.from)[0])
+      .attr('y1', d => wordXY(wordData[d.from], d.from)[1])
+      .attr('x2', d => wordXY(wordData[d.to], d.to)[0])
+      .attr('y2', d => wordXY(wordData[d.to], d.to)[1])
+      .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
+      .attr('marker-end', `url(#arrow-${cid})`)
+      .attr('opacity', 0);
 
-  // --- Button below the plot ---
-  const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')
-    .style('margin-top', '4px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+    // Direction arrow
+    const cXY = dims === 2 ? [xScale(centroid[0]), yScale(centroid[1])]
+      : (() => { const p = project3Dto2D([normCentroid3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
+    const deXY = dims === 2
+      ? [xScale(centroid[0] + dirVec[0] * dirArrowLen), yScale(centroid[1] + dirVec[1] * dirArrowLen)]
+      : (() => { const p = project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
+    const dirArrow = mainG.append('line')
+      .attr('x1', cXY[0]).attr('y1', cXY[1]).attr('x2', deXY[0]).attr('y2', deXY[1])
+      .attr('stroke', '#c0392b').attr('stroke-width', 2.5)
+      .attr('stroke-dasharray', '8,4')
+      .attr('marker-end', `url(#arrow-dir-${cid})`)
+      .attr('opacity', 0);
 
-  const btn = ctrlDiv.append('button')
-    .style('background', COLORS.point).style('color', 'white').style('border', 'none')
-    .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
-    .style('cursor', 'pointer').text('Next ▶');
+    const dirLabelEl = mainG.append('text')
+      .attr('x', deXY[0]).attr('y', deXY[1] - 10)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
+      .attr('fill', '#c0392b').text(directionLabel)
+      .attr('opacity', 0);
 
-  const stepCounter = ctrlDiv.append('span')
-    .style('font-size', '12px').style('color', '#999');
-
-  function updateStatus() {
-    stepCounter.text(`Step ${currentStep + 1} of ${stepDescs.length}`);
-    descDiv.html(stepDescs[currentStep]);
-  }
-  updateStatus();
-
-  function goTo(s) {
-    currentStep = s;
-    updateStatus();
-    const dur = 800;
-
-    if (s === 0) {
-      btn.text('Next ▶').style('background', COLORS.point).style('color', 'white');
-      pairArrows.transition().duration(dur).attr('opacity', 1)
-        .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-      transArrows.transition().duration(dur).attr('opacity', 0)
-        .attr('x1', d => xScale(wordData[d.from].coord[0]))
-        .attr('y1', d => yScale(wordData[d.from].coord[1]))
-        .attr('x2', d => xScale(wordData[d.to].coord[0]))
-        .attr('y2', d => yScale(wordData[d.to].coord[1]));
-      dirArrow.transition().duration(dur).attr('opacity', 0);
-      dirLabelEl.transition().duration(dur).attr('opacity', 0);
-      perpAxis.transition().duration(dur).attr('opacity', 0);
-      projLines.transition().duration(dur).attr('opacity', 0)
-        .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
-        .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]));
-      ghosts.transition().duration(dur).attr('opacity', 0);
-      dots.transition().duration(dur)
-        .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]));
-      labelEls.transition().duration(dur)
-        .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8);
-
-    } else if (s === 1) {
-      // Fade pair arrows to ghosts; show translated copies at pair positions then glide to centroid.
-      pairArrows.transition().duration(dur).attr('opacity', 0.3);
-      transArrows
-        .attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
-      transArrows.transition().duration(dur * 1.5).ease(d3.easeCubicInOut)
-        .attr('x1', xScale(cx)).attr('y1', yScale(cy))
-        .attr('x2', d => xScale(cx + wordData[d.to].coord[0] - wordData[d.from].coord[0]))
-        .attr('y2', d => yScale(cy + wordData[d.to].coord[1] - wordData[d.from].coord[1]))
-        .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-
-    } else if (s === 2) {
-      transArrows.transition().duration(dur).attr('opacity', 0.35);
-      dirArrow.transition().duration(dur).attr('opacity', 0.9);
-      dirLabelEl.transition().duration(dur).attr('opacity', 1);
-
-    } else if (s === 3) {
-      transArrows.transition().duration(dur).attr('opacity', 0);
-      perpAxis.transition().duration(dur).attr('opacity', 0.5);
-      projLines.transition().duration(dur)
-        .attr('x2', d => xScale(d.steeredCoord[0]))
-        .attr('y2', d => yScale(d.steeredCoord[1]))
-        .attr('opacity', 0.6);
-
-    } else if (s === 4) {
-      btn.text('Reset').style('background', '#ddd').style('color', '#333');
-      ghosts.transition().duration(300).attr('opacity', 0.4);
-      pairArrows.transition().duration(dur).attr('opacity', 0);
-      dots.transition().duration(1200).ease(d3.easeCubicInOut)
-        .attr('cx', d => xScale(d.steeredCoord[0]))
-        .attr('cy', d => yScale(d.steeredCoord[1]));
-      labelEls.transition().duration(1200).ease(d3.easeCubicInOut)
-        .attr('x', d => xScale(d.steeredCoord[0]))
-        .attr('y', d => yScale(d.steeredCoord[1]) - 8);
-      perpAxis.transition().delay(800).duration(600).attr('opacity', 0);
-      projLines.transition().delay(500).duration(800)
-        .attr('x1', d => xScale(d.steeredCoord[0]))
-        .attr('y1', d => yScale(d.steeredCoord[1]))
+    // Perpendicular axis (2D only; in 3D the perpendicular complement is a plane)
+    let perpAxis;
+    if (dims === 2) {
+      const perpExtent = Math.max(...wordData.map(d => {
+        const vx = d.steeredCoord[0] - centroid[0], vy = d.steeredCoord[1] - centroid[1];
+        return Math.abs(vx * (-dirVec[1]) + vy * dirVec[0]);
+      })) * 1.2 || 1;
+      perpAxis = mainG.append('line').attr('class', 'perp-axis')
+        .attr('x1', xScale(centroid[0] - (-dirVec[1]) * perpExtent))
+        .attr('y1', yScale(centroid[1] - dirVec[0] * perpExtent))
+        .attr('x2', xScale(centroid[0] + (-dirVec[1]) * perpExtent))
+        .attr('y2', yScale(centroid[1] + dirVec[0] * perpExtent))
+        .attr('stroke', '#999').attr('stroke-width', 1).attr('stroke-dasharray', '6,4')
         .attr('opacity', 0);
+    } else {
+      perpAxis = mainG.append('line').attr('class', 'perp-axis').attr('opacity', 0);
+    }
+
+    const projLines = mainG.selectAll('line.proj-line').data(wordData).enter().append('line')
+      .attr('class', 'proj-line')
+      .attr('x1', (d, i) => wordXY(d, i)[0]).attr('y1', (d, i) => wordXY(d, i)[1])
+      .attr('x2', (d, i) => wordXY(d, i)[0]).attr('y2', (d, i) => wordXY(d, i)[1])
+      .attr('stroke', '#c0392b').attr('stroke-width', 1).attr('stroke-dasharray', '3,2')
+      .attr('opacity', 0);
+
+    const ghosts = mainG.selectAll('circle.ghost').data(wordData).enter().append('circle')
+      .attr('class', 'ghost')
+      .attr('cx', (d, i) => wordXY(d, i)[0]).attr('cy', (d, i) => wordXY(d, i)[1])
+      .attr('r', 3).attr('fill', COLORS.point).attr('opacity', 0);
+
+    const dots = mainG.selectAll('circle.word-dot').data(wordData).enter().append('circle')
+      .attr('class', 'word-dot')
+      .attr('cx', (d, i) => wordXY(d, i)[0]).attr('cy', (d, i) => wordXY(d, i)[1])
+      .attr('r', 3.5).attr('fill', COLORS.point);
+
+    const labelEls = mainG.selectAll('text.word-label').data(wordData).enter().append('text')
+      .attr('class', 'word-label')
+      .attr('x', (d, i) => wordXY(d, i)[0]).attr('y', (d, i) => wordXY(d, i)[1] - 8)
+      .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
+      .text(d => d.word);
+
+    // --- Step controls ---
+    let currentStep = 0;
+    const km = (tex) => katex.renderToString(tex, { throwOnError: false });
+    const stepDescs = [
+      `Each arrow connects a word pair \u2014 e.g. ${km('\\overrightarrow{\\text{woman}}')} to ${km('\\overrightarrow{\\text{man}}')}.`,
+      `Translate each pair\u2019s difference vector ${km('d_i = \\overrightarrow{w}_i^+ - \\overrightarrow{w}_i^-')} to a common origin. They point in roughly the same direction.`,
+      `The top eigenvector of ${km('C = \\tfrac{1}{2}\\sum d_i\\,d_i^T')} gives the direction that best explains these differences.`,
+      `Each word\u2019s component along the direction (its \u201cgender component\u201d ${km('\\overrightarrow{w}_{\\mathcal{B}}')}) is shown as a dashed line.`,
+      `Project out: ${km('\\overrightarrow{w}_{\\text{steered}} = \\overrightarrow{w} - \\overrightarrow{w}_{\\mathcal{B}}')}`,
+    ];
+
+    const descFO = svg.append('foreignObject')
+      .attr('x', margin.left).attr('y', height - margin.bottom - 6)
+      .attr('width', w).attr('height', margin.bottom + 6);
+    const descDiv = descFO.append('xhtml:div')
+      .style('font-size', '13px').style('color', '#555').style('line-height', '1.3')
+      .style('background', 'rgba(255,255,255,0.85)')
+      .style('padding', '2px 4px').style('border-radius', '3px');
+
+    const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')
+      .style('margin-top', '4px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+    const btn = ctrlDiv.append('button')
+      .style('background', COLORS.point).style('color', 'white').style('border', 'none')
+      .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
+      .style('cursor', 'pointer').text('Next \u25b6');
+    const stepCounter = ctrlDiv.append('span')
+      .style('font-size', '12px').style('color', '#999');
+
+    function updateStatus() {
+      stepCounter.text(`Step ${currentStep + 1} of ${stepDescs.length}`);
+      descDiv.html(stepDescs[currentStep]);
+    }
+    updateStatus();
+
+    // --- goTo: step transitions ---
+    function goTo(s) {
+      currentStep = s;
+      updateStatus();
+      const dur = 800;
+
+      if (dims === 2) {
+        // 2D transitions (original logic)
+        if (s === 0) {
+          btn.text('Next \u25b6').style('background', COLORS.point).style('color', 'white');
+          pairArrows.transition().duration(dur).attr('opacity', 1)
+            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+          transArrows.transition().duration(dur).attr('opacity', 0)
+            .attr('x1', d => xScale(wordData[d.from].coord[0]))
+            .attr('y1', d => yScale(wordData[d.from].coord[1]))
+            .attr('x2', d => xScale(wordData[d.to].coord[0]))
+            .attr('y2', d => yScale(wordData[d.to].coord[1]));
+          dirArrow.transition().duration(dur).attr('opacity', 0);
+          dirLabelEl.transition().duration(dur).attr('opacity', 0);
+          perpAxis.transition().duration(dur).attr('opacity', 0);
+          projLines.transition().duration(dur).attr('opacity', 0)
+            .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
+            .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]));
+          ghosts.transition().duration(dur).attr('opacity', 0);
+          dots.transition().duration(dur)
+            .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]));
+          labelEls.transition().duration(dur)
+            .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8);
+        } else if (s === 1) {
+          pairArrows.transition().duration(dur).attr('opacity', 0.3);
+          transArrows
+            .attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
+          transArrows.transition().duration(dur * 1.5).ease(d3.easeCubicInOut)
+            .attr('x1', xScale(centroid[0])).attr('y1', yScale(centroid[1]))
+            .attr('x2', d => xScale(centroid[0] + wordData[d.to].coord[0] - wordData[d.from].coord[0]))
+            .attr('y2', d => yScale(centroid[1] + wordData[d.to].coord[1] - wordData[d.from].coord[1]))
+            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+        } else if (s === 2) {
+          transArrows.transition().duration(dur).attr('opacity', 0.35);
+          dirArrow.transition().duration(dur).attr('opacity', 0.9);
+          dirLabelEl.transition().duration(dur).attr('opacity', 1);
+        } else if (s === 3) {
+          transArrows.transition().duration(dur).attr('opacity', 0);
+          perpAxis.transition().duration(dur).attr('opacity', 0.5);
+          projLines.transition().duration(dur)
+            .attr('x2', d => xScale(d.steeredCoord[0]))
+            .attr('y2', d => yScale(d.steeredCoord[1]))
+            .attr('opacity', 0.6);
+        } else if (s === 4) {
+          btn.text('Reset').style('background', '#ddd').style('color', '#333');
+          ghosts.transition().duration(300).attr('opacity', 0.4);
+          pairArrows.transition().duration(dur).attr('opacity', 0);
+          dots.transition().duration(1200).ease(d3.easeCubicInOut)
+            .attr('cx', d => xScale(d.steeredCoord[0]))
+            .attr('cy', d => yScale(d.steeredCoord[1]));
+          labelEls.transition().duration(1200).ease(d3.easeCubicInOut)
+            .attr('x', d => xScale(d.steeredCoord[0]))
+            .attr('y', d => yScale(d.steeredCoord[1]) - 8);
+          perpAxis.transition().delay(800).duration(600).attr('opacity', 0);
+          projLines.transition().delay(500).duration(800)
+            .attr('x1', d => xScale(d.steeredCoord[0]))
+            .attr('y1', d => yScale(d.steeredCoord[1]))
+            .attr('opacity', 0);
+        }
+      } else {
+        // 3D: update opacities/button; rotation loop handles positions
+        if (s === 0) {
+          btn.text('Next \u25b6').style('background', COLORS.point).style('color', 'white');
+          pairArrows.transition().duration(dur).attr('opacity', 1)
+            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+          transArrows.transition().duration(dur).attr('opacity', 0);
+          dirArrow.transition().duration(dur).attr('opacity', 0);
+          dirLabelEl.transition().duration(dur).attr('opacity', 0);
+          projLines.transition().duration(dur).attr('opacity', 0);
+          ghosts.transition().duration(dur).attr('opacity', 0);
+        } else if (s === 1) {
+          pairArrows.transition().duration(dur).attr('opacity', 0.3);
+          transArrows.attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
+          transArrows.transition().duration(dur * 1.5).ease(d3.easeCubicInOut)
+            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+        } else if (s === 2) {
+          transArrows.transition().duration(dur).attr('opacity', 0.35);
+          dirArrow.transition().duration(dur).attr('opacity', 0.9);
+          dirLabelEl.transition().duration(dur).attr('opacity', 1);
+        } else if (s === 3) {
+          transArrows.transition().duration(dur).attr('opacity', 0);
+          projLines.transition().duration(dur).attr('opacity', 0.6);
+        } else if (s === 4) {
+          btn.text('Reset').style('background', '#ddd').style('color', '#333');
+          ghosts.transition().duration(300).attr('opacity', 0.4);
+          pairArrows.transition().duration(dur).attr('opacity', 0);
+          projLines.transition().delay(500).duration(800).attr('opacity', 0);
+        }
+      }
+    }
+
+    btn.on('click', () => {
+      if (currentStep >= 4) goTo(0);
+      else goTo(currentStep + 1);
+    });
+
+    // --- 3D rotation loop ---
+    if (dims === 3) {
+      let dragging = false, dragStartX = 0, dragStartY = 0;
+      let dragStartAngle = 0, dragStartTilt = 0;
+      let autoRotate = true, resumeTimeout = null;
+      const svgNode = svg.node();
+
+      svgNode.addEventListener('pointerdown', (e) => {
+        if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+        dragging = true; dragStartX = e.clientX; dragStartY = e.clientY;
+        dragStartAngle = rotationAngle; dragStartTilt = tiltAngle;
+        autoRotate = false; clearTimeout(resumeTimeout);
+        svgNode.style.cursor = 'grabbing';
+        svgNode.setPointerCapture(e.pointerId);
+      });
+      svgNode.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        rotationAngle = dragStartAngle + (e.clientX - dragStartX) * 0.01;
+        tiltAngle = Math.max(-Math.PI/2, Math.min(Math.PI/2,
+          dragStartTilt + (e.clientY - dragStartY) * 0.01));
+      });
+      svgNode.addEventListener('pointerup', () => {
+        if (!dragging) return;
+        dragging = false; svgNode.style.cursor = 'grab';
+        resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
+      });
+
+      // Smooth blend targets for step transitions
+      let targetBlend = 0, currentBlend = 0;       // 0=orig, 1=steered
+      let targetTransBlend = 0, currentTransBlend = 0; // 0=pair pos, 1=centroid
+
+      function tick() {
+        if (autoRotate && !dragging) rotationAngle += 0.005;
+        const blendSpeed = 0.04;
+        targetBlend = currentStep === 4 ? 1 : 0;
+        currentBlend += (targetBlend - currentBlend) * blendSpeed;
+        targetTransBlend = currentStep >= 1 ? 1 : 0;
+        currentTransBlend += (targetTransBlend - currentTransBlend) * blendSpeed;
+
+        const proj = getProjected();
+
+        // Word dots: blend orig to steered
+        dots.each(function(d, i) {
+          const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
+          const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
+          d3.select(this).attr('cx', ox + (sx - ox) * currentBlend)
+            .attr('cy', oy + (sy - oy) * currentBlend);
+        });
+        labelEls.each(function(d, i) {
+          const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
+          const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
+          d3.select(this).attr('x', ox + (sx - ox) * currentBlend)
+            .attr('y', (oy + (sy - oy) * currentBlend) - 8);
+        });
+        ghosts.each(function(d, i) {
+          d3.select(this).attr('cx', xScale(proj.words[i][0]))
+            .attr('cy', yScale(proj.words[i][1]));
+        });
+
+        // Pair arrows
+        pairArrows.each(function(d) {
+          d3.select(this)
+            .attr('x1', xScale(proj.words[d.from][0])).attr('y1', yScale(proj.words[d.from][1]))
+            .attr('x2', xScale(proj.words[d.to][0])).attr('y2', yScale(proj.words[d.to][1]));
+        });
+
+        // Translated arrows: blend from pair position to centroid
+        transArrows.each(function(d, pi) {
+          const fx = xScale(proj.words[d.from][0]), fy = yScale(proj.words[d.from][1]);
+          const tx = xScale(proj.words[d.to][0]), ty = yScale(proj.words[d.to][1]);
+          const ccx = xScale(proj.centroid[0]), ccy = yScale(proj.centroid[1]);
+          const dx = xScale(proj.diffs[pi][0]), dy = yScale(proj.diffs[pi][1]);
+          d3.select(this)
+            .attr('x1', fx + (ccx - fx) * currentTransBlend)
+            .attr('y1', fy + (ccy - fy) * currentTransBlend)
+            .attr('x2', tx + (dx - tx) * currentTransBlend)
+            .attr('y2', ty + (dy - ty) * currentTransBlend);
+        });
+
+        // Direction arrow + label
+        dirArrow
+          .attr('x1', xScale(proj.centroid[0])).attr('y1', yScale(proj.centroid[1]))
+          .attr('x2', xScale(proj.dirEnd[0])).attr('y2', yScale(proj.dirEnd[1]));
+        dirLabelEl
+          .attr('x', xScale(proj.dirEnd[0])).attr('y', yScale(proj.dirEnd[1]) - 10);
+
+        // Projection lines
+        projLines.each(function(d, i) {
+          const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
+          const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
+          d3.select(this)
+            .attr('x1', ox + (sx - ox) * currentBlend)
+            .attr('y1', oy + (sy - oy) * currentBlend)
+            .attr('x2', sx).attr('y2', sy);
+        });
+
+        rotationAnim = requestAnimationFrame(tick);
+      }
+      rotationAnim = requestAnimationFrame(tick);
+    }
+  } // end buildScene
+
+  // --- Eigenvalue selector ---
+  if (mdsData && eigenContainer) {
+    const eigenEl = typeof eigenContainer === 'string'
+      ? document.getElementById(eigenContainer) : eigenContainer;
+    if (eigenEl) {
+      eigenEl.innerHTML = '';
+      const selector = createEigenSelector(eigenEl, mdsData.eigenvalues, dims, (newDims) => {
+        if (newDims === 1 || newDims === dims) return; // 1D not supported
+        dims = newDims;
+        selector.update(dims, mdsData.variance[dims]);
+        buildScene();
+      });
+      // Gray out bar 1 (1D not supported for this animation)
+      const bars = d3.select(eigenEl).selectAll('rect.bar');
+      bars.filter((d, i) => i === 0)
+        .style('opacity', 0.4).style('cursor', 'not-allowed');
+      selector.update(dims, mdsData.variance[dims]);
     }
   }
 
-  btn.on('click', () => {
-    if (currentStep >= 4) goTo(0);
-    else goTo(currentStep + 1);
-  });
+  // Initial build
+  buildScene();
 }
 
 export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D, renderSteering2D, renderSubspaceAnimation };
