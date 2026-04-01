@@ -142,26 +142,30 @@ function render2D(container, words, coords, arrows, options = {}) {
   const containerEl = typeof container === 'string' ? document.getElementById(container) : container;
   const defaultW = getResponsiveWidth(containerEl);
   const {
-    highlights = [], crossGroupLines = [], width = defaultW, height = Math.round(defaultW * 0.72),
+    highlights = [], crossGroupLines = [], width = defaultW, height = Math.round(defaultW * 0.55),
     neighborWords = new Set(), neighborLinks = [],
     animate = false, prevCoords = null, prevWords = null,
     fixedDomain = null,  // optional: [min, max] for both axes (for stable transitions)
+    fixedDomainX = null, // optional: separate X domain (overrides fixedDomain)
+    fixedDomainY = null, // optional: separate Y domain (overrides fixedDomain)
     disableZoom = false,  // true in 3D mode (orbit handles interaction)
     hiddenPoints = new Set(),  // indices of points to hide (no circle or label)
   } = options;
   // Detect 1D mode early: all y-coords are ~0 (set by _getCoords2D for dims===1)
   const is1D = coords.every(c => Math.abs(c[1]) < 1e-9);
-  const margin = { top: is1D ? 60 : 30, right: 30, bottom: is1D ? 60 : 30, left: 30 };
+  const margin = { top: is1D ? 40 : 0, right: 10, bottom: is1D ? 40 : 0, left: 10 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
   const dur = animate ? 600 : 0;
   const highlightSet = new Set(highlights);
 
-  // Scales
+  // Scales — support separate X/Y domains for equal-aspect mode
   let xScale, yScale;
-  if (fixedDomain) {
-    xScale = d3.scaleLinear().domain(fixedDomain).range([0, w]);
-    yScale = d3.scaleLinear().domain(fixedDomain).range([h, 0]);
+  const domX = fixedDomainX || fixedDomain;
+  const domY = fixedDomainY || fixedDomain;
+  if (domX || domY) {
+    xScale = d3.scaleLinear().domain(domX || [-1.15, 1.15]).range([0, w]);
+    yScale = d3.scaleLinear().domain(domY || [-1.15, 1.15]).range([h, 0]);
   } else {
     const xs = coords.map(c => c[0]);
     const ys = coords.map(c => c[1]);
@@ -542,8 +546,8 @@ function render3D(container, words, coords, arrows, options = {}) {
 function render1D(container, words, coords, arrows, options = {}) {
   const containerEl = typeof container === 'string' ? document.getElementById(container) : container;
   const defaultW = getResponsiveWidth(containerEl);
-  const { highlights = [], width = defaultW, height = 120, neighborWords = new Set(), neighborLinks = [] } = options;
-  const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+  const { highlights = [], width = defaultW, height = 100, neighborWords = new Set(), neighborLinks = [] } = options;
+  const margin = { top: 0, right: 10, bottom: 0, left: 10 };
   const w = width - margin.left - margin.right;
 
   d3.select(container).selectAll('svg.plot').remove();
@@ -626,6 +630,7 @@ class EmbeddingViz {
     this.connectGroups = config.connectGroups || false;
     this.dims = config.initialDims || 2;
     this.searchEmb = config.searchEmb || config.emb;  // full vocab for neighbor search
+    this.equalAspect = config.equalAspect !== undefined ? config.equalAspect : true;
     this.neighborWords = new Set();   // words added via click expansion
     this.neighborLinks = [];          // { parent, child } index pairs
     this._prevCoords = null;
@@ -760,7 +765,7 @@ class EmbeddingViz {
       return raw.map(c => [c[0] / maxAbs, 0]);
     }
     if (this.dims === 2) {
-      // Normalize to bounding circle, same as 3D, so scale is consistent across transitions
+      // Always normalize to bounding circle — keeps scale consistent with 3D for smooth transitions
       const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
       return raw.map(([x, y]) => [x / maxR, y / maxR]);
     }
@@ -791,14 +796,27 @@ class EmbeddingViz {
     const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
     const normalized = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
 
-    const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
     const plotW = getResponsiveWidth(el);
-    const plotH = Math.round(plotW * 0.72);
+    const plotH = Math.round(plotW * 0.55);
     const w = plotW - margin.left - margin.right;
     const h = plotH - margin.top - margin.bottom;
-    // Same fixedDomain as passed to render2D: [-1.15, 1.15]
-    const xScale = d3.scaleLinear().domain([-1.15, 1.15]).range([0, w]);
-    const yScale = d3.scaleLinear().domain([-1.15, 1.15]).range([h, 0]);
+    // Same domain logic as render() — expand the wider axis for equal aspect
+    const baseDom = [-1.08, 1.08];
+    let domX = baseDom, domY = baseDom;
+    if (this.equalAspect) {
+      const baseSpan = baseDom[1] - baseDom[0];
+      const mid = (baseDom[0] + baseDom[1]) / 2;
+      if (w > h) {
+        const s = baseSpan * (w / h);
+        domX = [mid - s / 2, mid + s / 2];
+      } else {
+        const s = baseSpan * (h / w);
+        domY = [mid - s / 2, mid + s / 2];
+      }
+    }
+    const xScale = d3.scaleLinear().domain(domX).range([0, w]);
+    const yScale = d3.scaleLinear().domain(domY).range([h, 0]);
 
     // Drag-to-orbit: horizontal drag controls rotation angle
     let dragging = false;
@@ -923,13 +941,31 @@ class EmbeddingViz {
 
     // Fixed domain for all dims — coords are normalized to [-1,1],
     // so a consistent domain prevents zoom jumps during dimension transitions.
-    const fixedDomain = [-1.15, 1.15];
+    const baseDomain = [-1.08, 1.08];
 
     // In 1D mode, use a compact height — the data is a single line
     const plotWidth = getResponsiveWidth(el);
     const plotHeight = this.dims === 1
-      ? Math.min(200, Math.round(plotWidth * 0.35))
-      : Math.round(plotWidth * 0.72);
+      ? Math.min(160, Math.round(plotWidth * 0.25))
+      : Math.round(plotWidth * 0.55);
+
+    // Equal aspect: expand the domain on the longer axis so 1 data-unit = same pixels on both axes
+    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
+    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
+    const innerW = plotWidth - margin.left - margin.right;
+    const innerH = plotHeight - margin.top - margin.bottom;
+    if (this.equalAspect && this.dims >= 2) {
+      const baseSpan = baseDomain[1] - baseDomain[0];  // 2.3
+      if (innerW > innerH) {
+        const expandedSpan = baseSpan * (innerW / innerH);
+        const mid = (baseDomain[0] + baseDomain[1]) / 2;
+        fixedDomainX = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      } else {
+        const expandedSpan = baseSpan * (innerH / innerW);
+        const mid = (baseDomain[0] + baseDomain[1]) / 2;
+        fixedDomainY = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      }
+    }
 
     const opts = {
       highlights: this.highlights,
@@ -940,7 +976,7 @@ class EmbeddingViz {
       prevCoords: this._prevCoords,
       prevWords: this._prevWords,
       onClick: this._makeOnClick(),
-      fixedDomain,
+      fixedDomainX, fixedDomainY,
       disableZoom: this.dims === 3,
       hiddenPoints: this.hiddenPoints,
       width: plotWidth,
@@ -1068,14 +1104,540 @@ function renderHero3D(container, wordData, options = {}) {
 }
 
 /**
- * 2D animated steering visualization.
+ * Compute MDS at dimensions 1, 2, 3 from a raw distance matrix.
+ * Returns the same shape as computeAllMDS: { coords, eigenvalues, variance }.
+ */
+function computeAllMDSFromMatrix(distMatrix, n) {
+  const r1 = mds(distMatrix, n, 1);
+  const r2 = mds(distMatrix, n, 2);
+  const r3 = mds(distMatrix, n, 3);
+  const allEig = r3.eigenvalues;
+  const eigSum = allEig.reduce((a, b) => a + Math.max(0, b), 0);
+  function varianceForDims(k) {
+    if (eigSum <= 0) return 100;
+    let topK = 0;
+    for (let i = 0; i < k && i < allEig.length; i++) topK += Math.max(0, allEig[i]);
+    return topK / eigSum * 100;
+  }
+  return {
+    coords: { 1: r1.coords, 2: r2.coords, 3: r3.coords },
+    eigenvalues: allEig,
+    variance: { 1: varianceForDims(1), 2: varianceForDims(2), 3: varianceForDims(3) },
+  };
+}
+
+
+/**
+ * SteeringViz: dimension-switchable steering visualization with eigenvalue bars.
+ *
+ * Takes a pre-built joint distance matrix (over [steered_0..n, orig_0..n])
+ * and wordData array, computes MDS at 1/2/3 dims, and renders with
+ * Steer/Reset buttons, trails, ghost dots, arrows, and dimension switching.
+ *
+ * config: {
+ *   plotEl,        // DOM element or ID for the SVG plot
+ *   eigenEl,       // DOM element or ID for the eigenvalue selector (optional)
+ *   wordData,      // array of { word, group } — one entry per unique word
+ *   distMatrix,    // Float64Array, joint distance matrix of size (2n)x(2n)
+ *   n,             // number of unique words (half of distMatrix dimension)
+ *   arrows,        // optional array of { from, to } index pairs
+ *   initialDims,   // 1, 2, or 3 (default 2)
+ * }
+ */
+class SteeringViz {
+  constructor(config) {
+    this.plotEl = typeof config.plotEl === 'string'
+      ? document.getElementById(config.plotEl) : config.plotEl;
+    this.eigenEl = config.eigenEl
+      ? (typeof config.eigenEl === 'string' ? document.getElementById(config.eigenEl) : config.eigenEl)
+      : null;
+    this.wordData = config.wordData;  // { word, group }[]
+    this.arrows = config.arrows || [];
+    this.n = config.n;                // number of words
+    this.dims = config.initialDims || 2;
+    this.steered = false;
+
+    // Compute MDS at all dimensions from the joint distance matrix
+    const nn = 2 * this.n;
+    this.mdsData = computeAllMDSFromMatrix(config.distMatrix, nn);
+
+    // Assign coords to wordData at each dimension level
+    this._assignCoords();
+
+    // Rotation state for 3D
+    this._rotationAngle = 0;
+    this._tiltAngle = 0.4;
+    this._rotationAnim = null;
+    this._prevCoords = null;
+
+    // Create eigen selector
+    if (this.eigenEl) {
+      this.eigenEl.innerHTML = '';
+      this.eigenSelector = createEigenSelector(
+        this.eigenEl,
+        this.mdsData.eigenvalues,
+        this.dims,
+        (newDims) => {
+          this._prevCoords = this._currentProjected;
+          const prevDims = this.dims;
+          this.dims = newDims;
+          this._stopRotation();
+          if (newDims === 3 && prevDims <= 2 && this._prevCoords) {
+            this._findBestRotation();
+          }
+          this.render(true);
+        }
+      );
+    }
+
+    this.render();
+  }
+
+  _assignCoords() {
+    const n = this.n;
+    for (let dim = 1; dim <= 3; dim++) {
+      const coords = this.mdsData.coords[dim];
+      for (let i = 0; i < n; i++) {
+        if (!this.wordData[i]._coords) this.wordData[i]._coords = {};
+        this.wordData[i]._coords[dim] = {
+          steered: coords[i],
+          orig: coords[n + i],
+        };
+      }
+    }
+  }
+
+  /** Get projected 2D coords for current dim, for both orig and steered sets.
+   *  Returns { orig: [[x,y],...], steered: [[x,y],...] }
+   */
+  _getProjected() {
+    const n = this.n;
+    const dim = this.dims;
+    const origRaw = this.wordData.map(d => d._coords[dim].orig);
+    const steeredRaw = this.wordData.map(d => d._coords[dim].steered);
+
+    if (dim === 1) {
+      const all = [...origRaw, ...steeredRaw].map(c => Math.abs(c[0]));
+      const maxAbs = Math.max(...all) || 1;
+      return {
+        orig: origRaw.map(c => [c[0] / maxAbs, 0]),
+        steered: steeredRaw.map(c => [c[0] / maxAbs, 0]),
+      };
+    }
+    if (dim === 2) {
+      const all = [...origRaw, ...steeredRaw];
+      const maxR = Math.max(...all.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
+      return {
+        orig: origRaw.map(([x, y]) => [x / maxR, y / maxR]),
+        steered: steeredRaw.map(([x, y]) => [x / maxR, y / maxR]),
+      };
+    }
+    // 3D: normalize to bounding sphere then project
+    const all = [...origRaw, ...steeredRaw];
+    const maxR = Math.max(...all.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const origNorm = origRaw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+    const steeredNorm = steeredRaw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+    return {
+      orig: project3Dto2D(origNorm, this._rotationAngle, this._tiltAngle),
+      steered: project3Dto2D(steeredNorm, this._rotationAngle, this._tiltAngle),
+    };
+  }
+
+  _findBestRotation() {
+    if (!this._prevCoords || !this.mdsData.coords[3]) return;
+    // Use all points (orig + steered) in the current steered state for matching
+    const raw3D = this.mdsData.coords[3];
+    const n = this.n;
+    // Use the set of points currently visible (steered or orig depending on state)
+    const pointsRaw = this.steered
+      ? raw3D.slice(0, n)   // steered positions
+      : raw3D.slice(n);     // orig positions
+    const maxR = Math.max(...[...raw3D.slice(0, n), ...raw3D.slice(n)]
+      .map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const norm3D = pointsRaw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+    const prev = this._prevCoords;
+    const nn = Math.min(prev.length, norm3D.length);
+
+    const prevAll = prev.flatMap(c => [Math.abs(c[0]), Math.abs(c[1])]);
+    const pm = Math.max(...prevAll) || 1;
+    const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
+
+    function score(a, t) {
+      const p = project3Dto2D(norm3D, a, t);
+      let dot = 0, pp = 0;
+      for (let i = 0; i < nn; i++) {
+        dot += p[i][0] * prevN[i][0] + p[i][1] * prevN[i][1];
+        pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
+      }
+      const s = pp > 0 ? dot / pp : 1;
+      let d = 0;
+      for (let i = 0; i < nn; i++) {
+        d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] - prevN[i][1]) ** 2;
+      }
+      return d;
+    }
+
+    let bestA = 0, bestT = 0.4, bestD = Infinity;
+    for (let ai = 0; ai < 72; ai++) {
+      const a = ai * Math.PI / 36;
+      for (let ti = -7; ti <= 7; ti++) {
+        const t = ti * (Math.PI / 14);
+        const d = score(a, t);
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+      }
+    }
+    const fineStep = Math.PI / 180;
+    for (let da = -3; da <= 3; da++) {
+      for (let dt = -3; dt <= 3; dt++) {
+        const a = bestA + da * fineStep;
+        const t = bestT + dt * 0.02;
+        const d = score(a, t);
+        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
+      }
+    }
+    this._rotationAngle = bestA;
+    this._tiltAngle = bestT;
+  }
+
+  _stopRotation() {
+    if (this._rotationAnim) {
+      cancelAnimationFrame(this._rotationAnim);
+      this._rotationAnim = null;
+    }
+  }
+
+  _startRotation() {
+    if (this.dims !== 3) return;
+    const self = this;
+    const el = this.plotEl;
+    const svg = d3.select(el).select('svg.plot');
+    const g = svg.select('g.main');
+    if (g.empty()) return;
+
+    const raw3D = this.mdsData.coords[3];
+    const n = this.n;
+    const allRaw = [...raw3D.slice(0, n), ...raw3D.slice(n)];
+    const maxR = Math.max(...allRaw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+    const origNorm = raw3D.slice(n, 2*n).map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+    const steeredNorm = raw3D.slice(0, n).map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+
+    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
+    const plotW = getResponsiveWidth(el);
+    const plotH = Math.round(plotW * 0.55);
+    const w = plotW - margin.left - margin.right;
+    const h = plotH - margin.top - margin.bottom;
+    const baseDom = [-1.08, 1.08];
+    let domX = baseDom, domY = baseDom;
+    const baseSpan = baseDom[1] - baseDom[0];
+    const mid = (baseDom[0] + baseDom[1]) / 2;
+    if (w > h) {
+      const s = baseSpan * (w / h);
+      domX = [mid - s / 2, mid + s / 2];
+    } else {
+      const s = baseSpan * (h / w);
+      domY = [mid - s / 2, mid + s / 2];
+    }
+    const xScale = d3.scaleLinear().domain(domX).range([0, w]);
+    const yScale = d3.scaleLinear().domain(domY).range([h, 0]);
+
+    let dragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let dragStartAngle = 0, dragStartTilt = 0;
+    let autoRotate = true;
+    let resumeTimeout = null;
+
+    const svgNode = svg.node();
+    svgNode.addEventListener('pointerdown', (e) => {
+      if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+      dragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragStartAngle = self._rotationAngle;
+      dragStartTilt = self._tiltAngle;
+      autoRotate = false;
+      clearTimeout(resumeTimeout);
+      svgNode.style.cursor = 'grabbing';
+      svgNode.setPointerCapture(e.pointerId);
+    });
+    svgNode.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      self._rotationAngle = dragStartAngle + dx * 0.01;
+      self._tiltAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2,
+        dragStartTilt + dy * 0.01));
+    });
+    svgNode.addEventListener('pointerup', () => {
+      if (!dragging) return;
+      dragging = false;
+      svgNode.style.cursor = 'grab';
+      resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
+    });
+
+    const wordData = this.wordData;
+    const arrows = this.arrows;
+    const steered = this.steered;
+
+    function tick() {
+      if (autoRotate && !dragging) self._rotationAngle += 0.005;
+      const projOrig = project3Dto2D(origNorm, self._rotationAngle, self._tiltAngle);
+      const projSteered = project3Dto2D(steeredNorm, self._rotationAngle, self._tiltAngle);
+      const activeProj = steered ? projSteered : projOrig;
+      self._currentProjected = activeProj;
+
+      g.selectAll('circle.word')
+        .attr('cx', (d, i) => xScale(activeProj[i][0]))
+        .attr('cy', (d, i) => yScale(activeProj[i][1]));
+      g.selectAll('text.word-label')
+        .attr('x', (d, i) => xScale(activeProj[i][0]))
+        .attr('y', (d, i) => yScale(activeProj[i][1]) - 8);
+      g.selectAll('circle.ghost')
+        .attr('cx', (d, i) => xScale(projOrig[i][0]))
+        .attr('cy', (d, i) => yScale(projOrig[i][1]));
+      g.selectAll('line.trail')
+        .attr('x1', (d, i) => xScale(projOrig[i][0]))
+        .attr('y1', (d, i) => yScale(projOrig[i][1]))
+        .attr('x2', (d, i) => xScale(steered ? projSteered[i][0] : projOrig[i][0]))
+        .attr('y2', (d, i) => yScale(steered ? projSteered[i][1] : projOrig[i][1]));
+      g.selectAll('line.ghost-arrow')
+        .attr('x1', d => xScale(projOrig[d.from][0]))
+        .attr('y1', d => yScale(projOrig[d.from][1]))
+        .attr('x2', d => xScale(projOrig[d.to][0]))
+        .attr('y2', d => yScale(projOrig[d.to][1]));
+      g.selectAll('line.active-arrow')
+        .attr('x1', d => xScale(activeProj[d.from][0]))
+        .attr('y1', d => yScale(activeProj[d.from][1]))
+        .attr('x2', d => xScale(activeProj[d.to][0]))
+        .attr('y2', d => yScale(activeProj[d.to][1]));
+
+      self._rotationAnim = requestAnimationFrame(tick);
+    }
+    self._rotationAnim = requestAnimationFrame(tick);
+  }
+
+  render(animate = false) {
+    this._stopRotation();
+    const el = this.plotEl;
+    const projected = this._getProjected();
+    // Current visible coords: if steered, use steered; else orig
+    const activeCoords = this.steered ? projected.steered : projected.orig;
+    this._currentProjected = activeCoords;
+
+    const defaultW = getResponsiveWidth(el);
+    const plotWidth = defaultW;
+    const plotHeight = this.dims === 1
+      ? Math.min(200, Math.round(plotWidth * 0.35))
+      : Math.round(plotWidth * 0.55);
+
+    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
+    const w = plotWidth - margin.left - margin.right;
+    const h = plotHeight - margin.top - margin.bottom;
+
+    // Fixed domain for stable dimension transitions
+    const baseDomain = [-1.08, 1.08];
+    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
+    if (this.dims >= 2) {
+      const baseSpan = baseDomain[1] - baseDomain[0];
+      const mid = (baseDomain[0] + baseDomain[1]) / 2;
+      if (w > h) {
+        const expandedSpan = baseSpan * (w / h);
+        fixedDomainX = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      } else {
+        const expandedSpan = baseSpan * (h / w);
+        fixedDomainY = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      }
+    }
+
+    const xScale = d3.scaleLinear().domain(fixedDomainX).range([0, w]);
+    const yScale = d3.scaleLinear().domain(fixedDomainY).range([h, 0]);
+
+    const groupNames = [...new Set(this.wordData.map(d => d.group))];
+    const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
+    const groupColor = {};
+    groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
+
+    const dur = animate ? 600 : 0;
+    const wordData = this.wordData;
+    const arrows = this.arrows;
+    const n = this.n;
+
+    // Rebuild SVG
+    d3.select(el).selectAll('svg.plot').remove();
+    d3.select(el).selectAll('.steer-controls').remove();
+
+    const svg = d3.select(el).append('svg')
+      .attr('class', 'plot').attr('width', plotWidth).attr('height', plotHeight);
+
+    const zoomG = svg.append('g').attr('class', 'zoom-container');
+    const g = zoomG.append('g')
+      .attr('class', 'main')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Pan+zoom only in 1D/2D
+    if (this.dims < 3) {
+      const zoom = d3.zoom()
+        .scaleExtent([0.5, 5])
+        .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
+      svg.call(zoom);
+    }
+    svg.style('cursor', 'grab');
+    svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
+    svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
+
+    // Trails
+    const trails = g.selectAll('line.trail').data(wordData).enter().append('line')
+      .attr('class', 'trail')
+      .attr('x1', (d, i) => xScale(projected.orig[i][0]))
+      .attr('y1', (d, i) => yScale(projected.orig[i][1]))
+      .attr('x2', (d, i) => xScale(this.steered ? projected.steered[i][0] : projected.orig[i][0]))
+      .attr('y2', (d, i) => yScale(this.steered ? projected.steered[i][1] : projected.orig[i][1]))
+      .attr('stroke', d => groupColor[d.group]).attr('stroke-width', 1.5)
+      .attr('opacity', this.steered ? 0.4 : 0);
+
+    // Ghost dots
+    g.selectAll('circle.ghost').data(wordData).enter().append('circle')
+      .attr('class', 'ghost')
+      .attr('cx', (d, i) => xScale(projected.orig[i][0]))
+      .attr('cy', (d, i) => yScale(projected.orig[i][1]))
+      .attr('r', 3).attr('fill', d => groupColor[d.group])
+      .attr('opacity', this.steered ? 0.3 : 0);
+
+    // Ghost arrows
+    const ghostArrows = g.selectAll('line.ghost-arrow').data(arrows).enter().append('line')
+      .attr('class', 'ghost-arrow')
+      .attr('x1', d => xScale(projected.orig[d.from][0]))
+      .attr('y1', d => yScale(projected.orig[d.from][1]))
+      .attr('x2', d => xScale(projected.orig[d.to][0]))
+      .attr('y2', d => yScale(projected.orig[d.to][1]))
+      .attr('stroke', '#ccc').attr('stroke-width', 1).attr('stroke-dasharray', '4,3')
+      .attr('opacity', this.steered ? 0.3 : 0);
+
+    // Active arrows
+    const activeArrows = g.selectAll('line.active-arrow').data(arrows).enter().append('line')
+      .attr('class', 'active-arrow')
+      .attr('x1', d => xScale(activeCoords[d.from][0]))
+      .attr('y1', d => yScale(activeCoords[d.from][1]))
+      .attr('x2', d => xScale(activeCoords[d.to][0]))
+      .attr('y2', d => yScale(activeCoords[d.to][1]))
+      .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
+
+    // Word dots
+    const dots = g.selectAll('circle.word').data(wordData).enter().append('circle')
+      .attr('class', 'word')
+      .attr('cx', (d, i) => xScale(activeCoords[i][0]))
+      .attr('cy', (d, i) => yScale(activeCoords[i][1]))
+      .attr('r', 4).attr('fill', d => groupColor[d.group]);
+
+    // Labels
+    const labels = g.selectAll('text.word-label').data(wordData).enter().append('text')
+      .attr('class', 'word-label')
+      .attr('x', (d, i) => xScale(activeCoords[i][0]))
+      .attr('y', (d, i) => yScale(activeCoords[i][1]) - 8)
+      .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
+      .text(d => d.word);
+
+    // Steer/Reset controls
+    const controls = d3.select(el).append('div').attr('class', 'steer-controls')
+      .style('margin-top', '8px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+
+    const toggleBtn = controls.append('button')
+      .style('background', this.steered ? '#ddd' : COLORS.point)
+      .style('color', this.steered ? '#333' : 'white')
+      .style('border', 'none')
+      .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
+      .style('cursor', 'pointer').text(this.steered ? 'Reset' : '▶ Steer');
+
+    const statusText = controls.append('span')
+      .style('font-size', '12px').style('color', '#999')
+      .text(this.steered ? 'Steered embeddings' : 'Original embeddings');
+
+    const self = this;
+    toggleBtn.on('click', () => {
+      if (!self.steered) {
+        self.steered = true;
+        toggleBtn.text('Reset').style('background', '#ddd').style('color', '#333');
+        statusText.text('Steering...');
+
+        if (self.dims === 3) {
+          // In 3D, the rotation loop handles position updates; just toggle state
+          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
+          ghostArrows.transition().duration(300).attr('opacity', 0.3);
+          // trails and dots will update on next rotation tick
+          setTimeout(() => statusText.text('Steered embeddings'), 300);
+        } else {
+          const proj = self._getProjected();
+          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
+          ghostArrows.transition().duration(300).attr('opacity', 0.3);
+          trails.transition().duration(1500).ease(d3.easeCubicInOut)
+            .attr('x2', (d, i) => xScale(proj.steered[i][0]))
+            .attr('y2', (d, i) => yScale(proj.steered[i][1]))
+            .attr('opacity', 0.4);
+          dots.transition().duration(1500).ease(d3.easeCubicInOut)
+            .attr('cx', (d, i) => xScale(proj.steered[i][0]))
+            .attr('cy', (d, i) => yScale(proj.steered[i][1]));
+          labels.transition().duration(1500).ease(d3.easeCubicInOut)
+            .attr('x', (d, i) => xScale(proj.steered[i][0]))
+            .attr('y', (d, i) => yScale(proj.steered[i][1]) - 8);
+          activeArrows.transition().duration(1500).ease(d3.easeCubicInOut)
+            .attr('x1', d => xScale(proj.steered[d.from][0]))
+            .attr('y1', d => yScale(proj.steered[d.from][1]))
+            .attr('x2', d => xScale(proj.steered[d.to][0]))
+            .attr('y2', d => yScale(proj.steered[d.to][1]));
+          setTimeout(() => statusText.text('Steered embeddings'), 1500);
+        }
+      } else {
+        self.steered = false;
+        toggleBtn.text('▶ Steer').style('background', COLORS.point).style('color', 'white');
+        statusText.text('Original embeddings');
+
+        if (self.dims === 3) {
+          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
+          ghostArrows.transition().duration(300).attr('opacity', 0);
+        } else {
+          const proj = self._getProjected();
+          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
+          ghostArrows.transition().duration(300).attr('opacity', 0);
+          trails.transition().duration(800).ease(d3.easeCubicInOut)
+            .attr('x2', (d, i) => xScale(proj.orig[i][0]))
+            .attr('y2', (d, i) => yScale(proj.orig[i][1]))
+            .attr('opacity', 0);
+          dots.transition().duration(800).ease(d3.easeCubicInOut)
+            .attr('cx', (d, i) => xScale(proj.orig[i][0]))
+            .attr('cy', (d, i) => yScale(proj.orig[i][1]));
+          labels.transition().duration(800).ease(d3.easeCubicInOut)
+            .attr('x', (d, i) => xScale(proj.orig[i][0]))
+            .attr('y', (d, i) => yScale(proj.orig[i][1]) - 8);
+          activeArrows.transition().duration(800).ease(d3.easeCubicInOut)
+            .attr('x1', d => xScale(proj.orig[d.from][0]))
+            .attr('y1', d => yScale(proj.orig[d.from][1]))
+            .attr('x2', d => xScale(proj.orig[d.to][0]))
+            .attr('y2', d => yScale(proj.orig[d.to][1]));
+        }
+      }
+    });
+
+    // Update eigen selector
+    if (this.eigenSelector) {
+      this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
+    }
+
+    // Start 3D rotation
+    if (this.dims === 3) {
+      setTimeout(() => this._startRotation(), animate ? 700 : 0);
+    }
+  }
+}
+
+
+/**
+ * 2D animated steering visualization (legacy stateless version).
  * Shows words moving from original to steered positions with fading trails.
  */
 function renderSteering2D(container, wordData, options = {}) {
   const el = typeof container === 'string' ? document.getElementById(container) : container;
   const defaultW = getResponsiveWidth(el);
-  const { width = defaultW, height = Math.round(defaultW * 0.72), arrows = [] } = options;
-  const margin = { top: 30, right: 30, bottom: 40, left: 30 };
+  const { width = defaultW, height = Math.round(defaultW * 0.55), arrows = [] } = options;
+  const margin = { top: 0, right: 10, bottom: 0, left: 10 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
 
@@ -1085,12 +1647,22 @@ function renderSteering2D(container, wordData, options = {}) {
   const allX = wordData.flatMap(d => [d.origCoord[0], d.steeredCoord[0]]);
   const allY = wordData.flatMap(d => [d.origCoord[1], d.steeredCoord[1]]);
   const pad = 0.1;
-  const xRange = [Math.min(...allX), Math.max(...allX)];
-  const yRange = [Math.min(...allY), Math.max(...allY)];
-  const xPad = (xRange[1] - xRange[0]) * pad || 0.1;
-  const yPad = (yRange[1] - yRange[0]) * pad || 0.1;
-  const xScale = d3.scaleLinear().domain([xRange[0] - xPad, xRange[1] + xPad]).range([0, w]);
-  const yScale = d3.scaleLinear().domain([yRange[0] - yPad, yRange[1] + yPad]).range([h, 0]);
+  const xMin = Math.min(...allX), xMax = Math.max(...allX);
+  const yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
+  const xPad = xSpan * pad, yPad = ySpan * pad;
+  // Equal scaling: expand the smaller axis to match the aspect ratio
+  const dataW = xSpan + 2 * xPad, dataH = ySpan + 2 * yPad;
+  const aspect = w / h;
+  let domW = dataW, domH = dataH;
+  if (dataW / dataH > aspect) {
+    domH = domW / aspect;
+  } else {
+    domW = domH * aspect;
+  }
+  const cxDom = (xMin + xMax) / 2, cyDom = (yMin + yMax) / 2;
+  const xScale = d3.scaleLinear().domain([cxDom - domW / 2, cxDom + domW / 2]).range([0, w]);
+  const yScale = d3.scaleLinear().domain([cyDom - domH / 2, cyDom + domH / 2]).range([h, 0]);
 
   const groupNames = [...new Set(wordData.map(d => d.group))];
   const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
@@ -1212,9 +1784,9 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
   const el = typeof container === 'string' ? document.getElementById(container) : container;
   if (!el) return;
   const defaultW = getResponsiveWidth(el);
-  const { width = defaultW, height = Math.round(defaultW * 0.72) } = options;
+  const { width = defaultW, height = Math.round(defaultW * 0.55) } = options;
   const { pairs = [], directionLabel = 'direction' } = options;
-  const margin = { top: 30, right: 30, bottom: 40, left: 30 };
+  const margin = { top: 0, right: 10, bottom: 0, left: 10 };
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
 
@@ -1488,4 +2060,4 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
   });
 }
 
-export { EmbeddingViz, computeAllMDS, render2D, render3D, render1D, renderHero3D, renderSteering2D, renderSubspaceAnimation };
+export { EmbeddingViz, SteeringViz, computeAllMDS, computeAllMDSFromMatrix, render2D, render3D, render1D, renderHero3D, renderSteering2D, renderSubspaceAnimation };
