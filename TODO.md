@@ -2,30 +2,12 @@
 
 - Is there a good question to use Three.js kept for hero visualization?
 
+- crtical assessment of the fidelty of the math and code.
+
 - do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
 
 - [x] should we set the aspect ratio to be more equal?  does that make any sense?
   - Yes. Equal aspect (1 data-unit = same pixels on both axes) is correct for MDS since it preserves distances. Implemented as default for all plots. See checklist below.
-
-## Equal aspect ratio — all plots
-
-1. [x] Hero 3D (Three.js) — `renderHero3D` — Three.js PerspectiveCamera + uniform scaling inherently preserves equal aspect; no change needed
-2. [x] Superlatives — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
-3. [x] Numbers: digits — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
-4. [x] Numbers: words — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
-5. [x] Numbers: linked — `EmbeddingViz` direct — default `equalAspect: true`
-6. [x] Gender pairs — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
-7. [x] Size pairs — `EmbeddingViz` via `buildVizWithDirection` — default `equalAspect: true`
-8. [x] Subspace animation — `renderSubspaceAnimation` — already used equal scaling
-9. [x] Analogy: king — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
-10. [x] Analogy: custom — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
-11. [x] Steering: gendered words — `renderSteering2D` — added equal scaling to renderSteering2D
-12. [x] Doctor before — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
-13. [x] Doctor after — `EmbeddingViz` via `buildAnalogyViz` — default `equalAspect: true`
-14. [x] Steering: professions — `renderSteering2D` — shares fix with item 11
-15. [x] Explorer (static) — `EmbeddingViz` direct — default `equalAspect: true`
-16. [x] Explorer (steering) — `renderSteering2D` — shares fix with item 11
-17. [x] Profession ranking bar chart — N/A: 1D bar chart, not a scatter plot
 
 - should we try to quantify how much of the variance is accounted for in
   directions and sterring moves?  (would putting an uncertainty cone around an
@@ -74,14 +56,10 @@
 
 ## Article interactivity
 
-- [x] Click-to-expand nearest neighbors on all plots (click word → sprout top-5 neighbors)
-  - Clicking a word in 2D/1D plots adds its top-5 nearest neighbors to the data, recomputes MDS, and animates the transition. Neighbors are styled distinctly (gray, smaller text) with dashed lines to their parent. Recursive: clicking neighbors expands them too.
-
-- [ ] Adaptive neighbor count — avoid adding words that are off-topic for the current plot
-  - Option A: **Relevance filter by distance.** Only add a neighbor if its average distance to the current word set is below a threshold (e.g., below the median pairwise distance). Words far from everything are likely off-topic.
-  - Option B: **Subspace projection.** If the plot's words define a low-rank subspace, only add neighbors whose projection onto that subspace explains a large fraction of their variance. Orthogonal neighbors won't be informative.
-  - Option C: **Similarity dropoff.** Instead of always adding 5, look at the similarity scores and stop at a gap. If top-3 are close but #4 drops off, only add 3.
-  - Option D: **MDS variance impact.** Tentatively add neighbors, check how much MDS variance explained drops. If it drops a lot, the new words introduce dimensions the plot can't represent — add fewer.
+- [x] Click-to-expand nearest neighbors — **disabled**
+  - Infrastructure remains in viz.js (`_makeOnClick`, neighborWords/neighborLinks styling in render2D/1D/3D). To re-enable: change `_makeOnClick()` to return the handler instead of null.
+  - Disabled because: expanded neighbors were often off-topic, MDS quality degraded as words were added, labels got crowded fast.
+  - If re-enabled, consider adaptive neighbor count (relevance filter, similarity dropoff, or MDS variance impact).
 
 - [x] Animated steering transition (play button, words slide from original to steered with trails)
   - Added `renderSteering2D` in viz.js. Computes joint MDS over original+steered positions, then D3 transitions animate words from original to steered with ghost dots and trails. Steer/Reset buttons. Replaces the two separate before/after gendered pair plots.
@@ -170,6 +148,20 @@
   Placed after the SVD math, before "Steering by Subspace Projection."
 
 
+- [x] the 3d steering method step-by-step should project all points onto a
+  plane, just like in 2d this project onto a line.
+  - Added semi-transparent perpendicular plane (polygon) in 3D mode. Computed
+    via cross products of direction vector to get two orthogonal basis vectors.
+    Plane appears at step 3 (projection), fades at step 4 (steer).
+
+
+- [ ] In the steering animations, it's a little hard to figure out what exactly
+  is going on.  I wonder if there is some way to use the step-by-step animation
+  here.  Maybe we can show the influence of the gendered pairs is a better way,
+  e.g., are all points moving in a common gender direction, can we actually see
+  it in the MDS plot?  How do we interpret the steering movements?
+
+
 ## Style
 
 
@@ -184,6 +176,8 @@
 
 
 ## Polish
+
+- [ ] co-occurence matrix symbol is used without introduction.
 
 - [x] Fix plot horizontal alignment with Distill column
   - Used Distill's `l-body-outset` class + 48px left margin to align plots with text.
@@ -274,6 +268,44 @@
 
 - [x] Clarify the Explore section syntax.
   - Rewrote instructions: explains that words on the same line are plotted together and connected by arrows, and that `word - word` defines steering pairs.
+
+
+## Math review
+
+### Easy
+
+- [x] Eigendecomposition uses SVD notation — changed $\boldsymbol{\Sigma}$ to $\boldsymbol{\Lambda}$
+- [x] Variance-explained denominator — changed $\sum_{j=1}^n$ to $\sum_j$ (no wrong upper bound)
+- [x] "Second-moment matrix" → "scatter matrix", removed the $1/2$ factor from formula and code,
+      dropped the confusing "two observations with one degree of freedom" explanation
+- [x] Analogy explanation — restored bias terms, rewrote as bias cancellation in differences
+      yielding log co-occurrence ratios
+
+### Medium
+
+- [ ] MDS loss function (raw stress) doesn't match the implementation (classical
+      MDS via double-centering). Either show the classical formulation or note
+      that the optimization view is for intuition and the code uses the
+      closed-form solution
+- [ ] The $\frac{1}{2}$ factor explanation ("two observations with one degree of
+      freedom") is cryptic — rewrite with a clearer motivation or just drop the
+      factor since eigenvectors are unaffected
+- [ ] Vectors are L2-normalized on load but this is never stated — all distances
+      are cosine-based, which changes the interpretation of "Euclidean distance"
+      throughout
+- [ ] Steering formula presents renormalization as inherent to the method, but
+      it's only needed because we work on the unit sphere — note this
+
+### Hard
+
+- [ ] GloVe uses two separate embedding matrices ($W$ and $\tilde{W}$), not
+      $WW^\top$. The diagram, the objective, and the "released vectors drop the
+      biases" claim all assume a single matrix. Fixing properly requires
+      explaining the two-matrix setup and the $w + \tilde{w}$ averaging trick,
+      or explicitly flagging the simplification
+- [ ] No discussion of how $k$ (subspace dimension) is chosen — the code uses
+      $K=10$ out of 100 dimensions with no justification. Needs at least a
+      paragraph on eigenvalue spectrum, sensitivity, and tradeoffs
 
 
 ## Boo-boos?

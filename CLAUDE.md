@@ -5,7 +5,7 @@ Uses GloVe embeddings, runs entirely in the browser.
 
 ## Project structure
 
-- `article/index.html` — main article (Distill template, prose, inline JS for visualization setup)
+- `article/index.html` — main article (standalone HTML with blog-style CSS, prose, inline JS for visualization setup)
 - `article/js/embeddings.js` — embedding operations: loading, nearest neighbors, analogies, MDS, steering
 - `article/js/viz.js` — all visualization code: D3 plots (1D/2D/projected-3D), Three.js hero, steering animation
 - `article/css/style.css` — styles (mostly overridden by inline styles in index.html)
@@ -70,10 +70,10 @@ Note: `data/` (binary vectors) are already in the deploy repo and rarely change.
 - **Re-read files before editing** if another agent may have modified them. Check `git status` and `git log` frequently.
 - **Never edit deploy repos directly** — only edit in this main repo. If a deploy repo exists, copy files out one-way.
 - **Cache-busting**: JS module imports in index.html use `Date.now()` query strings so browsers load fresh code.
-- **Distill template v1 quirks**:
-  - The `dt-banner` ("awaiting review") is hidden via CSS: `dt-banner { display: none !important; }`
-  - Front-matter with authors but no affiliations causes a harmless JS error (suppressed)
-  - Math uses KaTeX loaded separately (not bundled in v1); use `$...$` and `$$...$$` delimiters
-  - `<dt-cite key="...">` for inline citations; bibliography in `<script type="text/bibliography">`
+- **Styling**: Uses EB Garamond font matching the blog (timvieira.github.io/blog). No external template — all CSS is inline.
+- **Math**: KaTeX with `$...$` (inline) and `$$...$$` (display) delimiters; custom macros in the `renderMathInElement` call.
+- **Ordinals**: Write `$i\textsuperscript{th}$` (not `$i$-th` or `$i$th`). Same pattern for other ordinals like `$k\textsuperscript{th}$`.
+- **Citations**: Inline parenthetical links (e.g., "(Pennington et al., 2014)") with a References section at the end.
+- **Layout classes**: `l-body-outset` (negative margins for wider plots) and `l-page` (full viewport for hero) are custom CSS, not from any template.
 - **D3 zoom vs orbit**: In 3D projected mode, D3 zoom is NOT attached (would conflict with orbit drag). When reusing an SVG from 2D, stale zoom listeners must be removed: `svg.on('.zoom', null)`.
 - **The user values**: understated writing (no dorky capitalization, no cliché quotes), smoke-tested code, and thorough TODO tracking. Don't present work as done without verifying it works.

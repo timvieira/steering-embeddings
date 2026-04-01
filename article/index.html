@@ -15,64 +15,27 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
+<link rel="stylesheet" href="css/blog.css">
 <style>
-  /* === Reset (from blog) === */
-  html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p,
-  blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, img,
-  ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, b, u, i, center,
-  dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody,
-  tfoot, thead, tr, th, td, article, aside, canvas, details, embed, figure,
-  figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,
-  time, mark, audio, video {
-    margin: 0; padding: 0; border: 0; font: inherit;
-    font-size: 100%; vertical-align: baseline;
-  }
-  article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section, summary { display: block; }
+  /* === Standalone article overrides === */
+  /* No sidebar, so cap body width for readability */
+  body { max-width: 800px; }
+  /* No blog header/sidebar, so remove the sidebar margin */
+  #content { margin-right: 0; }
 
-  /* === Typography (from blog) === */
-  body {
-    background-color: #fffff8;
-    font-family: 'EB Garamond', "PT Serif", "Georgia", "Helvetica Neue", Arial, sans-serif;
-    color: #333;
-    font-size: 16pt;
-    line-height: 1.5em;
-    max-width: 740px;
-    margin: 0 auto;
-    padding: 0 25px;
-  }
-  @media only screen and (min-width: 992px) {
-    body { font-size: 1.15em; }
-    h1 { font-size: 2.6em; line-height: 1.2em; }
-  }
-  h1 { font-size: 2.2em; line-height: 1.2em; }
-  h1, h2, h3, h4, h5, h6 { text-rendering: optimizelegibility; margin-bottom: 0.5em; margin-top: 1.5em; font-weight: 575; }
-  h1 { margin-top: 0; }
-  h2 { font-size: 1.5em; }
-  h3 { font-size: 1.3em; }
-  h4 { font-size: 1em; }
-  p, blockquote, ul, ol { margin-bottom: 1em; }
-  strong, b { font-weight: bold; }
-  em, i { font-style: italic; }
-  sub { vertical-align: sub; font-size: 0.8em; }
-  sup { vertical-align: super; font-size: 0.8em; }
-  a { color: inherit; transition: color 0.3s; }
-  a:active { color: inherit; }
-  code, tt, pre { font-family: Menlo, Monaco, "Andale Mono", "lucida console", "Courier New", monospace; }
-  code { font-size: 0.85em; }
-  ol { list-style-type: decimal; margin-left: 1.5em; }
-  ul { list-style-type: disc; margin-left: 1.5em; }
-  figcaption { font-size: 0.85em; color: #666; margin-top: 0.5em; }
-  table { border-collapse: collapse; border-spacing: 0; }
+  /* Subtitle */
+  h1 + h2 { font-weight: 300; font-size: 1.1em; font-style: normal; margin-top: -0.3em; margin-bottom: 0.3em; color: rgba(0,0,0,0.5); }
 
-  /* === Layout (replaces Distill l-page / l-body-outset) === */
+  /* Layout classes for wider-than-body content */
   .l-body-outset { margin-left: -48px; margin-right: -48px; }
   @media (max-width: 768px) { .l-body-outset { margin-left: 0; margin-right: 0; } }
-  .l-page { width: 100vw; position: relative; left: 50%; transform: translateX(-50%); }
 
-  /* === Article-specific === */
+  /* Disable blog's image box-shadow for SVG plots and inline images */
+  article img, article svg { box-shadow: none; border: none; border-radius: 0; }
+
+  /* === Visualization layout === */
   svg.plot { user-select: none; -webkit-user-select: none; overflow: hidden; }
   .katex svg { overflow: hidden; }
-  article img { box-shadow: none; border: none; border-radius: 0; }
 
   .figure-row { position: relative; margin: 0; }
   p + .figure-row { margin-top: 0; }
@@ -84,6 +47,7 @@
 
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
 
+  /* === Loading overlay === */
   .progress-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(255,255,255,0.95); display: flex; flex-direction: column;
@@ -96,6 +60,7 @@
   .progress-bar .fill { height: 100%; background: #5778a4; width: 0%; transition: width 0.1s; }
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
 
+  /* === UI controls === */
   .vocab-selector { display: inline-flex; gap: 4px; background: #f7f7f7; border-radius: 4px; padding: 3px; }
   .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   .vocab-selector button.active { background: #5778a4; color: white; }
@@ -120,6 +85,45 @@
   .appendix { margin-top: 2em; padding-top: 1em; border-top: 1px solid #ddd; font-size: 0.9em; color: #666; }
   .references { margin-top: 2em; }
   .references ol { font-size: 0.9em; line-height: 1.6; }
+
+  /* Tufte-style sidenote numbering */
+  article { counter-reset: sidenote-counter; }
+  .sidenote-number { counter-increment: sidenote-counter; }
+  .sidenote-number::after { content: counter(sidenote-counter); font-size: 0.6em; vertical-align: super; }
+  .sidenote-number + .margin-note::before { content: counter(sidenote-counter); font-size: 0.6em; vertical-align: super; }
+
+  /* Margin notes — float into the right margin */
+  .margin-note {
+    float: right;
+    clear: right;
+    width: 220px;
+    margin-right: -250px;
+    padding: 0.3em 0.5em;
+    font-size: 0.75em;
+    line-height: 1.3;
+    color: #999;
+    border-left: 2px solid #ddd;
+  }
+  @media only screen and (max-width: 1060px) {
+    /* Standalone margin notes (no sidenote number): show inline */
+    .margin-note {
+      float: none;
+      width: auto;
+      margin: 0.5em 0;
+    }
+    /* Numbered sidenotes: hide until clicked */
+    .sidenote-number + .margin-note {
+      display: none;
+      max-width: 100%;
+      padding: 0.4em 0.8em;
+      background: #f8f8f8;
+      border-radius: 4px;
+    }
+    .sidenote-number { cursor: pointer; }
+    .sidenote-number.active + .margin-note {
+      display: block;
+    }
+  }
 </style>
 </head>
 <body>
@@ -139,18 +143,19 @@
   </div>
 </div>
 
+<div id="main"><div id="content">
 <article>
 
 <h1>Steering Word Embeddings</h1>
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
 <p style="font-size: 13px; color: rgba(0,0,0,0.5); margin-top: -0.5em;"><a href="http://timvieira.github.io/" style="color: inherit; text-decoration: none; border-bottom: 1px solid rgba(0,0,0,0.2);">Tim Vieira</a></p>
 
-<div id="hero-viz" class="l-page" style="margin: 0.5em auto 0;"></div>
-<p style="color: #999; font-size: 13px; line-height: 1.4; margin-bottom: 2em;">
-  <span style="color: #5778a4;">&#9679;</span> Gendered word pairs &nbsp;
-  <span style="color: #e49444;">&#9679;</span> Occupations &nbsp;
- &mdash;Each dot is a word; faded dots show original positions; bright dots show where they land after a gender direction is removed; trails show the shift.
-</p>
+<span class="margin-note">
+  <span style="color: #5778a4;">&#9679;</span> Gendered words<br>
+  <span style="color: #e49444;">&#9679;</span> Occupations<br><br>
+  Each dot is a word. Faded dots show original positions; bright dots show where they land after a gender direction is removed. Trails show the shift.
+</span>
+<div id="hero-viz" class="l-body-outset" style="margin: 0.5em auto 0;"></div>
 
 <p>
   <span style="font-size: 13px; color: #999;">Vocabulary:</span>
@@ -170,63 +175,49 @@
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
-  <figcaption>A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus. (<a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a>)</figcaption>
+  <span class="margin-note">A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus. (<a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a>)</span>
 </figure>
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors reconstruct the log co-occurrence counts:</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log co-occurrence counts:</p>
 
 <p style="color: #7b2d8b;">$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
-<p style="color: #7b2d8b;">where $b_i$ and $b_j$ are per-word bias terms. The parameters are fit by weighted least squares over all observed word pairs.</p>
+<p style="color: #7b2d8b;">where $b_i$ and $b_j$ are per-word bias terms.<label class="sidenote-number"></label><span class="margin-note" style="color: #7b2d8b;">Why the bias terms? Without them, a word like "the" that co-occurs frequently with everything would need a large vector magnitude to produce large dot products with every other word&mdash;distorting the geometry that encodes meaning. The biases $b_i$ absorb each word's baseline co-occurrence rate, freeing the vectors to focus on which words co-occur <em>more or less than expected</em>. The released GloVe vectors drop the biases, since they primarily capture frequency information rather than meaning.</span> The parameters are fit by weighted least squares over all observed word pairs.</p>
 
-<p style="color: #7b2d8b;">Why the bias terms? Without them, a word like "the" that co-occurs frequently with everything would need a large vector magnitude to produce large dot products with every other word &mdash; distorting the geometry that encodes meaning. The biases $b_i$ absorb each word's baseline co-occurrence rate, freeing the vectors to focus on which words co-occur <em>more or less than expected</em>. In matrix form, the $V \times V$ log co-occurrence matrix (where $V$ is the vocabulary size) is approximated by $\mathbf{W} \mathbf{W}^\top + \mathbf{b}\,\mathbf{1}^\top + \mathbf{1}\,\mathbf{b}^\top$, where $\mathbf{W}$ is a $V \times D$ matrix whose rows are the $D$-dimensional word vectors ($D = 100$) and $\mathbf{b}$ is the vector of per-word biases. The released GloVe vectors drop the biases, since they primarily capture frequency information rather than meaning.</p>
-
+<!-- Matrix-form diagram (commented out for now)
 <figure>
 <svg viewBox="0 0 680 100" style="max-width: 680px; width: 100%; height: auto; display: block; margin: 0 auto;">
-  <!-- log X matrix -->
   <rect x="10" y="10" width="70" height="70" fill="none" stroke="#7b2d8b" stroke-width="1.5" rx="2"/>
   <text x="45" y="50" text-anchor="middle" font-size="12" fill="#7b2d8b">log X</text>
   <text x="45" y="92" text-anchor="middle" font-size="9" fill="#999">V × V</text>
-  <!-- ≈ -->
   <text x="100" y="50" text-anchor="middle" font-size="16" fill="#666">≈</text>
-  <!-- W matrix -->
   <rect x="120" y="10" width="35" height="70" fill="none" stroke="#5778a4" stroke-width="1.5" rx="2"/>
   <text x="137" y="50" text-anchor="middle" font-size="12" fill="#5778a4">W</text>
   <text x="137" y="92" text-anchor="middle" font-size="9" fill="#999">V × D</text>
-  <!-- × -->
   <text x="168" y="50" text-anchor="middle" font-size="12" fill="#666">×</text>
-  <!-- W^T matrix -->
   <rect x="182" y="22" width="70" height="35" fill="none" stroke="#5778a4" stroke-width="1.5" rx="2"/>
   <text x="217" y="44" text-anchor="middle" font-size="12" fill="#5778a4">W<tspan baseline-shift="super" font-size="8">⊤</tspan></text>
   <text x="217" y="92" text-anchor="middle" font-size="9" fill="#999">D × V</text>
-  <!-- + -->
   <text x="270" y="50" text-anchor="middle" font-size="16" fill="#666">+</text>
-  <!-- b column -->
   <rect x="288" y="10" width="16" height="70" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
   <text x="296" y="50" text-anchor="middle" font-size="11" fill="#e49444">b</text>
-  <!-- × -->
   <text x="316" y="50" text-anchor="middle" font-size="12" fill="#666">×</text>
-  <!-- 1^T row -->
   <rect x="330" y="30" width="70" height="16" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
   <text x="365" y="43" text-anchor="middle" font-size="11" fill="#e49444">1<tspan baseline-shift="super" font-size="8">⊤</tspan></text>
-  <!-- + -->
   <text x="414" y="50" text-anchor="middle" font-size="16" fill="#666">+</text>
-  <!-- 1 column -->
   <rect x="432" y="10" width="16" height="70" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
   <text x="440" y="50" text-anchor="middle" font-size="11" fill="#e49444">1</text>
-  <!-- × -->
   <text x="460" y="50" text-anchor="middle" font-size="12" fill="#666">×</text>
-  <!-- b^T row -->
   <rect x="474" y="30" width="70" height="16" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
   <text x="509" y="43" text-anchor="middle" font-size="11" fill="#e49444">b<tspan baseline-shift="super" font-size="8">⊤</tspan></text>
-  <!-- annotation -->
   <text x="560" y="30" text-anchor="start" font-size="10" fill="#999">V ≈ 50,000 words</text>
   <text x="560" y="46" text-anchor="start" font-size="10" fill="#999">D = 100 dimensions</text>
   <text x="560" y="62" text-anchor="start" font-size="10" fill="#e49444">b = per-word biases</text>
 </svg>
 </figure>
+-->
 
 <p style="color: #7b2d8b;">This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
@@ -336,7 +327,7 @@
 
 <h2>Steering by Subspace Projection</h2>
 
-<p style="color: #7b2d8b;">Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in Bolukbasi et al. <dt-cite key="bolukbasi2016man"></dt-cite>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
+<p style="color: #7b2d8b;">Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al., 2016</a>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
 
 <p style="color: #7b2d8b;">The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize.</p>
 
@@ -383,7 +374,7 @@
 
 <p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
-<p style="color: #7b2d8b;">More recent work has explored alternatives: Zhao et al. <dt-cite key="zhao2018gender"></dt-cite> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and Ravfogel et al. <dt-cite key="ravfogel2020inlp"></dt-cite> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+<p style="color: #7b2d8b;">More recent work has explored alternatives: <a href="https://arxiv.org/abs/1809.01496">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://arxiv.org/abs/2004.07667">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
 
 <h2>Explore</h2>
 
@@ -407,65 +398,25 @@ mother - father</textarea>
 
 </article>
 
-<dt-appendix>
+<section class="appendix">
   <h3>Acknowledgments</h3>
   <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
-</dt-appendix>
+</section>
 
-<script type="text/bibliography">
-  @article{harris1954distributional,
-    title={Distributional Structure},
-    author={Harris, Zellig S.},
-    journal={Word},
-    volume={10},
-    number={2-3},
-    pages={146--162},
-    year={1954},
-    url={https://doi.org/10.1080/00437956.1954.11659520}
-  }
-  @inproceedings{pennington2014glove,
-    title={GloVe: Global Vectors for Word Representation},
-    author={Pennington, Jeffrey and Socher, Richard and Manning, Christopher D},
-    booktitle={EMNLP},
-    year={2014},
-    url={https://nlp.stanford.edu/projects/glove/}
-  }
-  @article{mikolov2013word2vec,
-    title={Efficient Estimation of Word Representations in Vector Space},
-    author={Mikolov, Tomas and Chen, Kai and Corrado, Greg and Dean, Jeffrey},
-    journal={arXiv preprint arXiv:1301.3781},
-    year={2013},
-    url={https://arxiv.org/abs/1301.3781}
-  }
-  @article{devlin2019bert,
-    title={BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding},
-    author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
-    journal={arXiv preprint arXiv:1810.04805},
-    year={2019},
-    url={https://arxiv.org/abs/1810.04805}
-  }
-  @inproceedings{bolukbasi2016man,
-    title={Man is to Computer Programmer as Woman is to Homemaker? Debiasing Word Embeddings},
-    author={Bolukbasi, Tolga and Chang, Kai-Wei and Zou, James and Saligrama, Venkatesh and Kalai, Adam},
-    booktitle={NeurIPS},
-    year={2016},
-    url={https://arxiv.org/abs/1607.06520}
-  }
-  @inproceedings{zhao2018gender,
-    title={Learning Gender-Neutral Word Embeddings},
-    author={Zhao, Jieyu and Zhou, Yichao and Li, Zeyu and Wang, Wei and Chang, Kai-Wei},
-    booktitle={EMNLP},
-    year={2018},
-    url={https://arxiv.org/abs/1809.01496}
-  }
-  @inproceedings{ravfogel2020inlp,
-    title={Null It Out: Guarding Protected Attributes by Iterative Nullspace Projection},
-    author={Ravfogel, Shauli and Elazar, Yanai and Gonen, Hila and Twiton, Michael and Goldberg, Yoav},
-    booktitle={ACL},
-    year={2020},
-    url={https://arxiv.org/abs/2004.07667}
-  }
-</script>
+<section class="references">
+  <h2>References</h2>
+  <ol>
+    <li>Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V., & Kalai, A. (2016). <a href="https://arxiv.org/abs/1607.06520">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</a>. In <em>NeurIPS</em>.</li>
+    <li>Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). <a href="https://arxiv.org/abs/1810.04805">BERT: Pre-training of deep bidirectional transformers for language understanding</a>. <em>arXiv:1810.04805</em>.</li>
+    <li>Harris, Z. S. (1954). <a href="https://doi.org/10.1080/00437956.1954.11659520">Distributional structure</a>. <em>Word</em>, 10(2-3), 146-162.</li>
+    <li>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013). <a href="https://arxiv.org/abs/1301.3781">Efficient estimation of word representations in vector space</a>. <em>arXiv:1301.3781</em>.</li>
+    <li>Pennington, J., Socher, R., & Manning, C. D. (2014). <a href="https://nlp.stanford.edu/projects/glove/">GloVe: Global vectors for word representation</a>. In <em>EMNLP</em>.</li>
+    <li>Ravfogel, S., Elazar, Y., Gonen, H., Twiton, M., & Goldberg, Y. (2020). <a href="https://arxiv.org/abs/2004.07667">Null it out: Guarding protected attributes by iterative nullspace projection</a>. In <em>ACL</em>.</li>
+    <li>Zhao, J., Zhou, Y., Li, Z., Wang, W., & Chang, K.-W. (2018). <a href="https://arxiv.org/abs/1809.01496">Learning gender-neutral word embeddings</a>. In <em>EMNLP</em>.</li>
+  </ol>
+</section>
+
+</div></div><!-- /content /main -->
 
 <script type="module">
 const v = Date.now();
@@ -1322,3 +1273,13 @@ setupVocabSelectors();
 init('medium');
 
 </script>
+<script>
+// Toggle sidenotes on narrow screens
+document.querySelectorAll('.sidenote-number').forEach(function(el) {
+  el.addEventListener('click', function() {
+    el.classList.toggle('active');
+  });
+});
+</script>
+</body>
+</html>

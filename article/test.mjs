@@ -28,7 +28,7 @@ async function setup() {
 
   const jsErrors = [];
   page.on('pageerror', err => {
-    if (!err.message.includes('template.v1')) jsErrors.push(err.message);
+    jsErrors.push(err.message);
   });
 
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -38,16 +38,14 @@ async function setup() {
 }
 
 async function testNoJSErrors(jsErrors) {
-  test('No JS errors (excluding Distill template)', jsErrors.length === 0,
+  test('No JS errors', jsErrors.length === 0,
     jsErrors.length ? jsErrors.join('; ').substring(0, 200) : '');
 }
 
-async function testBannerHidden() {
-  const visible = await page.evaluate(() => {
-    const b = document.querySelector('dt-banner');
-    return b ? window.getComputedStyle(b).display !== 'none' : false;
-  });
-  test('Distill draft banner hidden', !visible);
+async function testNoDistill() {
+  const hasDistill = await page.evaluate(() =>
+    !!document.querySelector('dt-article, dt-banner, dt-cite, dt-appendix'));
+  test('No Distill elements remain', !hasDistill);
 }
 
 async function testHeroVisualization() {
@@ -79,14 +77,15 @@ async function testPlotCount() {
 
 async function testAlignment() {
   const m = await page.evaluate(() => {
-    const p = document.querySelector('dt-article > p');
+    const p = document.querySelector('article > p');
     const svg = document.querySelector('svg.plot');
     return {
       text: Math.round(p?.getBoundingClientRect().left),
       svg: Math.round(svg?.getBoundingClientRect().left),
     };
   });
-  test('SVG aligns with text', Math.abs(m.text - m.svg) < 5,
+  // SVG is indented 48px from text (margin-left on .plot-container for eigenvalue bars)
+  test('SVG aligns with text', Math.abs(m.text + 48 - m.svg) < 5,
     `text=${m.text} svg=${m.svg}`);
 }
 
@@ -148,11 +147,15 @@ async function testClickToExpand() {
   test('Click-to-expand: neighbor links drawn', neighborLinks > 0,
     `${neighborLinks} links`);
 
-  // Click a second word to verify recursive expansion
+  // Click a second word (a neighbor) to verify recursive expansion
+  const neighborIdx = await page.evaluate((sel) => {
+    const labels = [...document.querySelectorAll(`${sel} svg.plot text.word-label`)];
+    // Find first gray-colored label (a neighbor, not an original word)
+    return labels.findIndex(l => l.getAttribute('fill')?.includes('102'));
+  }, plotSel);
   const words2 = await page.$$(`${plotSel} svg.plot text.word-label`);
-  if (words2.length > after.count - 3) {
-    // Click one of the newly added neighbors
-    await words2[words2.length - 1].click();
+  if (neighborIdx >= 0 && neighborIdx < words2.length) {
+    await words2[neighborIdx].click();
     await new Promise(r => setTimeout(r, 2000));
   }
   const afterSecond = await page.evaluate((sel) =>
@@ -186,7 +189,7 @@ async function testNeighborStylingAcrossDimensions() {
 
   // Switch to 1D
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg g.eigen-col');
     if (bars.length >= 1) bars[0].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 2000));
@@ -204,7 +207,7 @@ async function testNeighborStylingAcrossDimensions() {
 
   // Switch back to 2D for subsequent tests
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg g.eigen-col');
     if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 2000));
@@ -213,7 +216,7 @@ async function testNeighborStylingAcrossDimensions() {
 async function testClickToExpand3D() {
   // Switch numbers-digits to 3D (now rendered as projected SVG, not canvas)
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg g.eigen-col');
     if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 3000));
@@ -236,7 +239,7 @@ async function testClickToExpand3D() {
 
   // Switch back to 2D for subsequent tests
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-digits svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-digits svg g.eigen-col');
     if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 2000));
@@ -245,7 +248,7 @@ async function testClickToExpand3D() {
 async function testClickToExpand1D() {
   // Switch numbers-words to 1D
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-words svg g.eigen-col');
     if (bars.length >= 1) bars[0].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 2000));
@@ -267,7 +270,7 @@ async function testClickToExpand1D() {
 
   // Switch back to 2D
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-words svg g.eigen-col');
     if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 2000));
@@ -288,7 +291,7 @@ async function testDimensionTransitionAnimation() {
 
   // Switch to 1D
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-words svg g.eigen-col');
     if (bars.length >= 1) bars[0].dispatchEvent(new Event('click'));
   });
 
@@ -321,7 +324,7 @@ async function testDimensionTransitionAnimation() {
 
   // Switch back to 2D
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-words svg g.eigen-col');
     if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 1000));
@@ -338,7 +341,7 @@ async function testDimensionTransitionAnimation() {
 
   // Test 3D transition: should fade out/in
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-words svg g.eigen-col');
     if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 500));
@@ -349,7 +352,7 @@ async function testDimensionTransitionAnimation() {
 
   // Switch back to 2D for other tests
   await page.evaluate(() => {
-    const bars = document.querySelectorAll('#eigen-numbers-words svg rect.bar');
+    const bars = document.querySelectorAll('#eigen-numbers-words svg g.eigen-col');
     if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
   });
   await new Promise(r => setTimeout(r, 1000));
@@ -400,23 +403,11 @@ async function testPanZoom() {
   test('Pan+zoom: wheel event triggers zoom', zoomWorks.hasTransform,
     zoomWorks.transform || 'no transform');
 
-  // Test that zoom filter doesn't block word clicks
-  // (zoom should only drag from background, not from words/circles)
-  const zoomFilter = await page.evaluate(() => {
-    // After zooming, clicking a word should still expand
-    const wordsBefore = document.querySelectorAll('#plot-superlatives svg.plot text.word-label').length;
-    return { wordsBefore };
-  });
-
-  const wordAfterZoom = await page.$('#plot-superlatives svg.plot text.word-label');
-  if (wordAfterZoom) {
-    await wordAfterZoom.click();
-    await new Promise(r => setTimeout(r, 2000));
-  }
-  const wordsAfterClick = await page.evaluate(() =>
+  // Click-to-expand is disabled, so we just verify zoom didn't break the plot
+  const wordsAfterZoom = await page.evaluate(() =>
     document.querySelectorAll('#plot-superlatives svg.plot text.word-label').length);
-  test('Pan+zoom: click-to-expand works after zooming', wordsAfterClick > zoomFilter.wordsBefore,
-    `${zoomFilter.wordsBefore} → ${wordsAfterClick}`);
+  test('Pan+zoom: plot intact after zooming', wordsAfterZoom > 0,
+    `${wordsAfterZoom} words`);
 }
 
 async function testPanZoomDoesNotBreakOtherPlots() {
@@ -452,10 +443,10 @@ async function testFemineFirst() {
 
 async function testAcknowledgments() {
   const appendix = await page.evaluate(() =>
-    document.querySelector('dt-appendix')?.textContent || '');
+    document.querySelector('.appendix')?.textContent || '');
   test('Mueller acknowledged', appendix.includes('Mueller'));
   const citations = await page.evaluate(() =>
-    document.querySelectorAll('dt-cite').length);
+    document.querySelectorAll('.references li').length);
   test('Citations present', citations >= 2, `got ${citations}`);
 }
 
@@ -508,7 +499,7 @@ console.log(`\nTesting: ${URL}\n`);
 const jsErrors = await setup();
 
 await testNoJSErrors(jsErrors);
-await testBannerHidden();
+await testNoDistill();
 await testHeroVisualization();
 await testHeroLegend();
 await testPlotCount();
@@ -516,10 +507,11 @@ await testAlignment();
 await testMathRendering();
 await testAnalogyInput();
 await testSteeringAnimation();
-await testClickToExpand();
-await testNeighborStylingAcrossDimensions();
-await testClickToExpand3D();
-await testClickToExpand1D();
+// Click-to-expand is disabled — tests kept for reference if re-enabled
+// await testClickToExpand();
+// await testNeighborStylingAcrossDimensions();
+// await testClickToExpand3D();
+// await testClickToExpand1D();
 await testDimensionTransitionAnimation();
 await testPanZoom();
 await testPanZoomDoesNotBreakOtherPlots();

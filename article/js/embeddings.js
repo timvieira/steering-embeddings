@@ -117,20 +117,15 @@ class Embeddings {
     // Compute covariance matrix: sum of np.cov for each pair.
     // For a pair [v1, v2], np.cov gives the outer product of the
     // difference: (v1-v2)(v1-v2)^T / (N-1), where N=2, so / 1.
-    // We sum these across all pairs, matching the Python:
-    //   C += np.cov(self.vec[self.dom.encode_many(g)].T)
+    // Scatter matrix: C = sum of d_i * d_i^T over all pair differences
     const d = this.dims;
     const C = new Float64Array(d * d);
     for (const [v1, v2] of pairVecs) {
       const diff = new Float64Array(d);
       for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
-      // np.cov with 2 observations and ddof=1: cov = diff * diff^T / 2
-      // But we also add the mean-centered outer products which equal this.
-      // More precisely: mean = (v1+v2)/2, centered = ±diff/2
-      // cov[i,j] = 2 * (diff[i]/2)*(diff[j]/2) / 1 = diff[i]*diff[j] / 2
       for (let i = 0; i < d; i++) {
         for (let j = 0; j < d; j++) {
-          C[i * d + j] += diff[i] * diff[j] / 2;
+          C[i * d + j] += diff[i] * diff[j];
         }
       }
     }

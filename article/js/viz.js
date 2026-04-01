@@ -73,16 +73,17 @@ function getResponsiveWidth(container, fallback = 620) {
 function createEigenSelector(container, eigenvalues, activeDims, onChange) {
   const topEig = eigenvalues.slice(0, 3);
   const maxVal = Math.max(...topEig.map(v => Math.max(0, v)));
-  const barH = 20, barW = 8, gap = 2;
-  const svgW = topEig.length * (barW + gap), svgH = barH + 12;
+  const barH = 30, barW = 14, gap = 4, labelH = 16, minBarH = 4;
+  const svgW = topEig.length * (barW + gap) - gap;
+  const svgH = barH + labelH;
 
   const row = d3.select(container).append('div')
     .style('display', 'inline-flex')
     .style('align-items', 'flex-end')
-    .style('gap', '3px')
+    .style('gap', '4px')
     .style('user-select', 'none')
-    .style('background', 'rgba(255,255,255,0.85)')
-    .style('padding', '2px 4px')
+    .style('background', 'rgba(255,255,248,0.85)')
+    .style('padding', '3px 6px')
     .style('border-radius', '3px');
 
   const svg = row.append('svg')
@@ -91,28 +92,46 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
 
   svg.append('title').text('Click to switch dimensions');
 
-  const bars = svg.selectAll('rect.bar')
+  // Each column is a clickable group containing the bar, a hit area, and a label
+  const groups = svg.selectAll('g.eigen-col')
     .data(topEig)
-    .enter().append('rect')
+    .enter().append('g')
+    .attr('class', 'eigen-col')
+    .attr('transform', (d, i) => `translate(${i * (barW + gap)}, 0)`)
+    .style('cursor', 'pointer');
+
+  // Invisible hit area covering the full column height
+  groups.append('rect')
+    .attr('class', 'hit-area')
+    .attr('x', 0).attr('y', 0)
+    .attr('width', barW).attr('height', svgH)
+    .attr('fill', 'transparent');
+
+  // Visible bar (with minimum height so small eigenvalues are still clickable)
+  const bars = groups.append('rect')
     .attr('class', 'bar')
-    .attr('x', (d, i) => i * (barW + gap))
-    .attr('y', d => barH - (maxVal > 0 ? Math.max(0, d) / maxVal * barH : 0))
+    .attr('x', 0)
+    .attr('y', d => {
+      const h = maxVal > 0 ? Math.max(minBarH, Math.max(0, d) / maxVal * barH) : minBarH;
+      return barH - h;
+    })
     .attr('width', barW)
-    .attr('height', d => maxVal > 0 ? Math.max(0, d) / maxVal * barH : 0)
+    .attr('height', d => maxVal > 0 ? Math.max(minBarH, Math.max(0, d) / maxVal * barH) : minBarH)
     .attr('fill', (d, i) => i < activeDims ? '#aac4de' : '#e8e8e8')
-    .attr('rx', 1);
+    .attr('rx', 2);
 
-  svg.selectAll('text.label')
-    .data(topEig)
-    .enter().append('text')
-    .attr('x', (d, i) => i * (barW + gap) + barW / 2)
-    .attr('y', barH + 10)
+  // Dimension label below bar
+  groups.append('text')
+    .attr('class', 'label')
+    .attr('x', barW / 2)
+    .attr('y', barH + 12)
     .attr('text-anchor', 'middle')
-    .attr('font-size', '8px')
-    .attr('fill', '#ccc')
-    .text((d, i) => `${i + 1}`);
+    .attr('font-size', '11px')
+    .attr('fill', '#aaa')
+    .text((d, i) => `${i + 1}d`);
 
-  bars.on('click', function(event, d) {
+  // Click handler on the whole group
+  groups.on('click', function(event, d) {
     const idx = topEig.indexOf(d);
     const newDims = idx + 1;
     bars.attr('fill', (d, i) => i < newDims ? '#aac4de' : '#e8e8e8');
@@ -120,9 +139,9 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
   });
 
   const varianceText = row.append('span')
-    .style('font-size', '9px')
-    .style('color', '#ccc')
-    .style('margin-left', '2px');
+    .style('font-size', '11px')
+    .style('color', '#aaa')
+    .style('margin-left', '3px');
 
   return {
     update(dims, variance) {
@@ -801,8 +820,8 @@ class EmbeddingViz {
     const plotH = Math.round(plotW * 0.55);
     const w = plotW - margin.left - margin.right;
     const h = plotH - margin.top - margin.bottom;
-    // Same domain logic as render() — expand the wider axis for equal aspect
-    const baseDom = [-1.08, 1.08];
+    // Use same domain as render() for consistency across dimension switches
+    const baseDom = this._baseDomain || [-1.08, 1.08];
     let domX = baseDom, domY = baseDom;
     if (this.equalAspect) {
       const baseSpan = baseDom[1] - baseDom[0];
@@ -893,7 +912,16 @@ class EmbeddingViz {
     self._rotationAnim = requestAnimationFrame(tick);
   }
 
+  // Click-to-expand is disabled. The infrastructure (neighborWords, neighborLinks,
+  // styling in render2D/render1D/render3D, searchEmb) is still in place if we ever
+  // want to re-enable it. To do so: return the handler below instead of null.
+  // Known issues when it was active:
+  //   - Expanded neighbors were often off-topic (see TODO: adaptive neighbor count)
+  //   - MDS quality degraded as words were added (variance spread across more dims)
+  //   - Labels got crowded fast
   _makeOnClick() {
+    return null;
+    /* Original handler for reference:
     const self = this;
     return (idx, word) => {
       const vec = self.searchEmb.vec(word);
@@ -910,7 +938,6 @@ class EmbeddingViz {
       const parentIdx = wordIdx.get(word);
       for (const nw of neighbors) {
         if (!existing.has(nw) && self.searchEmb.has(nw)) {
-          // Add neighbor's vector to self.emb if it's not already there
           if (!self.emb.has(nw)) {
             self.emb.addWord(nw, self.searchEmb);
           }
@@ -924,6 +951,7 @@ class EmbeddingViz {
       self.mdsData = computeAllMDS(self.emb, self.words);
       self.render(true);
     };
+    */
   }
 
   render(animate = false) {
@@ -939,30 +967,60 @@ class EmbeddingViz {
       el.innerHTML = '';
     }
 
-    // Fixed domain for all dims — coords are normalized to [-1,1],
-    // so a consistent domain prevents zoom jumps during dimension transitions.
-    const baseDomain = [-1.08, 1.08];
+    // Compute a stable domain from the max extent across all dimensions.
+    // This keeps transitions smooth while being tighter than the old fixed [-1.08, 1.08].
+    const pad = 0.08;
+    let maxAbsCoord = 0;
+    for (const dim of [1, 2, 3]) {
+      const raw = this.mdsData.coords[dim];
+      if (!raw) continue;
+      // Normalize the same way _getCoords2D does
+      if (dim === 1) {
+        const maxAbs = Math.max(...raw.map(c => Math.abs(c[0]))) || 1;
+        const m = maxAbs; // after normalization, max is 1
+        if (m > maxAbsCoord) maxAbsCoord = m;
+      } else if (dim === 2) {
+        const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
+        for (const [x, y] of raw) {
+          const ax = Math.abs(x / maxR), ay = Math.abs(y / maxR);
+          if (ax > maxAbsCoord) maxAbsCoord = ax;
+          if (ay > maxAbsCoord) maxAbsCoord = ay;
+        }
+      } else {
+        // 3D: check projected coords at current rotation angle
+        const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
+        const norm = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+        const proj = project3Dto2D(norm, this._rotationAngle, this._tiltAngle);
+        for (const [x, y] of proj) {
+          const ax = Math.abs(x), ay = Math.abs(y);
+          if (ax > maxAbsCoord) maxAbsCoord = ax;
+          if (ay > maxAbsCoord) maxAbsCoord = ay;
+        }
+      }
+    }
+    const extent = maxAbsCoord * (1 + pad);
+    const baseDomain = [-extent, extent];
+    this._baseDomain = baseDomain;  // cache for _render3DProjected
 
-    // In 1D mode, use a compact height — the data is a single line
     const plotWidth = getResponsiveWidth(el);
     const plotHeight = this.dims === 1
       ? Math.min(160, Math.round(plotWidth * 0.25))
       : Math.round(plotWidth * 0.55);
 
-    // Equal aspect: expand the domain on the longer axis so 1 data-unit = same pixels on both axes
-    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
-    const margin = { top: 30, right: 30, bottom: 30, left: 30 };
+    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
     const innerW = plotWidth - margin.left - margin.right;
     const innerH = plotHeight - margin.top - margin.bottom;
+
+    // Equal aspect: expand the wider pixel axis so 1 data-unit = same pixels on both axes
+    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
     if (this.equalAspect && this.dims >= 2) {
-      const baseSpan = baseDomain[1] - baseDomain[0];  // 2.3
+      const baseSpan = baseDomain[1] - baseDomain[0];
+      const mid = (baseDomain[0] + baseDomain[1]) / 2;
       if (innerW > innerH) {
         const expandedSpan = baseSpan * (innerW / innerH);
-        const mid = (baseDomain[0] + baseDomain[1]) / 2;
         fixedDomainX = [mid - expandedSpan / 2, mid + expandedSpan / 2];
       } else {
         const expandedSpan = baseSpan * (innerH / innerW);
-        const mid = (baseDomain[0] + baseDomain[1]) / 2;
         fixedDomainY = [mid - expandedSpan / 2, mid + expandedSpan / 2];
       }
     }
@@ -1009,7 +1067,7 @@ function renderHero3D(container, wordData, options = {}) {
   el.querySelectorAll('canvas').forEach(c => c.remove());
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
+  scene.background = new THREE.Color(0xfffff8);
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
@@ -1433,18 +1491,26 @@ class SteeringViz {
     const w = plotWidth - margin.left - margin.right;
     const h = plotHeight - margin.top - margin.bottom;
 
-    // Fixed domain for stable dimension transitions
-    const baseDomain = [-1.08, 1.08];
-    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
+    // Compute domain from data extent (both orig and steered) with padding
+    const allCoords = [...projected.orig, ...projected.steered];
+    const axs = allCoords.map(c => c[0]), ays = allCoords.map(c => c[1]);
+    const aPad = 0.08;
+    const axMin = Math.min(...axs), axMax = Math.max(...axs);
+    const ayMin = Math.min(...ays), ayMax = Math.max(...ays);
+    const axSpan = (axMax - axMin) || 0.1, aySpan = (ayMax - ayMin) || 0.1;
+    let fixedDomainX = [axMin - axSpan * aPad, axMax + axSpan * aPad];
+    let fixedDomainY = [ayMin - aySpan * aPad, ayMax + aySpan * aPad];
     if (this.dims >= 2) {
-      const baseSpan = baseDomain[1] - baseDomain[0];
-      const mid = (baseDomain[0] + baseDomain[1]) / 2;
-      if (w > h) {
-        const expandedSpan = baseSpan * (w / h);
-        fixedDomainX = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+      const spanX = fixedDomainX[1] - fixedDomainX[0];
+      const spanY = fixedDomainY[1] - fixedDomainY[0];
+      const midX = (fixedDomainX[0] + fixedDomainX[1]) / 2;
+      const midY = (fixedDomainY[0] + fixedDomainY[1]) / 2;
+      const targetSpanX = spanY * (w / h);
+      const targetSpanY = spanX * (h / w);
+      if (targetSpanX > spanX) {
+        fixedDomainX = [midX - targetSpanX / 2, midX + targetSpanX / 2];
       } else {
-        const expandedSpan = baseSpan * (h / w);
-        fixedDomainY = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+        fixedDomainY = [midY - targetSpanY / 2, midY + targetSpanY / 2];
       }
     }
 
@@ -1842,7 +1908,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
     // --- Scales ---
     let xScale, yScale;
     let norm3D = null, normSteered3D = null, normCentroid3D = null;
-    let normDirEnd3D = null, normDiffEnds3D = null;
+    let normDirEnd3D = null, normDiffEnds3D = null, normPlaneCorners = null;
 
     if (dims === 3) {
       // Collect every 3D point that will be drawn, normalize together
@@ -1864,6 +1930,32 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
         return nf(centroid.map((c, k) => c + diff[k]));
       });
+
+      // Perpendicular plane: find two orthogonal vectors to dirVec, build quad corners
+      const d = dirVec;
+      // Pick a vector not parallel to d to cross with
+      const seed = Math.abs(d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+      const u = [ // cross(d, seed)
+        d[1]*seed[2] - d[2]*seed[1],
+        d[2]*seed[0] - d[0]*seed[2],
+        d[0]*seed[1] - d[1]*seed[0],
+      ];
+      const uLen = Math.sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]) || 1;
+      u[0] /= uLen; u[1] /= uLen; u[2] /= uLen;
+      const v = [ // cross(d, u)
+        d[1]*u[2] - d[2]*u[1],
+        d[2]*u[0] - d[0]*u[2],
+        d[0]*u[1] - d[1]*u[0],
+      ];
+      // Plane extent: large enough to visually contain the projected points
+      const planeExtent = maxPairLen * 1.5;
+      const planeCorners3D = [
+        centroid.map((c, k) => c + (u[k] + v[k]) * planeExtent),
+        centroid.map((c, k) => c + (-u[k] + v[k]) * planeExtent),
+        centroid.map((c, k) => c + (-u[k] - v[k]) * planeExtent),
+        centroid.map((c, k) => c + (u[k] - v[k]) * planeExtent),
+      ];
+      normPlaneCorners = planeCorners3D.map(pt => nf(pt));
 
       const baseDom = [-1.15, 1.15];
       let domX = baseDom, domY = baseDom;
@@ -1899,13 +1991,17 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
 
     // --- Projection helpers (3D only) ---
     function getProjected() {
-      return {
+      const result = {
         words: project3Dto2D(norm3D, rotationAngle, tiltAngle),
         steered: project3Dto2D(normSteered3D, rotationAngle, tiltAngle),
         centroid: project3Dto2D([normCentroid3D], rotationAngle, tiltAngle)[0],
         dirEnd: project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0],
         diffs: project3Dto2D(normDiffEnds3D, rotationAngle, tiltAngle),
       };
+      if (normPlaneCorners) {
+        result.planeCorners = project3Dto2D(normPlaneCorners, rotationAngle, tiltAngle);
+      }
+      return result;
     }
 
     function wordXY(d, i) {
@@ -1989,6 +2085,15 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         .attr('opacity', 0);
     } else {
       perpAxis = mainG.append('line').attr('class', 'perp-axis').attr('opacity', 0);
+    }
+
+    // Perpendicular plane (3D only) — rendered as a semi-transparent quad
+    let perpPlane = null;
+    if (dims === 3) {
+      perpPlane = mainG.insert('polygon', ':first-child').attr('class', 'perp-plane')
+        .attr('fill', '#999').attr('fill-opacity', 0.08)
+        .attr('stroke', '#999').attr('stroke-width', 0.5).attr('stroke-dasharray', '4,3')
+        .attr('opacity', 0);
     }
 
     const projLines = mainG.selectAll('line.proj-line').data(wordData).enter().append('line')
@@ -2123,6 +2228,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
           dirLabelEl.transition().duration(dur).attr('opacity', 0);
           projLines.transition().duration(dur).attr('opacity', 0);
           ghosts.transition().duration(dur).attr('opacity', 0);
+          if (perpPlane) perpPlane.transition().duration(dur).attr('opacity', 0);
         } else if (s === 1) {
           pairArrows.transition().duration(dur).attr('opacity', 0.3);
           transArrows.attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
@@ -2135,11 +2241,13 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         } else if (s === 3) {
           transArrows.transition().duration(dur).attr('opacity', 0);
           projLines.transition().duration(dur).attr('opacity', 0.6);
+          if (perpPlane) perpPlane.transition().duration(dur).attr('opacity', 1);
         } else if (s === 4) {
           btn.text('Reset').style('background', '#ddd').style('color', '#333');
           ghosts.transition().duration(300).attr('opacity', 0.4);
           pairArrows.transition().duration(dur).attr('opacity', 0);
-          projLines.transition().delay(500).duration(800).attr('opacity', 0);
+          // Keep projection lines and plane visible so the viewer can see
+          // where points came from and that they landed on the plane
         }
       }
     }
@@ -2235,15 +2343,20 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         dirLabelEl
           .attr('x', xScale(proj.dirEnd[0])).attr('y', yScale(proj.dirEnd[1]) - 10);
 
-        // Projection lines
+        // Projection lines: always from original to steered
         projLines.each(function(d, i) {
           const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
           const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
           d3.select(this)
-            .attr('x1', ox + (sx - ox) * currentBlend)
-            .attr('y1', oy + (sy - oy) * currentBlend)
+            .attr('x1', ox).attr('y1', oy)
             .attr('x2', sx).attr('y2', sy);
         });
+
+        // Perpendicular plane polygon
+        if (perpPlane && proj.planeCorners) {
+          const pts = proj.planeCorners.map(c => `${xScale(c[0])},${yScale(c[1])}`).join(' ');
+          perpPlane.attr('points', pts);
+        }
 
         rotationAnim = requestAnimationFrame(tick);
       }
