@@ -1,51 +1,95 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<script src="https://distill.pub/template.v1.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steering Word Embeddings</title>
+<meta name="description" content="An interactive exploration of word vectors, analogies, and subspace projection.">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-  onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]})"></script>
+  onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], macros: {'\\defeq': '\\overset{\\text{def}}{=}'}})"></script>
 <script src="https://unpkg.com/svd-js@1.1.1/build-umd/svd-js.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
-<script type="text/front-matter">
-  title: "Steering Word Embeddings"
-  description: "An interactive exploration of word vectors, analogies, and subspace projection."
-</script>
-<script>
-  // Suppress known Distill v1 template error with missing affiliations
-  window.addEventListener('error', function(e) {
-    if (e.filename && e.filename.includes('template.v1.js')) e.preventDefault();
-  });
-</script>
-
 <style>
-  /* Hide Distill's draft banner — we're not submitting to Distill */
-  dt-banner { display: none !important; }
+  /* === Reset (from blog) === */
+  html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p,
+  blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, img,
+  ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, b, u, i, center,
+  dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody,
+  tfoot, thead, tr, th, td, article, aside, canvas, details, embed, figure,
+  figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,
+  time, mark, audio, video {
+    margin: 0; padding: 0; border: 0; font: inherit;
+    font-size: 100%; vertical-align: baseline;
+  }
+  article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section, summary { display: block; }
 
-  /* Prevent text selection when interacting with plots */
-  svg.plot { user-select: none; -webkit-user-select: none; }
-  dt-byline { margin-bottom: 0.5em; }
+  /* === Typography (from blog) === */
+  body {
+    background-color: #fffff8;
+    font-family: 'EB Garamond', "PT Serif", "Georgia", "Helvetica Neue", Arial, sans-serif;
+    color: #333;
+    font-size: 16pt;
+    line-height: 1.5em;
+    max-width: 740px;
+    margin: 0 auto;
+    padding: 0 25px;
+  }
+  @media only screen and (min-width: 992px) {
+    body { font-size: 1.15em; }
+    h1 { font-size: 2.6em; line-height: 1.2em; }
+  }
+  h1 { font-size: 2.2em; line-height: 1.2em; }
+  h1, h2, h3, h4, h5, h6 { text-rendering: optimizelegibility; margin-bottom: 0.5em; margin-top: 1.5em; font-weight: 575; }
+  h1 { margin-top: 0; }
+  h2 { font-size: 1.5em; }
+  h3 { font-size: 1.3em; }
+  h4 { font-size: 1em; }
+  p, blockquote, ul, ol { margin-bottom: 1em; }
+  strong, b { font-weight: bold; }
+  em, i { font-style: italic; }
+  sub { vertical-align: sub; font-size: 0.8em; }
+  sup { vertical-align: super; font-size: 0.8em; }
+  a { color: inherit; transition: color 0.3s; }
+  a:active { color: inherit; }
+  code, tt, pre { font-family: Menlo, Monaco, "Andale Mono", "lucida console", "Courier New", monospace; }
+  code { font-size: 0.85em; }
+  ol { list-style-type: decimal; margin-left: 1.5em; }
+  ul { list-style-type: disc; margin-left: 1.5em; }
+  figcaption { font-size: 0.85em; color: #666; margin-top: 0.5em; }
+  table { border-collapse: collapse; border-spacing: 0; }
 
-  .figure-row { position: relative; margin: 1.5em 0; }
+  /* === Layout (replaces Distill l-page / l-body-outset) === */
+  .l-body-outset { margin-left: -48px; margin-right: -48px; }
+  @media (max-width: 768px) { .l-body-outset { margin-left: 0; margin-right: 0; } }
+  .l-page { width: 100vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  /* === Article-specific === */
+  svg.plot { user-select: none; -webkit-user-select: none; overflow: hidden; }
+  .katex svg { overflow: hidden; }
+  article img { box-shadow: none; border: none; border-radius: 0; }
+
+  .figure-row { position: relative; margin: 0; }
+  p + .figure-row { margin-top: 0; }
+  p:has(+ .figure-row) { margin-bottom: 4px; }
+  .figure-row + p { margin-top: 4px; }
   .figure-row .plot-container { margin-left: 48px; }
   .figure-row .eigen-margin { position: absolute; right: 6px; bottom: 6px; z-index: 10; }
+  @media (max-width: 768px) { .figure-row .plot-container { margin-left: 0; } }
 
-  @media (max-width: 768px) {
-    .figure-row .plot-container { margin-left: 0; }
-  }
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
-
-  /* Clip SVGs to prevent KaTeX glyph paths and plot trails from overflowing */
-  svg.plot, .katex svg { overflow: hidden; }
 
   .progress-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(255,255,255,0.95); display: flex; flex-direction: column;
     align-items: center; justify-content: center; z-index: 10000;
     transition: opacity 0.3s;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   .progress-overlay.hidden { opacity: 0; pointer-events: none; }
   .progress-bar { width: 300px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
@@ -53,14 +97,14 @@
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
 
   .vocab-selector { display: inline-flex; gap: 4px; background: #f7f7f7; border-radius: 4px; padding: 3px; }
-  .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; }
+  .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   .vocab-selector button.active { background: #5778a4; color: white; }
 
   .analogy-input { display: flex; gap: 8px; align-items: center; margin-top: 1em; margin-bottom: 1em; flex-wrap: wrap; }
-  .analogy-input input { border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; font-size: 15px; width: 120px; }
+  .analogy-input input { border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; font-size: 15px; width: 120px; font-family: inherit; }
   .analogy-input input:focus { outline: none; border-color: #5778a4; }
   .analogy-input .sep { color: #999; font-size: 15px; }
-  .analogy-input button { background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; }
+  .analogy-input button { background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   .analogy-result { font-size: 16px; padding: 8px 0; min-height: 2em; }
   .analogy-result .answer { font-weight: 600; color: #5778a4; }
   .error { color: #e49444; font-size: 14px; }
@@ -72,7 +116,13 @@
   #analogy-table th, #analogy-table td { padding: 4px 10px; text-align: left; border-bottom: 1px solid #eee; }
   #analogy-table th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
   #analogy-table td.changed { color: #e49444; }
+
+  .appendix { margin-top: 2em; padding-top: 1em; border-top: 1px solid #ddd; font-size: 0.9em; color: #666; }
+  .references { margin-top: 2em; }
+  .references ol { font-size: 0.9em; line-height: 1.6; }
 </style>
+</head>
+<body>
 
 <!-- Loading overlay -->
 <div class="progress-overlay" id="loading-overlay">
@@ -89,7 +139,7 @@
   </div>
 </div>
 
-<dt-article>
+<article>
 
 <h1>Steering Word Embeddings</h1>
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
@@ -116,7 +166,7 @@
 
 <p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
 
-<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> <dt-cite key="harris1954distributional"></dt-cite>: a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
+<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> (<a href="https://doi.org/10.1080/00437956.1954.11659520">Harris, 1954</a>): a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
@@ -125,7 +175,7 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> <dt-cite key="pennington2014glove"></dt-cite> learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors reconstruct the log co-occurrence counts:</p>
+<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors reconstruct the log co-occurrence counts:</p>
 
 <p style="color: #7b2d8b;">$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
@@ -180,7 +230,7 @@
 
 <p style="color: #7b2d8b;">This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
-<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> <dt-cite key="mikolov2013word2vec"></dt-cite> trains a neural network to predict context words from a target word (skip-gram) or vice versa (continuous bag of words), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> <dt-cite key="devlin2019bert"></dt-cite> and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
+<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> (<a href="https://arxiv.org/abs/1301.3781">Mikolov et al., 2013</a>) trains a neural network to predict context words from a target word (skip-gram) or vice versa (continuous bag of words), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> (<a href="https://arxiv.org/abs/1810.04805">Devlin et al., 2019</a>) and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
 <p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
 
@@ -194,7 +244,7 @@
 
 <p style="color: #7b2d8b;">$$\underset{\mathbf{x}_1, \dots, \mathbf{x}_n}{\text{argmin}} \sum_{i < j} \big(\|\mathbf{x}_i - \mathbf{x}_j\| - d_{ij}\big)^2.$$</p>
 
-<p style="color: #7b2d8b;">When the distances come from Euclidean vectors (as ours do), this reduces to <a href="https://en.wikipedia.org/wiki/Principal_component_analysis">PCA (principal component analysis)</a> on the centered vectors, which has a closed-form solution via eigendecomposition. The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j / \sum_{j=1}^{n} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
+<p style="color: #7b2d8b;">When the distances come from Euclidean vectors (as ours do), this reduces to <a href="https://en.wikipedia.org/wiki/Principal_component_analysis">PCA (principal component analysis)</a> on the centered vectors, which has a closed-form solution via eigendecomposition. The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \big/ \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
 
 <p style="color: #7b2d8b;">An important caveat: each plot below runs MDS on a small, hand-picked set of words&mdash;not the full 50,000-word vocabulary. The low-dimensional structure looks clean precisely because we are projecting a curated subset. Running MDS on the entire vocabulary would spread the variance across many more directions, and these tidy patterns would be harder to see. The structure is real&mdash;it exists in the full 100-dimensional space&mdash;but the clarity of these plots is partly a consequence of selecting words that share a common axis of variation.</p>
 
@@ -211,6 +261,7 @@
   <div class="plot-container" id="plot-numbers-digits"></div>
   <div class="eigen-margin" id="eigen-numbers-digits"></div>
 </div>
+<p style="color: #7b2d8b;">The same ordering emerges for number words:</p>
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-words"></div>
   <div class="eigen-margin" id="eigen-numbers-words"></div>
@@ -229,7 +280,7 @@
 
 <p style="color: #7b2d8b;">More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$.</p>
 
-<p style="color: #7b2d8b;">Why does this work? GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j \approx \log \mathbf{X}_{ij}$. Differences of log co-occurrences become differences of dot products, which are linear operations on the vectors. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" appearing with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
+<p style="color: #7b2d8b;">Why does this work? Recall that GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$. When we take differences&mdash;comparing how two words relate to a third&mdash;the bias terms cancel: $(\overrightarrow{w}_a - \overrightarrow{w}_b) \cdot \overrightarrow{w}_c \approx \log(\mathbf{X}_{ac} / \mathbf{X}_{bc})$. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" co-occurring with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
@@ -270,11 +321,11 @@
   <div class="eigen-margin" id="eigen-size-pairs"></div>
 </div>
 
-<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a second-moment matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i = \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The second-moment matrix is:</p>
+<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The scatter matrix is:</p>
 
-<p style="color: #7b2d8b;">$$\mathbf{C} = \frac{1}{2}\sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
+<p style="color: #7b2d8b;">$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
 
-<p style="color: #7b2d8b;">The factor of $\frac{1}{2}$ arises because each pair has two observations with one degree of freedom. $\mathbf{C}$ is a $D \times D$ matrix whose eigenvectors point in the directions of greatest variation among the difference vectors (all its eigenvalues are non-negative). Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
+<p style="color: #7b2d8b;">$\mathbf{C}$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
 
 <p style="color: #7b2d8b;">The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
 
@@ -289,7 +340,7 @@
 
 <p style="color: #7b2d8b;">The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize.</p>
 
-<p>$$\overrightarrow{w}_{\text{steered}} = \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} = \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
+<p>$$\overrightarrow{w}_{\text{steered}} \defeq \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} \defeq \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
 <p style="color: #7b2d8b;">This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity.</p>
 
@@ -297,6 +348,7 @@
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gendered-steer"></div>
+  <div class="eigen-margin" id="eigen-gendered-steer"></div>
 </div>
 
 <h2>Steering in Action</h2>
@@ -321,6 +373,7 @@
 <p>Press <b>Steer</b> to see how each occupation's embedding shifts when the gender subspace is removed:</p>
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-profession-steer"></div>
+  <div class="eigen-margin" id="eigen-profession-steer"></div>
 </div>
 <div id="profession-ranking"></div>
 
@@ -352,7 +405,7 @@ mother - father</textarea>
   <div class="eigen-margin" id="eigen-explorer"></div>
 </div>
 
-</dt-article>
+</article>
 
 <dt-appendix>
   <h3>Acknowledgments</h3>
@@ -417,7 +470,7 @@ mother - father</textarea>
 <script type="module">
 const v = Date.now();
 const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${v}`);
-const { EmbeddingViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${v}`);
+const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${v}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -639,7 +692,7 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
       for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
       for (let i = 0; i < d; i++)
         for (let j = 0; j < d; j++)
-          C[i * d + j] += diff[i] * diff[j] / 2;
+          C[i * d + j] += diff[i] * diff[j];
       pairCount++;
     }
     if (pairCount === 0) return null;
@@ -809,7 +862,7 @@ function buildVisualizations() {
       for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
       for (let i = 0; i < d; i++)
         for (let j = 0; j < d; j++)
-          C1[i * d + j] += diff[i] * diff[j] / 2;
+          C1[i * d + j] += diff[i] * diff[j];
     }
     const C1mat = [];
     for (let i = 0; i < d; i++) { C1mat.push([]); for (let j = 0; j < d; j++) C1mat[i].push(C1[i * d + j]); }
@@ -973,8 +1026,6 @@ function buildVisualizations() {
         D[j * nn + i] = dist;
       }
     }
-    const { coords: jointCoords } = mds(D, nn, 2);
-
     // Assign groups to words
     const wordGroupMap = {};
     for (const [w1, w2] of GENDERED_WORDS) {
@@ -984,11 +1035,15 @@ function buildVisualizations() {
     const steerData = genWords.map((w, i) => ({
       word: w,
       group: wordGroupMap[w] || 'other',
-      steeredCoord: jointCoords[i],
-      origCoord: jointCoords[n + i],
     }));
 
-    renderSteering2D(document.getElementById('plot-gendered-steer'), steerData);
+    new SteeringViz({
+      plotEl: document.getElementById('plot-gendered-steer'),
+      eigenEl: document.getElementById('eigen-gendered-steer'),
+      wordData: steerData,
+      distMatrix: D,
+      n,
+    });
   }
 
   if (emb.has('doctor')) {
@@ -1034,13 +1089,16 @@ function buildVisualizations() {
         D[j * nn + i] = dist;
       }
     }
-    const { coords: profCoords } = mds(D, nn, 2);
     const profSteerData = profWords.map((w, i) => ({
       word: w, group: 'occupation',
-      steeredCoord: profCoords[i],
-      origCoord: profCoords[n + i],
     }));
-    renderSteering2D(document.getElementById('plot-profession-steer'), profSteerData);
+    new SteeringViz({
+      plotEl: document.getElementById('plot-profession-steer'),
+      eigenEl: document.getElementById('eigen-profession-steer'),
+      wordData: profSteerData,
+      distMatrix: D,
+      n,
+    });
   }
 
   const rankEl = document.getElementById('profession-ranking');
@@ -1206,12 +1264,9 @@ function setupExplorer() {
           D[j * nn + i] = dist;
         }
       }
-      const { coords: jointCoords } = mds(D, nn, 2);
       const steerData = allWords.map((w, i) => ({
         word: w,
         group: validPairs.some(([a, b]) => w === a || w === b) ? 'pair' : 'word',
-        steeredCoord: jointCoords[i],
-        origCoord: jointCoords[n + i],
       }));
       // Build arrows from display groups (consecutive words on a line)
       const wordToIdx = new Map(allWords.map((w, i) => [w, i]));
@@ -1222,7 +1277,13 @@ function setupExplorer() {
           if (a !== undefined && b !== undefined) groupArrows.push({ from: a, to: b });
         }
       }
-      renderSteering2D(plotEl, steerData, { arrows: groupArrows });
+      new SteeringViz({
+        plotEl, eigenEl,
+        wordData: steerData,
+        distMatrix: D,
+        n,
+        arrows: groupArrows,
+      });
     } else {
       // No steering pairs — just plot
       explorerViz = new EmbeddingViz({
