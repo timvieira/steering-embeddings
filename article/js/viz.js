@@ -295,10 +295,9 @@ function render2D(container, words, coords, arrows, options = {}) {
   const arrowSel = g.selectAll('line.arrow').data(arrowData, (d, i) => `a-${d.from}-${d.to}`);
   arrowSel.exit().remove();
   const arrowEnter = arrowSel.enter().append('line').attr('class', 'arrow')
-    .attr('stroke-width', d => d.thick ? 2.5 : 1.5)
+    .attr('stroke-width', d => d.thick ? 2 : 1.5)
     .attr('stroke', d => d.color === 'red' ? COLORS.highlight : COLORS.arrow)
-    .attr('stroke-dasharray', d => d.dashed ? '8,4' : null)
-    .attr('opacity', d => d.dashed ? 0.8 : 1)
+    .attr('opacity', d => d.thick ? 0.45 : 1)
     .attr('marker-end', d => `url(#arrow${d.color === 'red' ? '-red' : ''}-${cid})`);
   arrowEnter.merge(arrowSel).transition().duration(dur)
     .attr('x1', d => xScale(coords[d.from][0])).attr('y1', d => yScale(coords[d.from][1]))
@@ -366,10 +365,11 @@ function render2D(container, words, coords, arrows, options = {}) {
     .attr('text-anchor', labelAnchor)
     .transition().duration(dur)
     .attr('transform', d => labelTransformFor(d))
-    .attr('font-size', d => hiddenPoints.has(d.i) ? '12px' : neighborWords.has(d.word) ? '10px' : '11px')
-    .attr('font-weight', d => hiddenPoints.has(d.i) ? 'bold' : 'normal')
+    .attr('font-size', d => hiddenPoints.has(d.i) ? '13px' : neighborWords.has(d.word) ? '10px' : '11px')
+    .attr('font-weight', 'normal')
     .attr('font-style', d => hiddenPoints.has(d.i) ? 'italic' : 'normal')
     .attr('fill', d => hiddenPoints.has(d.i) ? COLORS.highlight : neighborWords.has(d.word) ? '#666' : '#333')
+    .attr('opacity', d => hiddenPoints.has(d.i) ? 0.7 : 1)
     .style('opacity', 1);
 
   // --- Click handlers ---

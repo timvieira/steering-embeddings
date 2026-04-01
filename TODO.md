@@ -206,6 +206,8 @@
 - [x] Default to 50K vocabulary
   - Changed default from small (10K) to medium (50K). 10K was missing too many words (superlatives, gendered pairs).
 
+- [ ] Remove blog.css cache-buster script from index.html before deploying to production.
+
 ## Technical polish
 
 - [ ] Define a `\defeq` macro for definitional equalities (as opposed to plain

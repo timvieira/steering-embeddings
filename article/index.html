@@ -15,7 +15,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
-<link rel="stylesheet" href="css/blog.css">
+<link rel="stylesheet" href="css/blog.css" id="blog-css">
+<script>document.getElementById('blog-css').href = 'css/blog.css?' + Date.now();</script>
 <style>
   /* === Standalone article overrides === */
   /* No sidebar, so cap body width for readability */
@@ -180,48 +181,13 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p style="color: #7b2d8b;"><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log co-occurrence counts:</p>
+<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log co-occurrence counts:</p>
 
-<p style="color: #7b2d8b;">$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
+<p>$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
-<p style="color: #7b2d8b;">where $b_i$ and $b_j$ are per-word bias terms.<label class="sidenote-number"></label><span class="margin-note" style="color: #7b2d8b;">Why the bias terms? Without them, a word like "the" that co-occurs frequently with everything would need a large vector magnitude to produce large dot products with every other word&mdash;distorting the geometry that encodes meaning. The biases $b_i$ absorb each word's baseline co-occurrence rate, freeing the vectors to focus on which words co-occur <em>more or less than expected</em>. The released GloVe vectors drop the biases, since they primarily capture frequency information rather than meaning.</span> The parameters are fit by weighted least squares over all observed word pairs.</p>
+<p>where $b_i$ and $b_j$ are per-word bias terms.<label class="sidenote-number"></label><span class="margin-note">Why the bias terms? Without them, a word like "the" that co-occurs frequently with everything would need a large vector magnitude to produce large dot products with every other word&mdash;distorting the geometry that encodes meaning. The biases $b_i$ absorb each word's baseline co-occurrence rate, freeing the vectors to focus on which words co-occur <em>more or less than expected</em>.</span> The parameters are fit by weighted least squares over all observed word pairs. This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
-<!-- Matrix-form diagram (commented out for now)
-<figure>
-<svg viewBox="0 0 680 100" style="max-width: 680px; width: 100%; height: auto; display: block; margin: 0 auto;">
-  <rect x="10" y="10" width="70" height="70" fill="none" stroke="#7b2d8b" stroke-width="1.5" rx="2"/>
-  <text x="45" y="50" text-anchor="middle" font-size="12" fill="#7b2d8b">log X</text>
-  <text x="45" y="92" text-anchor="middle" font-size="9" fill="#999">V × V</text>
-  <text x="100" y="50" text-anchor="middle" font-size="16" fill="#666">≈</text>
-  <rect x="120" y="10" width="35" height="70" fill="none" stroke="#5778a4" stroke-width="1.5" rx="2"/>
-  <text x="137" y="50" text-anchor="middle" font-size="12" fill="#5778a4">W</text>
-  <text x="137" y="92" text-anchor="middle" font-size="9" fill="#999">V × D</text>
-  <text x="168" y="50" text-anchor="middle" font-size="12" fill="#666">×</text>
-  <rect x="182" y="22" width="70" height="35" fill="none" stroke="#5778a4" stroke-width="1.5" rx="2"/>
-  <text x="217" y="44" text-anchor="middle" font-size="12" fill="#5778a4">W<tspan baseline-shift="super" font-size="8">⊤</tspan></text>
-  <text x="217" y="92" text-anchor="middle" font-size="9" fill="#999">D × V</text>
-  <text x="270" y="50" text-anchor="middle" font-size="16" fill="#666">+</text>
-  <rect x="288" y="10" width="16" height="70" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
-  <text x="296" y="50" text-anchor="middle" font-size="11" fill="#e49444">b</text>
-  <text x="316" y="50" text-anchor="middle" font-size="12" fill="#666">×</text>
-  <rect x="330" y="30" width="70" height="16" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
-  <text x="365" y="43" text-anchor="middle" font-size="11" fill="#e49444">1<tspan baseline-shift="super" font-size="8">⊤</tspan></text>
-  <text x="414" y="50" text-anchor="middle" font-size="16" fill="#666">+</text>
-  <rect x="432" y="10" width="16" height="70" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
-  <text x="440" y="50" text-anchor="middle" font-size="11" fill="#e49444">1</text>
-  <text x="460" y="50" text-anchor="middle" font-size="12" fill="#666">×</text>
-  <rect x="474" y="30" width="70" height="16" fill="none" stroke="#e49444" stroke-width="1.5" rx="2"/>
-  <text x="509" y="43" text-anchor="middle" font-size="11" fill="#e49444">b<tspan baseline-shift="super" font-size="8">⊤</tspan></text>
-  <text x="560" y="30" text-anchor="start" font-size="10" fill="#999">V ≈ 50,000 words</text>
-  <text x="560" y="46" text-anchor="start" font-size="10" fill="#999">D = 100 dimensions</text>
-  <text x="560" y="62" text-anchor="start" font-size="10" fill="#e49444">b = per-word biases</text>
-</svg>
-</figure>
--->
-
-<p style="color: #7b2d8b;">This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
-
-<p style="color: #7b2d8b;">Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> (<a href="https://arxiv.org/abs/1301.3781">Mikolov et al., 2013</a>) trains a neural network to predict context words from a target word (skip-gram) or vice versa (continuous bag of words), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> (<a href="https://arxiv.org/abs/1810.04805">Devlin et al., 2019</a>) and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
+<p>Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> (<a href="https://arxiv.org/abs/1301.3781">Mikolov et al., 2013</a>) trains a neural network to predict context words from a target word (skip-gram) or vice versa (continuous bag of words), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> (<a href="https://arxiv.org/abs/1810.04805">Devlin et al., 2019</a>) and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
 <p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
 
@@ -231,13 +197,13 @@
 
 <p>Since our vectors are 100-dimensional, we project them to lower dimensions for plotting using <a href="https://en.wikipedia.org/wiki/Multidimensional_scaling"><b>MDS (multidimensional scaling)</b></a>, which finds a layout that best preserves pairwise distances. Use the eigenvalue bars to the right of each plot to switch between 1D, 2D, and 3D views. The percentage shows how much of the original distance structure is captured.</p>
 
-<p style="color: #7b2d8b;">Let $S = \{\overrightarrow{w}_1, \dots, \overrightarrow{w}_n\}$ be the $D$-dimensional word vectors (for GloVe, $D = 100$) for $n$ chosen words, with pairwise Euclidean distances $d_{ij} = \|\overrightarrow{w}_i - \overrightarrow{w}_j\|$. MDS is usually formulated as an optimization problem, where $(\mathbf{x}_1, \dots, \mathbf{x}_n)$ is found as a minimizer of some cost function, for example,</p>
+<p>Let $S = \{\overrightarrow{w}_1, \dots, \overrightarrow{w}_n\}$ be the $D$-dimensional word vectors (for GloVe, $D = 100$) for $n$ chosen words, with pairwise Euclidean distances $d_{ij} = \|\overrightarrow{w}_i - \overrightarrow{w}_j\|$. MDS is usually formulated as an optimization problem, where $(\mathbf{x}_1, \dots, \mathbf{x}_n)$ is found as a minimizer of some cost function, for example,</p>
 
-<p style="color: #7b2d8b;">$$\underset{\mathbf{x}_1, \dots, \mathbf{x}_n}{\text{argmin}} \sum_{i < j} \big(\|\mathbf{x}_i - \mathbf{x}_j\| - d_{ij}\big)^2.$$</p>
+<p>$$\underset{\mathbf{x}_1, \dots, \mathbf{x}_n}{\text{argmin}} \sum_{i < j} \big(\|\mathbf{x}_i - \mathbf{x}_j\| - d_{ij}\big)^2.$$</p>
 
-<p style="color: #7b2d8b;">When the distances come from Euclidean vectors (as ours do), this reduces to <a href="https://en.wikipedia.org/wiki/Principal_component_analysis">PCA (principal component analysis)</a> on the centered vectors, which has a closed-form solution via eigendecomposition. The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \big/ \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
+<p>When the distances come from Euclidean vectors (as ours do), this reduces to <a href="https://en.wikipedia.org/wiki/Principal_component_analysis">PCA (principal component analysis)</a> on the centered vectors, which has a closed-form solution via eigendecomposition. The eigenvalues $\lambda_1 \ge \lambda_2 \ge \cdots$ measure how much distance structure each dimension captures. The fraction of variance explained by the top $m$ dimensions is $\sum_{j=1}^{m} \lambda_j \big/ \sum_{j} \lambda_j$&mdash;this is the percentage shown next to each plot.</p>
 
-<p style="color: #7b2d8b;">An important caveat: each plot below runs MDS on a small, hand-picked set of words&mdash;not the full 50,000-word vocabulary. The low-dimensional structure looks clean precisely because we are projecting a curated subset. Running MDS on the entire vocabulary would spread the variance across many more directions, and these tidy patterns would be harder to see. The structure is real&mdash;it exists in the full 100-dimensional space&mdash;but the clarity of these plots is partly a consequence of selecting words that share a common axis of variation.</p>
+<p>An important caveat: each plot below runs MDS on a small, hand-picked set of words&mdash;not the full 50,000-word vocabulary. The low-dimensional structure looks clean precisely because we are projecting a curated subset. Running MDS on the entire vocabulary would spread the variance across many more directions, and these tidy patterns would be harder to see. The structure is real&mdash;it exists in the full 100-dimensional space&mdash;but the clarity of these plots is partly a consequence of selecting words that share a common axis of variation.</p>
 
 <h3>Superlatives</h3>
 <p>Adjective forms trace out parallel paths:</p>
@@ -252,7 +218,7 @@
   <div class="plot-container" id="plot-numbers-digits"></div>
   <div class="eigen-margin" id="eigen-numbers-digits"></div>
 </div>
-<p style="color: #7b2d8b;">The same ordering emerges for number words:</p>
+<p>The same ordering emerges for number words:</p>
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-words"></div>
   <div class="eigen-margin" id="eigen-numbers-words"></div>
@@ -269,9 +235,9 @@
 
 <p>$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} \approx \overrightarrow{\text{queen}} - \overrightarrow{\text{woman}}$$</p>
 
-<p style="color: #7b2d8b;">More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$.</p>
+<p>More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$.</p>
 
-<p style="color: #7b2d8b;">Why does this work? Recall that GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$. When we take differences&mdash;comparing how two words relate to a third&mdash;the bias terms cancel: $(\overrightarrow{w}_a - \overrightarrow{w}_b) \cdot \overrightarrow{w}_c \approx \log(\mathbf{X}_{ac} / \mathbf{X}_{bc})$. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" co-occurring with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
+<p>Why does this work? Recall that GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$. When we take differences&mdash;comparing how two words relate to a third&mdash;the bias terms cancel: $(\overrightarrow{w}_a - \overrightarrow{w}_b) \cdot \overrightarrow{w}_c \approx \log(\mathbf{X}_{ac} / \mathbf{X}_{bc})$. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" co-occurring with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
@@ -296,29 +262,29 @@
 
 <h2>Identifying Subspaces</h2>
 
-<p style="color: #7b2d8b;">The consistency of these analogies suggests that the embedding space contains <b>interpretable subspaces</b>&mdash;directions we can find systematically, not just stumble across in individual word pairs. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
+<p>The consistency of these analogies suggests that the embedding space contains <b>interpretable subspaces</b>&mdash;directions we can find systematically, not just stumble across in individual word pairs. The "gender direction" isn't a coincidence among a few word pairs&mdash;it's a direction that organizes many words across the space.</p>
 
-<p style="color: #7b2d8b;">Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
+<p>Consider the difference vectors for several gendered pairs: $\overrightarrow{\text{woman}} - \overrightarrow{\text{man}}$, $\overrightarrow{\text{she}} - \overrightarrow{\text{he}}$, $\overrightarrow{\text{queen}} - \overrightarrow{\text{king}}$. If gender is captured by a low-dimensional subspace, these difference vectors should all point in roughly the same direction. And they do&mdash;they are far more aligned with each other than random pairs of vectors in 100-dimensional space would be.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gender-pairs"></div>
   <div class="eigen-margin" id="eigen-gender-pairs"></div>
 </div>
 
-<p style="color: #7b2d8b;">Gender is not the only interpretable subspace. Here are word pairs that differ primarily in size:</p>
+<p>Gender is not the only interpretable subspace. Here are word pairs that differ primarily in size:</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-size-pairs"></div>
   <div class="eigen-margin" id="eigen-size-pairs"></div>
 </div>
 
-<p style="color: #7b2d8b;">To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The scatter matrix is:</p>
+<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The scatter matrix is:</p>
 
-<p style="color: #7b2d8b;">$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
+<p>$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
 
-<p style="color: #7b2d8b;">$\mathbf{C}$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
+<p>$\mathbf{C}$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
 
-<p style="color: #7b2d8b;">The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
+<p>The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-subspace-anim"></div>
@@ -327,13 +293,13 @@
 
 <h2>Steering by Subspace Projection</h2>
 
-<p style="color: #7b2d8b;">Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al., 2016</a>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
+<p>Once we have a subspace, we can <b>steer</b> the embeddings by projecting it out. (This operation is called "debiasing" in <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al., 2016</a>; we use "steering" to emphasize that the same technique applies to any subspace, not just bias-related ones.)</p>
 
-<p style="color: #7b2d8b;">The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize.</p>
+<p>The idea is simple: to remove a concept, subtract each word's projection onto that subspace and renormalize.</p>
 
 <p>$$\overrightarrow{w}_{\text{steered}} \defeq \frac{\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}}{\|\overrightarrow{w} - \overrightarrow{w}_{\mathcal{B}}\|} \quad \text{where} \quad \overrightarrow{w}_{\mathcal{B}} \defeq \sum_{j=1}^{k} (\overrightarrow{w} \cdot \overrightarrow{b}_j) \, \overrightarrow{b}_j$$</p>
 
-<p style="color: #7b2d8b;">This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity.</p>
+<p>This removes each word's component along the chosen subspace while preserving everything else. The final normalization step ensures the steered vectors remain unit-length, which matters because similarity in this space is measured by cosine similarity.</p>
 
 <p>We define a gender subspace using pronoun pairs. Press <b>Steer</b> to watch the embeddings shift as the gender direction is projected out:</p>
 
@@ -356,7 +322,7 @@
   <div class="eigen-margin" id="eigen-doctor-after"></div>
 </div>
 
-<p style="color: #7b2d8b;">The doctor example is not an isolated case. The table below runs the same analogy&mdash;man : woman :: <em>occupation</em>&mdash;across several professions, before and after steering:</p>
+<p>The doctor example is not an isolated case. The table below runs the same analogy&mdash;man : woman :: <em>occupation</em>&mdash;across several professions, before and after steering:</p>
 
 <div id="analogy-table"></div>
 
@@ -370,11 +336,11 @@
 
 <h2>Discussion</h2>
 
-<p style="color: #7b2d8b;">Subspace projection is a surgical intervention: it removes a specific, interpretable direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
+<p>Subspace projection is a surgical intervention: it removes a specific, interpretable direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
 
-<p style="color: #7b2d8b;">Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
+<p>Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
-<p style="color: #7b2d8b;">More recent work has explored alternatives: <a href="https://arxiv.org/abs/1809.01496">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://arxiv.org/abs/2004.07667">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+<p>More recent work has explored alternatives: <a href="https://arxiv.org/abs/1809.01496">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://arxiv.org/abs/2004.07667">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
 
 <h2>Explore</h2>
 
@@ -718,7 +684,7 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
   const anchorNeg = new Float64Array(d);
   for (let i = 0; i < d; i++) {
     anchorPos[i] = centroid[i] + dir[i] * scale;
-    anchorNeg[i] = centroid[i] - dir[i] * scale;
+    anchorNeg[i] = centroid[i];  // arrow emanates from centroid
   }
 
   // Build extended embeddings with anchor points
