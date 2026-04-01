@@ -669,22 +669,24 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
   }
   for (let i = 0; i < d; i++) centroid[i] /= words.length;
 
-  // Anchor points: centroid ± scaled direction
-  let avgDist = 0;
+  // Anchor points: direction arrow spans the width of the point cloud
+  // Project all points onto the direction vector to find min/max extent
+  let minProj = Infinity, maxProj = -Infinity;
   for (const w of words) {
     const v = emb.vec(w);
-    let dd = 0;
-    for (let i = 0; i < d; i++) dd += (v[i] - centroid[i]) ** 2;
-    avgDist += Math.sqrt(dd);
+    let proj = 0;
+    for (let i = 0; i < d; i++) proj += (v[i] - centroid[i]) * dir[i];
+    if (proj < minProj) minProj = proj;
+    if (proj > maxProj) maxProj = proj;
   }
-  avgDist /= words.length;
-  const scale = avgDist * 1.2;
+  const halfSpan = Math.max(Math.abs(minProj), Math.abs(maxProj));
+  const scale = halfSpan * 1.05;  // slight padding beyond outermost point
 
   const anchorPos = new Float64Array(d);
   const anchorNeg = new Float64Array(d);
   for (let i = 0; i < d; i++) {
     anchorPos[i] = centroid[i] + dir[i] * scale;
-    anchorNeg[i] = centroid[i];  // arrow emanates from centroid
+    anchorNeg[i] = centroid[i] - dir[i] * scale;
   }
 
   // Build extended embeddings with anchor points
