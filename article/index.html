@@ -276,6 +276,7 @@
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-subspace-anim"></div>
+  <div class="eigen-margin" id="eigen-subspace-anim"></div>
 </div>
 
 <h2>Steering by Subspace Projection</h2>
@@ -941,7 +942,8 @@ function buildVisualizations() {
     renderSubspaceAnimation(
       document.getElementById('plot-subspace-anim'),
       animWordData,
-      { pairs: animPairIndices, directionLabel: 'gender direction' }
+      { pairs: animPairIndices, directionLabel: 'gender direction',
+        mdsData: animMDS, eigenContainer: 'eigen-subspace-anim' }
     );
   }
 
