@@ -817,21 +817,30 @@ class EmbeddingViz {
 
     const margin = { top: 0, right: 10, bottom: 0, left: 10 };
     const plotW = getResponsiveWidth(el);
-    const plotH = Math.round(plotW * 0.55);
+    const innerWRaw = plotW - margin.left - margin.right;
+    // Adaptive height: match data aspect ratio (same logic as render())
+    const extX = this._dataExtentX || 1, extY = this._dataExtentY || 1;
+    const dataRatio = extY / (extX || 1);
+    const rawH = Math.round(innerWRaw * dataRatio) + margin.top + margin.bottom;
+    const minH = Math.round(plotW * 0.3);
+    const maxH = Math.round(plotW * 0.65);
+    const plotH = (this.equalAspect) ? Math.max(minH, Math.min(maxH, rawH)) : Math.round(plotW * 0.55);
     const w = plotW - margin.left - margin.right;
     const h = plotH - margin.top - margin.bottom;
     // Use same domain as render() for consistency across dimension switches
     const baseDom = this._baseDomain || [-1.08, 1.08];
     let domX = baseDom, domY = baseDom;
     if (this.equalAspect) {
-      const baseSpan = baseDom[1] - baseDom[0];
-      const mid = (baseDom[0] + baseDom[1]) / 2;
-      if (w > h) {
-        const s = baseSpan * (w / h);
-        domX = [mid - s / 2, mid + s / 2];
+      const pxPerUnitX = w / (2 * extX || 1);
+      const pxPerUnitY = h / (2 * extY || 1);
+      if (pxPerUnitX < pxPerUnitY) {
+        const expandedExtY = extY * (pxPerUnitY / pxPerUnitX);
+        domX = [-extX, extX];
+        domY = [-expandedExtY, expandedExtY];
       } else {
-        const s = baseSpan * (h / w);
-        domY = [mid - s / 2, mid + s / 2];
+        const expandedExtX = extX * (pxPerUnitX / pxPerUnitY);
+        domX = [-expandedExtX, expandedExtX];
+        domY = [-extY, extY];
       }
     }
     const xScale = d3.scaleLinear().domain(domX).range([0, w]);
@@ -967,24 +976,22 @@ class EmbeddingViz {
       el.innerHTML = '';
     }
 
-    // Compute a stable domain from the max extent across all dimensions.
-    // This keeps transitions smooth while being tighter than the old fixed [-1.08, 1.08].
+    // Compute stable X/Y extents across all dimensions for smooth transitions.
     const pad = 0.08;
-    let maxAbsCoord = 0;
+    let maxAbsX = 0, maxAbsY = 0;
     for (const dim of [1, 2, 3]) {
       const raw = this.mdsData.coords[dim];
       if (!raw) continue;
-      // Normalize the same way _getCoords2D does
       if (dim === 1) {
         const maxAbs = Math.max(...raw.map(c => Math.abs(c[0]))) || 1;
-        const m = maxAbs; // after normalization, max is 1
-        if (m > maxAbsCoord) maxAbsCoord = m;
+        if (maxAbs > maxAbsX) maxAbsX = maxAbs;
+        // 1D has no Y spread
       } else if (dim === 2) {
         const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
         for (const [x, y] of raw) {
           const ax = Math.abs(x / maxR), ay = Math.abs(y / maxR);
-          if (ax > maxAbsCoord) maxAbsCoord = ax;
-          if (ay > maxAbsCoord) maxAbsCoord = ay;
+          if (ax > maxAbsX) maxAbsX = ax;
+          if (ay > maxAbsY) maxAbsY = ay;
         }
       } else {
         // 3D: check projected coords at current rotation angle
@@ -993,36 +1000,56 @@ class EmbeddingViz {
         const proj = project3Dto2D(norm, this._rotationAngle, this._tiltAngle);
         for (const [x, y] of proj) {
           const ax = Math.abs(x), ay = Math.abs(y);
-          if (ax > maxAbsCoord) maxAbsCoord = ax;
-          if (ay > maxAbsCoord) maxAbsCoord = ay;
+          if (ax > maxAbsX) maxAbsX = ax;
+          if (ay > maxAbsY) maxAbsY = ay;
         }
       }
     }
-    const extent = maxAbsCoord * (1 + pad);
-    const baseDomain = [-extent, extent];
-    this._baseDomain = baseDomain;  // cache for _render3DProjected
+    const extentX = maxAbsX * (1 + pad);
+    const extentY = maxAbsY * (1 + pad);
+    // For 3D rotation stability, use the larger extent for both axes
+    const maxExtent = Math.max(extentX, extentY);
+    const baseDomain = [-maxExtent, maxExtent];
+    this._baseDomain = baseDomain;
+    this._dataExtentX = extentX;
+    this._dataExtentY = extentY;
 
     const plotWidth = getResponsiveWidth(el);
-    const plotHeight = this.dims === 1
-      ? Math.min(160, Math.round(plotWidth * 0.25))
-      : Math.round(plotWidth * 0.55);
-
     const margin = { top: 0, right: 10, bottom: 0, left: 10 };
     const innerW = plotWidth - margin.left - margin.right;
-    const innerH = plotHeight - margin.top - margin.bottom;
 
-    // Equal aspect: expand the wider pixel axis so 1 data-unit = same pixels on both axes
-    let fixedDomainX = baseDomain, fixedDomainY = baseDomain;
-    if (this.equalAspect && this.dims >= 2) {
-      const baseSpan = baseDomain[1] - baseDomain[0];
-      const mid = (baseDomain[0] + baseDomain[1]) / 2;
-      if (innerW > innerH) {
-        const expandedSpan = baseSpan * (innerW / innerH);
-        fixedDomainX = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+    let plotHeight, fixedDomainX, fixedDomainY;
+    if (this.dims === 1) {
+      plotHeight = Math.min(160, Math.round(plotWidth * 0.25));
+      fixedDomainX = baseDomain;
+      fixedDomainY = baseDomain;
+    } else if (this.equalAspect) {
+      // Fit canvas height to data aspect ratio (equal scaling)
+      const dataRatio = extentY / (extentX || 1);  // height / width of data
+      // Canvas height = width * dataRatio, clamped to reasonable range
+      const rawH = Math.round(innerW * dataRatio) + margin.top + margin.bottom;
+      const minH = Math.round(plotWidth * 0.3);
+      const maxH = Math.round(plotWidth * 0.65);
+      plotHeight = Math.max(minH, Math.min(maxH, rawH));
+      const innerH = plotHeight - margin.top - margin.bottom;
+      // Set domains so 1 data-unit = same pixels on both axes
+      const pxPerUnitX = innerW / (2 * extentX || 1);
+      const pxPerUnitY = innerH / (2 * extentY || 1);
+      if (pxPerUnitX < pxPerUnitY) {
+        // X is tighter — expand Y domain to fill height
+        const expandedExtentY = extentY * (pxPerUnitY / pxPerUnitX);
+        fixedDomainX = [-extentX, extentX];
+        fixedDomainY = [-expandedExtentY, expandedExtentY];
       } else {
-        const expandedSpan = baseSpan * (innerH / innerW);
-        fixedDomainY = [mid - expandedSpan / 2, mid + expandedSpan / 2];
+        // Y is tighter — expand X domain to fill width
+        const expandedExtentX = extentX * (pxPerUnitX / pxPerUnitY);
+        fixedDomainX = [-expandedExtentX, expandedExtentX];
+        fixedDomainY = [-extentY, extentY];
       }
+    } else {
+      plotHeight = Math.round(plotWidth * 0.55);
+      fixedDomainX = baseDomain;
+      fixedDomainY = baseDomain;
     }
 
     const opts = {
@@ -1483,13 +1510,8 @@ class SteeringViz {
 
     const defaultW = getResponsiveWidth(el);
     const plotWidth = defaultW;
-    const plotHeight = this.dims === 1
-      ? Math.min(200, Math.round(plotWidth * 0.35))
-      : Math.round(plotWidth * 0.55);
-
     const margin = { top: 0, right: 10, bottom: 0, left: 10 };
-    const w = plotWidth - margin.left - margin.right;
-    const h = plotHeight - margin.top - margin.bottom;
+    const innerW = plotWidth - margin.left - margin.right;
 
     // Compute domain from data extent (both orig and steered) with padding
     const allCoords = [...projected.orig, ...projected.steered];
@@ -1500,6 +1522,21 @@ class SteeringViz {
     const axSpan = (axMax - axMin) || 0.1, aySpan = (ayMax - ayMin) || 0.1;
     let fixedDomainX = [axMin - axSpan * aPad, axMax + axSpan * aPad];
     let fixedDomainY = [ayMin - aySpan * aPad, ayMax + aySpan * aPad];
+
+    // Adaptive height based on data aspect ratio
+    let plotHeight;
+    if (this.dims === 1) {
+      plotHeight = Math.min(200, Math.round(plotWidth * 0.35));
+    } else {
+      const dataRatio = (aySpan * (1 + 2 * aPad)) / (axSpan * (1 + 2 * aPad));
+      const rawH = Math.round(innerW * dataRatio) + margin.top + margin.bottom;
+      const minH = Math.round(plotWidth * 0.3);
+      const maxH = Math.round(plotWidth * 0.65);
+      plotHeight = Math.max(minH, Math.min(maxH, rawH));
+    }
+    const w = plotWidth - margin.left - margin.right;
+    const h = plotHeight - margin.top - margin.bottom;
+
     if (this.dims >= 2) {
       const spanX = fixedDomainX[1] - fixedDomainX[0];
       const spanY = fixedDomainY[1] - fixedDomainY[0];
@@ -1702,10 +1739,9 @@ class SteeringViz {
 function renderSteering2D(container, wordData, options = {}) {
   const el = typeof container === 'string' ? document.getElementById(container) : container;
   const defaultW = getResponsiveWidth(el);
-  const { width = defaultW, height = Math.round(defaultW * 0.55), arrows = [] } = options;
+  const { arrows = [] } = options;
   const margin = { top: 0, right: 10, bottom: 0, left: 10 };
-  const w = width - margin.left - margin.right;
-  const h = height - margin.top - margin.bottom;
+  const innerWRaw = defaultW - margin.left - margin.right;
 
   d3.select(el).selectAll('svg.plot').remove();
   d3.select(el).selectAll('.steer-controls').remove();
@@ -1717,8 +1753,17 @@ function renderSteering2D(container, wordData, options = {}) {
   const yMin = Math.min(...allY), yMax = Math.max(...allY);
   const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
   const xPad = xSpan * pad, yPad = ySpan * pad;
-  // Equal scaling: expand the smaller axis to match the aspect ratio
+  // Adaptive height based on data aspect ratio
   const dataW = xSpan + 2 * xPad, dataH = ySpan + 2 * yPad;
+  const dataRatio = dataH / dataW;
+  const rawH = Math.round(innerWRaw * dataRatio) + margin.top + margin.bottom;
+  const minH = Math.round(defaultW * 0.3);
+  const maxH = Math.round(defaultW * 0.65);
+  const width = defaultW;
+  const height = Math.max(minH, Math.min(maxH, rawH));
+  const w = width - margin.left - margin.right;
+  const h = height - margin.top - margin.bottom;
+  // Equal scaling: expand the smaller axis to match the aspect ratio
   const aspect = w / h;
   let domW = dataW, domH = dataH;
   if (dataW / dataH > aspect) {
@@ -1850,10 +1895,21 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
   const el = typeof container === 'string' ? document.getElementById(container) : container;
   if (!el) return;
   const defaultW = getResponsiveWidth(el);
-  const { width = defaultW, height = Math.round(defaultW * 0.55) } = options;
   const { pairs = [], directionLabel = 'direction' } = options;
   const { mdsData = null, eigenContainer = null } = options;
   const margin = { top: 0, right: 10, bottom: 30, left: 10 };
+  // Adaptive height: compute from initial data extent
+  const coords = wordData.map(d => d.coord);
+  const xs = coords.map(c => c[0]), ys = coords.map(c => c[1]);
+  const xSpan = (Math.max(...xs) - Math.min(...xs)) || 0.2;
+  const ySpan = (Math.max(...ys) - Math.min(...ys)) || 0.2;
+  const dataRatio = ySpan / xSpan;
+  const innerWRaw = defaultW - margin.left - margin.right;
+  const rawH = Math.round(innerWRaw * dataRatio) + margin.top + margin.bottom;
+  const minH = Math.round(defaultW * 0.35);
+  const maxH = Math.round(defaultW * 0.65);
+  const width = defaultW;
+  const height = Math.max(minH, Math.min(maxH, rawH));
   const w = width - margin.left - margin.right;
   const h = height - margin.top - margin.bottom;
 
