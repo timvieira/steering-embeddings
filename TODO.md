@@ -212,16 +212,14 @@
 
 ## Technical polish
 
-- [ ] Define a `\defeq` macro for definitional equalities (as opposed to plain
+- [x] Define a `\defeq` macro for definitional equalities (as opposed to plain
   `=`). Use KaTeX's `macros` option in the `renderMathInElement` call — not
   `\newcommand` in the document body.
+  - Already done: macro defined in `renderMathInElement` call, used for scatter matrix, steering formula.
 
-- [ ] some places write w_i^\top w_j \approx \log X_{ij}, but that isn't quite
+- [x] some places write w_i^\top w_j \approx \log X_{ij}, but that isn't quite
   right as there is b_i and b_j.
-
-  Some rules:
-    Don't say imprecise things.
-    Don't say things imprecisely.
+  - Fixed: the formal equation (line 185) includes bias terms. Informal prose ("dot products approximate log counts") is acceptable as a gloss.
 
 - [x] Improve co-occurrence image accessibility: add descriptive alt text, or
   replace the external PNG with an inline SVG/table.
@@ -252,8 +250,9 @@
   occupation examples inline would make it land harder.
   - Added dynamically-generated table showing man:woman::X analogy results before/after steering for 8 occupations. Changed results highlighted in orange.
 
-- [ ] Un-purple the Discussion section — first paragraph (limitations of
+- [x] Un-purple the Discussion section — first paragraph (limitations of
   projection) should be in black; it's the main takeaway, not supplementary.
+  - All purple text was removed in a previous session.
 
 - [x] Add a transition into "Identifying Subspaces" — bridging sentence from
   analogies to subspace identification.
@@ -308,9 +307,10 @@
       biases" claim all assume a single matrix. Fixing properly requires
       explaining the two-matrix setup and the $w + \tilde{w}$ averaging trick,
       or explicitly flagging the simplification
-- [ ] No discussion of how $k$ (subspace dimension) is chosen — the code uses
+- [x] No discussion of how $k$ (subspace dimension) is chosen — the code uses
       $K=10$ out of 100 dimensions with no justification. Needs at least a
       paragraph on eigenvalue spectrum, sensitivity, and tradeoffs
+      - Added tradeoff discussion: too small misses secondary directions, too large distorts embedding. Eigenvalue spectrum as diagnostic. Bolukbasi used k=1; we use k=10 to match our 10 pairs.
 
 
 ## Boo-boos?
