@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LSI Context Expansion</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]})"></script>
+<script src="https://unpkg.com/svd-js@1.1.1/build-umd/svd-js.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<link rel="stylesheet" href="css/blog.css">
+<style>
+  body { max-width: 800px; }
+  #content { margin-right: 0; }
+  .l-body-outset { margin-left: -48px; margin-right: -48px; }
+  @media (max-width: 768px) { .l-body-outset { margin-left: 0; margin-right: 0; } }
+  article img, article svg { box-shadow: none; border: none; border-radius: 0; }
+  svg.plot { user-select: none; -webkit-user-select: none; overflow: hidden; }
+  .figure-row { position: relative; margin: 0; }
+  .figure-row .plot-container { margin-left: 48px; }
+  .figure-row .eigen-margin { position: absolute; right: 6px; bottom: 6px; z-index: 10; }
+  @media (max-width: 768px) { .figure-row .plot-container { margin-left: 0; } }
+  .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
+  .error { color: #c47e3f; font-size: 14px; }
+
+  .progress-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.95); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 10000;
+    transition: opacity 0.3s;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .progress-overlay.hidden { opacity: 0; pointer-events: none; }
+  .progress-bar { width: 300px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .progress-bar .fill { height: 100%; background: #4a6a8a; width: 0%; transition: width 0.1s; }
+  #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="progress-overlay" id="loading-overlay">
+  <div>Loading word vectors...</div>
+  <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
+  <div id="loading-text">0%</div>
+</div>
+
+<div id="main"><div id="content">
+<article>
+
+<h1>LSI Context Expansion</h1>
+<h2 style="font-weight: 300; font-size: 1.1em; font-style: normal; margin-top: -0.3em; color: rgba(0,0,0,0.5);">Finding related words via subspace retrieval</h2>
+
+<p>Given a handful of seed words, can we automatically find other words "about the same thing"? The idea borrows from <b>latent semantic indexing</b> (LSI) in information retrieval: rather than searching the full 100-dimensional space, we search in the low-dimensional subspace that the seed words span.</p>
+
+<p>Given seed words $S = \{\overrightarrow{w}_1, \dots, \overrightarrow{w}_n\}$, compute their centroid $\overrightarrow{\mu}$ and the covariance matrix of the centered vectors. The top-$k$ eigenvectors of this covariance define the subspace where the seeds vary most&mdash;the directions that capture what the group "is about." Then project every word in the vocabulary into this $k$-dimensional subspace and rank by cosine similarity to the projected centroid. Words that score high live in the same subspace as the seeds, even if they are far away in the full 100-D space.</p>
+
+<p>This is more selective than raw nearest-neighbor search. Nearest neighbors to the centroid finds words that are close in all 100 dimensions; LSI expansion finds words that participate in the same low-dimensional structure the seeds exhibit. For example, the seeds {king, queen, prince, princess} define a "royalty" subspace, and LSI expansion finds other royalty words even if they sit in a different part of the full space.</p>
+
+<div style="margin-top: 1em;">
+  <div style="display: flex; gap: 1em; align-items: flex-start; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 250px;">
+      <textarea id="lsi-seeds" rows="4" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">king queen prince princess</textarea>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <label style="font-size: 13px; color: #999;">Results (n):
+        <input id="lsi-n" type="number" value="20" min="5" max="100" style="width: 50px; font-size: 14px; padding: 2px 4px; border: 1px solid #ddd; border-radius: 3px;">
+      </label>
+    </div>
+  </div>
+  <div style="margin-top: 4px;">
+    <span id="lsi-status" style="font-size: 13px; color: #999;"></span>
+  </div>
+  <div id="lsi-eigenvalues" style="margin-top: 8px;"></div>
+  <div id="lsi-comparison" style="margin-top: 12px;"></div>
+  <div class="figure-row l-body-outset" style="margin-top: 12px;">
+    <div class="plot-container" id="plot-lsi"></div>
+    <div class="eigen-margin" id="eigen-lsi"></div>
+  </div>
+</div>
+
+</article>
+</div></div>
+
+<script type="module">
+const { Embeddings, loadEmbeddings } = await import(`./js/embeddings.js?v=${Date.now()}`);
+const { EmbeddingViz } = await import(`./js/viz.js?v=${Date.now()}`);
+const { setupLSI } = await import(`./js/lsi.js?v=${Date.now()}`);
+
+const overlay = document.getElementById('loading-overlay');
+const fill = document.getElementById('progress-fill');
+const text = document.getElementById('loading-text');
+
+let emb = null;
+try {
+  emb = await loadEmbeddings('data/glove-medium.bin', (pct) => {
+    fill.style.width = `${(pct * 100).toFixed(0)}%`;
+    text.textContent = `${(pct * 100).toFixed(0)}%`;
+  });
+} catch (err) {
+  fill.style.width = '100%';
+  fill.style.background = '#d9534f';
+  text.innerHTML = `<span style="color:#d9534f">Failed to load vectors: ${err.message}</span>`;
+  throw err;
+}
+
+overlay.classList.add('hidden');
+
+const vizInstances = [];
+setupLSI(emb, vizInstances, { Embeddings, EmbeddingViz });
+</script>
+</body>
+</html>

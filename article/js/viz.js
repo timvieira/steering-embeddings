@@ -5,12 +5,13 @@
 import { mds } from './embeddings.js';
 
 const COLORS = {
-  point: '#5778a4',
-  arrow: 'rgba(87, 120, 164, 0.5)',
-  highlight: '#e49444',
-  crossGroup: 'rgba(228, 148, 68, 0.3)',
-  eigenActive: '#5778a4',
-  eigenInactive: '#ddd',
+  point: '#4a6a8a',
+  arrow: 'rgba(74, 106, 138, 0.45)',
+  highlight: '#5e8c61',
+  crossGroup: 'rgba(94, 140, 97, 0.25)',
+  eigenActive: '#4a6a8a',
+  eigenInactive: '#e0e0e0',
+  direction: '#9e4a4a',
 };
 
 /**
@@ -1126,7 +1127,7 @@ function renderHero3D(container, wordData, options = {}) {
 
   // Group colors
   const groupNames = [...new Set(wordData.map(d => d.group))];
-  const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
+  const groupPalette = ['#4a6a8a', '#5e8c61', '#8a6d94', '#b05c5c', '#6a9e9e', '#8b7355'];
   const groupColor = {};
   groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
 
@@ -1240,7 +1241,8 @@ class SteeringViz {
     this.arrows = config.arrows || [];
     this.n = config.n;                // number of words
     this.dims = config.initialDims || 2;
-    this.steered = false;
+    this.startSteered = config.startSteered || false;
+    this.steered = this.startSteered;
 
     // Compute MDS at all dimensions from the joint distance matrix
     const nn = 2 * this.n;
@@ -1555,7 +1557,7 @@ class SteeringViz {
     const yScale = d3.scaleLinear().domain(fixedDomainY).range([h, 0]);
 
     const groupNames = [...new Set(this.wordData.map(d => d.group))];
-    const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
+    const groupPalette = ['#4a6a8a', '#5e8c61', '#8a6d94', '#b05c5c', '#6a9e9e', '#8b7355'];
     const groupColor = {};
     groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
 
@@ -1639,9 +1641,9 @@ class SteeringViz {
       .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
       .text(d => d.word);
 
-    // Steer/Reset controls
+    // Steer/Reset controls (hidden when startSteered — the plot is already in its final state)
     const controls = d3.select(el).append('div').attr('class', 'steer-controls')
-      .style('margin-top', '8px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+      .style('margin-top', '8px').style('display', this.startSteered ? 'none' : 'flex').style('gap', '8px').style('align-items', 'center');
 
     const toggleBtn = controls.append('button')
       .style('background', this.steered ? '#ddd' : COLORS.point)
@@ -1776,7 +1778,7 @@ function renderSteering2D(container, wordData, options = {}) {
   const yScale = d3.scaleLinear().domain([cyDom - domH / 2, cyDom + domH / 2]).range([h, 0]);
 
   const groupNames = [...new Set(wordData.map(d => d.group))];
-  const groupPalette = ['#5778a4', '#e49444', '#6a9f58', '#b07aa1', '#d1615d', '#85b6b2'];
+  const groupPalette = ['#4a6a8a', '#5e8c61', '#8a6d94', '#b05c5c', '#6a9e9e', '#8b7355'];
   const groupColor = {};
   groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
 
@@ -2082,7 +2084,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
     if (dims === 3) svg.style('cursor', 'grab');
     const cid = el.id || 'anim';
     const defs = svg.append('defs');
-    for (const [suffix, color] of [['', COLORS.arrow], ['-dir', '#c0392b']]) {
+    for (const [suffix, color] of [['', COLORS.arrow], ['-dir', COLORS.direction]]) {
       defs.append('marker')
         .attr('id', `arrow${suffix}-${cid}`)
         .attr('viewBox', '0 0 10 10')
@@ -2123,7 +2125,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       : (() => { const p = project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
     const dirArrow = mainG.append('line')
       .attr('x1', dsXY[0]).attr('y1', dsXY[1]).attr('x2', deXY[0]).attr('y2', deXY[1])
-      .attr('stroke', '#c0392b').attr('stroke-width', 2.5)
+      .attr('stroke', COLORS.direction).attr('stroke-width', 2.5)
       .attr('stroke-dasharray', '8,4')
       .attr('marker-end', `url(#arrow-dir-${cid})`)
       .attr('opacity', 0);
@@ -2132,7 +2134,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       .attr('x', deXY[0]).attr('y', deXY[1] - 10)
       .attr('text-anchor', 'middle')
       .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
-      .attr('fill', '#c0392b').text(directionLabel)
+      .attr('fill', COLORS.direction).text(directionLabel)
       .attr('opacity', 0);
 
     // Perpendicular axis (2D only; in 3D the perpendicular complement is a plane)
@@ -2166,7 +2168,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       .attr('class', 'proj-line')
       .attr('x1', (d, i) => wordXY(d, i)[0]).attr('y1', (d, i) => wordXY(d, i)[1])
       .attr('x2', (d, i) => wordXY(d, i)[0]).attr('y2', (d, i) => wordXY(d, i)[1])
-      .attr('stroke', '#c0392b').attr('stroke-width', 1).attr('stroke-dasharray', '3,2')
+      .attr('stroke', COLORS.direction).attr('stroke-width', 1).attr('stroke-dasharray', '3,2')
       .attr('opacity', 0);
 
     const ghosts = mainG.selectAll('circle.ghost').data(wordData).enter().append('circle')
@@ -2453,5 +2455,6 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
   // Initial build
   buildScene();
 }
+
 
 export { EmbeddingViz, SteeringViz, computeAllMDS, computeAllMDSFromMatrix, render2D, render3D, render1D, renderHero3D, renderSteering2D, renderSubspaceAnimation };

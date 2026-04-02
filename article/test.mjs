@@ -63,11 +63,11 @@ async function testHeroVisualization() {
 
 async function testHeroLegend() {
   const legend = await page.evaluate(() => {
-    const p = document.querySelector('#hero-viz + p');
-    return p?.innerHTML || '';
+    const el = document.querySelector('.margin-note') || document.querySelector('#hero-viz + p');
+    return el?.innerHTML || '';
   });
-  test('Hero legend has steel blue color', legend.includes('#5778a4'));
-  test('Hero legend has orange color', legend.includes('#e49444'));
+  test('Hero legend has steel blue color', legend.includes('#4a6a8a'));
+  test('Hero legend has green color', legend.includes('#5e8c61'));
 }
 
 async function testPlotCount() {

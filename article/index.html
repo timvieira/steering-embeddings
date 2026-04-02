@@ -72,7 +72,7 @@
   .analogy-input button { background: #5778a4; color: white; border: none; border-radius: 4px; padding: 6px 16px; font-size: 15px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   .analogy-result { font-size: 16px; padding: 8px 0; min-height: 2em; }
   .analogy-result .answer { font-weight: 600; color: #5778a4; }
-  .error { color: #e49444; font-size: 14px; }
+  .error { color: #5e8c61; font-size: 14px; }
 
   img.cooccurrence-img { max-width: min(500px, 100%); }
   .analogy-input, .analogy-result { box-sizing: border-box; }
@@ -80,7 +80,7 @@
   #analogy-table table { border-collapse: collapse; font-size: 14px; width: 100%; max-width: 560px; }
   #analogy-table th, #analogy-table td { padding: 4px 10px; text-align: left; border-bottom: 1px solid #eee; }
   #analogy-table th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-  #analogy-table td.changed { color: #e49444; }
+  #analogy-table td.changed { color: #5e8c61; }
 
   .appendix { margin-top: 2em; padding-top: 1em; border-top: 1px solid #ddd; font-size: 0.9em; color: #666; }
   .references { margin-top: 2em; }
@@ -151,8 +151,8 @@
 <p style="font-size: 13px; color: rgba(0,0,0,0.5); margin-top: -0.5em;"><a href="http://timvieira.github.io/" style="color: inherit; text-decoration: none; border-bottom: 1px solid rgba(0,0,0,0.2);">Tim Vieira</a></p>
 
 <span class="margin-note">
-  <span style="color: #5778a4;">&#9679;</span> Gendered words<br>
-  <span style="color: #e49444;">&#9679;</span> Occupations<br><br>
+  <span style="color: #4a6a8a;">&#9679;</span> Gendered words<br>
+  <span style="color: #5e8c61;">&#9679;</span> Occupations<br><br>
   Each dot is a word. Faded dots show original positions; bright dots show where they land after a gender direction is removed. Trails show the shift.
 </span>
 <div id="hero-viz" class="l-body-outset" style="margin: 0.5em auto 0;"></div>
@@ -180,7 +180,7 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b> $\mathbf{X} \in \mathbb{R}^{V \times V}$, where $\mathbf{X}_{ij}$ counts how often words $i$ and $j$ appear near each other. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log counts:</p>
+<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>co-occurrence matrix</b> $\mathbf{X} \in \mathbb{R}^{V \times V}$, where $\mathbf{X}_{ij}$ counts how often words $i$ and $j$ appear near each other. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log counts:</p>
 
 <p>$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
@@ -275,16 +275,7 @@
 
 <p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The scatter matrix is:</p>
 
-<p>$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
-
-<p>$\mathbf{C}$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences. Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions of the concept and discards noise in the remaining components. Choosing $k$ involves a tradeoff: too small and you miss secondary directions of the concept (e.g., gender correlates with both pronouns and names, which may not be collinear); too large and you start removing variation unrelated to the concept, distorting the embedding. In practice, examining the eigenvalue spectrum of $\mathbf{C}$ helps&mdash;a sharp drop after the first few eigenvalues suggests the concept is low-dimensional. <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a> used $k = 1$ for gender debiasing; in this article, we use $k = 10$ to capture the full rank of our 10 defining pairs.</p>
-
-<p>The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
-
-<div class="figure-row l-body-outset">
-  <div class="plot-container" id="plot-subspace-anim"></div>
-  <div class="eigen-margin" id="eigen-subspace-anim"></div>
-</div>
+<p>The scatter matrix $\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences. Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions of the concept and discards noise in the remaining components. Choosing $k$ involves a tradeoff: too small and you miss secondary directions of the concept (e.g., gender correlates with both pronouns and names, which may not be collinear); too large and you start removing variation unrelated to the concept, distorting the embedding. In practice, examining the eigenvalue spectrum of $\mathbf{C}$ helps&mdash;a sharp drop after the first few eigenvalues suggests the concept is low-dimensional. <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a> used $k = 1$; in this article, we use $k = 10$ to capture the full rank of our 10 defining pairs.</p>
 
 <h2>Steering by Subspace Projection</h2>
 
@@ -296,7 +287,14 @@
 
 <p>This removes each word's component along the chosen subspace while preserving everything else. The renormalization step is not inherent to the projection&mdash;it is a consequence of working with unit-length vectors. Since we measure similarity by cosine similarity (i.e., dot products between unit vectors), we renormalize after projection to stay on the unit sphere.</p>
 
-<p>We define a gender subspace using pronoun pairs. Press <b>Steer</b> to watch the embeddings shift as the gender direction is projected out:</p>
+<p>The animation below walks through the full pipeline: starting from gendered word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out. A caveat: the animation performs the projection in the 2D space you see on screen, not in the original 100-dimensional space. If the embeddings really were two-dimensional, the animation would be exact. In 100 dimensions, the direction, the projection, and the renormalization all happen in a space we cannot visualize directly&mdash;MDS gives us a faithful summary of distances, but not of directions.</p>
+
+<div class="figure-row l-body-outset">
+  <div class="plot-container" id="plot-subspace-anim"></div>
+  <div class="eigen-margin" id="eigen-subspace-anim"></div>
+</div>
+
+<p>The plot below shows the real result: steering computed in the full 100-dimensional space, then projected to 2D via joint MDS over both the original and steered positions. Faded dots mark where each word started; trails show how it moved:</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-gendered-steer"></div>
@@ -321,14 +319,15 @@
 
 <p>The doctor example is not an isolated case. The table below runs the same analogy&mdash;man : woman :: <em>occupation</em>&mdash;across several professions, before and after steering:</p>
 
-<div id="analogy-table"></div>
+<div id="analogy-table" style="margin-bottom: 1.5em;"></div>
 
 <h3>Which Words Changed Most?</h3>
-<p>Press <b>Steer</b> to see how each occupation's embedding shifts when the gender subspace is removed:</p>
+<p>The plot below shows each occupation after steering, with faded dots at the original positions:</p>
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-profession-steer"></div>
   <div class="eigen-margin" id="eigen-profession-steer"></div>
 </div>
+<p>The bar chart ranks occupations by how far their embedding moved when the gender subspace was removed&mdash;measured as $\|\overrightarrow{w}_{\text{steered}} - \overrightarrow{w}\|$, the Euclidean distance between the original and steered vectors. Words with large shifts had a large gender component; words with small shifts were already mostly orthogonal to the gender direction.</p>
 <div id="profession-ranking"></div>
 
 <h2>Discussion</h2>
@@ -382,8 +381,8 @@ mother - father</textarea>
 </div></div><!-- /content /main -->
 
 <script type="module">
-const { Embeddings, mds, loadEmbeddings } = await import('./js/embeddings.js');
-const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import('./js/viz.js');
+const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${Date.now()}`);
+const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${Date.now()}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -437,7 +436,7 @@ async function init(size = 'medium') {
   const text = document.getElementById('loading-text');
   overlay.classList.remove('hidden');
   fill.style.width = '0%';
-  fill.style.background = '#5778a4';
+  fill.style.background = '#4a6a8a';
   text.textContent = '0%';
 
   try {
@@ -987,6 +986,7 @@ function buildVisualizations() {
       wordData: steerData,
       distMatrix: D,
       n,
+      startSteered: true,
     });
   }
 
@@ -1042,6 +1042,7 @@ function buildVisualizations() {
       wordData: profSteerData,
       distMatrix: D,
       n,
+      startSteered: true,
     });
   }
 
@@ -1054,45 +1055,48 @@ function buildVisualizations() {
     return { word: w, shift: Math.sqrt(diff) };
   }).sort((a, b) => b.shift - a.shift);
 
-  // D3 horizontal bar chart for profession ranking
+  // D3 vertical bar chart for profession ranking (compact, 45° labels)
   rankEl.innerHTML = '';
-  const barW = Math.min(500, rankEl.clientWidth || 500), barRowH = 22, barMargin = { left: 100, right: 20, top: 5, bottom: 5 };
-  const barH = ranked.length * barRowH + barMargin.top + barMargin.bottom;
+  rankEl.style.textAlign = 'center';
   const maxShift = ranked[0]?.shift || 1;
-  const barXScale = d3.scaleLinear().domain([0, maxShift]).range([0, barW - barMargin.left - barMargin.right]);
+  const barColW = 22;
+  const barMargin = { left: 10, right: 10, top: 5, bottom: 70 };
+  const chartW = ranked.length * barColW + barMargin.left + barMargin.right;
+  const chartH = 150;
+  const innerW = chartW - barMargin.left - barMargin.right;
+  const innerH = chartH - barMargin.top - barMargin.bottom;
+  const barYScale = d3.scaleLinear().domain([0, maxShift]).range([0, innerH]);
 
   const barSvg = d3.select(rankEl).append('svg')
-    .attr('width', barW).attr('height', barH);
+    .attr('width', chartW).attr('height', chartH)
+    .style('overflow', 'visible');
   const barG = barSvg.append('g')
     .attr('transform', `translate(${barMargin.left},${barMargin.top})`);
 
-  barG.selectAll('rect').data(ranked).enter().append('rect')
-    .attr('x', 0)
-    .attr('y', (d, i) => i * barRowH)
-    .attr('width', d => barXScale(d.shift))
-    .attr('height', barRowH - 4)
-    .attr('fill', '#e49444')
-    .attr('rx', 2)
-    .attr('opacity', 0.7);
+  const barRects = barG.selectAll('rect').data(ranked).enter().append('rect')
+    .attr('x', (d, i) => i * barColW)
+    .attr('y', d => innerH - barYScale(d.shift))
+    .attr('width', barColW - 3)
+    .attr('height', d => barYScale(d.shift))
+    .attr('fill', '#4a6a8a')
+    .attr('rx', 1)
+    .attr('opacity', 0.6);
+
+  barRects.append('title')
+    .text(d => `${d.word}: ${d.shift.toFixed(3)}`);
 
   barG.selectAll('text.label').data(ranked).enter().append('text')
     .attr('class', 'label')
-    .attr('x', -8)
-    .attr('y', (d, i) => i * barRowH + barRowH / 2 + 1)
+    .attr('x', (d, i) => i * barColW + (barColW - 3) / 2)
+    .attr('y', innerH + 6)
     .attr('text-anchor', 'end')
-    .attr('dominant-baseline', 'middle')
-    .attr('font-size', '12px')
-    .attr('fill', '#333')
-    .text(d => d.word);
-
-  barG.selectAll('text.value').data(ranked).enter().append('text')
-    .attr('class', 'value')
-    .attr('x', d => barXScale(d.shift) + 4)
-    .attr('y', (d, i) => i * barRowH + barRowH / 2 + 1)
-    .attr('dominant-baseline', 'middle')
     .attr('font-size', '10px')
-    .attr('fill', '#999')
-    .text(d => d.shift.toFixed(3));
+    .attr('fill', '#555')
+    .attr('transform', (d, i) => {
+      const x = i * barColW + (barColW - 3) / 2;
+      return `rotate(-45, ${x}, ${innerH + 6})`;
+    })
+    .text(d => d.word);
 
   setupAnalogyInput();
   setupExplorer();
@@ -1136,11 +1140,10 @@ function setupExplorer() {
   const input = document.getElementById('explorer-input');
   const status = document.getElementById('explorer-status');
 
-  function runExplorer() {
+  function parseInput() {
     const text = input.value.trim();
-    if (!text) { status.textContent = 'Enter some words above.'; return; }
+    if (!text) return null;
 
-    // Parse lines: "word - word" = steering pair, otherwise a word group
     const steerPairs = [];
     const displayGroups = [];
     for (const line of text.split('\n')) {
@@ -1150,7 +1153,6 @@ function setupExplorer() {
         const parts = trimmed.split(' - ').map(s => s.trim()).filter(Boolean);
         if (parts.length === 2) {
           steerPairs.push(parts);
-          // Also add pair words to display
           displayGroups.push(parts);
           continue;
         }
@@ -1159,7 +1161,6 @@ function setupExplorer() {
       if (words.length > 0) displayGroups.push(words);
     }
 
-    // Collect all unique words
     const seen = new Set();
     const allWords = [];
     const missing = [];
@@ -1172,14 +1173,22 @@ function setupExplorer() {
       }
     }
 
+    const validGroups = displayGroups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
+    const validPairs = steerPairs.filter(([a, b]) => emb.has(a) && emb.has(b));
+
+    return { allWords, missing, validGroups, validPairs };
+  }
+
+  function runExplorer() {
+    const parsed = parseInput();
+    if (!parsed) { status.textContent = 'Enter some words above.'; return; }
+    const { allWords, missing, validGroups, validPairs } = parsed;
+
     if (allWords.length < 2) {
       status.innerHTML = `<span class="error">Need at least 2 words in vocabulary.</span>`;
       if (missing.length > 0) status.innerHTML += ` Not found: ${missing.join(', ')}`;
       return;
     }
-
-    const validGroups = displayGroups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
-    const validPairs = steerPairs.filter(([a, b]) => emb.has(a) && emb.has(b));
 
     let msg = `${allWords.length} words`;
     if (validPairs.length > 0) msg += `, ${validPairs.length} steering pairs`;
@@ -1192,7 +1201,7 @@ function setupExplorer() {
     eigenEl.innerHTML = '';
 
     if (validPairs.length > 0) {
-      // Steer and show animated transition
+      // Steer and plot the result with ghosts at original positions
       const explorerSteered = emb.steer(validPairs, Math.min(10, validPairs.length));
       const n = allWords.length;
       const nn = 2 * n;
@@ -1208,11 +1217,10 @@ function setupExplorer() {
           D[j * nn + i] = dist;
         }
       }
-      const steerData = allWords.map((w, i) => ({
+      const steerData = allWords.map(w => ({
         word: w,
         group: validPairs.some(([a, b]) => w === a || w === b) ? 'pair' : 'word',
       }));
-      // Build arrows from display groups (consecutive words on a line)
       const wordToIdx = new Map(allWords.map((w, i) => [w, i]));
       const groupArrows = [];
       for (const g of validGroups) {
@@ -1227,6 +1235,7 @@ function setupExplorer() {
         distMatrix: D,
         n,
         arrows: groupArrows,
+        startSteered: true,  // show steered state immediately, no animation
       });
     } else {
       // No steering pairs — just plot

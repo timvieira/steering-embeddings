@@ -144,6 +144,240 @@
   - Added sentence explaining unit-length requirement for cosine similarity.
 
 
+## Plot DSL
+
+Design a plain-text specification language that can generate every static plot in
+the article and serve as the explorer's input format.
+
+### Primitives
+
+The language has five line types, distinguished by a leading sigil:
+
+```
+(bare line)   word groups — arrows connect consecutive words on each line
+>             direction arrow — overlay a semantic direction on the plot
+=             cross-links — connect corresponding words across groups by position
+~             steer — project out a subspace, show ghost dots + trails
+?             analogy — compute vector arithmetic, draw parallelogram
+```
+
+### Syntax
+
+**Word groups** (no sigil). Each line is a group. Arrows connect consecutive
+words within a group. Multiple groups appear as distinct chains/clusters.
+
+```
+poor poorer poorest
+rich richer richest
+fast faster fastest
+```
+
+**Direction arrow** (`>`). Computes a direction in 100-D and overlays a dashed
+red arrow spanning the point cloud. Two modes:
+
+- Pair-SVD (default): pairs separated by `-`. Top eigenvector of the scatter
+  matrix of pair differences. Label follows the colon.
+  ```
+  > degree: poor - poorest, rich - richest, fast - fastest
+  ```
+
+- PCA: just a word sequence (no `-`). Top principal component of those vectors,
+  oriented first→last.
+  ```
+  > counting: one two three four five six seven eight nine
+  ```
+
+Multiple direction lines = multiple arrows (as in linked numbers).
+
+**Cross-links** (`=`). Connect the $i$-th word of each group by dashed lines.
+Requires groups to have the same length.
+
+```
+one two three
+1 2 3
+= link
+```
+
+**Steer** (`~`). Define pairs for subspace projection. Produces a Steer/Reset
+button; clicking it animates words from original to steered positions with ghost
+dots and trails.
+
+```
+~ steer: she - he, woman - man, her - him, herself - himself
+```
+
+When `~` is present, word groups are plotted using joint MDS over
+[steered, original] positions so ghosts and steered dots share a coordinate
+frame.
+
+**Analogy** (`?`). Computes $a : b :: c \to ?$ via vector arithmetic. Adds result
+words to the plot and draws the parallelogram (a→b, c→answer as arrows;
+a↔c, b↔answer as dashed cross-links).
+
+```
+? man : woman :: king
+```
+
+### Every article plot as DSL
+
+**Superlatives:**
+```
+poor poorer poorest
+rich richer richest
+short shorter shortest
+slow slower slowest
+fast faster fastest
+soft softer softest
+strong stronger strongest
+mean meaner meanest
+dark darker darkest
+smart smarter smartest
+> degree: poor - poorest, rich - richest, short - shortest, slow - slowest, fast - fastest, soft - softest, strong - strongest, mean - meanest, dark - darkest, smart - smartest
+```
+
+**Digits:**
+```
+1 2 3 4 5 6 7 8 9
+> counting: 1 2 3 4 5 6 7 8 9
+```
+
+**Number words:**
+```
+one two three four five six seven eight nine
+> counting: one two three four five six seven eight nine
+```
+
+**Linked numbers:**
+```
+one 1
+two 2
+three 3
+four 4
+five 5
+six 6
+seven 7
+eight 8
+nine 9
+= link
+> word vs digit: one - 1, two - 2, three - 3, four - 4, five - 5, six - 6, seven - 7, eight - 8, nine - 9
+> counting: one two three four five six seven eight nine
+```
+
+**Gender pairs:**
+```
+woman man
+queen king
+actress actor
+girl boy
+mom dad
+mother father
+sister brother
+aunt uncle
+heiress heir
+duchess duke
+niece nephew
+madame sir
+female male
+feminine masculine
+> gender: woman - man, queen - king, actress - actor, girl - boy, mom - dad, mother - father, sister - brother, aunt - uncle, heiress - heir, duchess - duke, niece - nephew, madame - sir, female - male, feminine - masculine
+```
+
+**Size pairs:**
+```
+small large
+tiny huge
+little big
+narrow wide
+short tall
+thin thick
+shallow deep
+minor major
+miniature giant
+> size: small - large, tiny - huge, little - big, narrow - wide, short - tall, thin - thick, shallow - deep, minor - major, miniature - giant
+```
+
+**Analogy (king):**
+```
+? man : woman :: king
+```
+
+**Gendered steering:**
+```
+woman man
+queen king
+actress actor
+girl boy
+mom dad
+mother father
+sister brother
+aunt uncle
+heiress heir
+duchess duke
+niece nephew
+madame sir
+female male
+feminine masculine
+~ steer: she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males
+```
+
+**Doctor before steering:**
+```
+? man : woman :: doctor
+```
+
+**Doctor after steering:**
+```
+? man : woman :: doctor
+~ steer: she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males
+```
+
+**Profession steering:**
+```
+caretaker homemaker doctor nurse programmer teacher wife husband soldier salesperson analyst therapist trainer instructor ceo assistant telemarketer bartender clerk designer father mother scientist manager boss employee
+~ steer: she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males
+```
+
+### Open questions
+
+- **Subspace animation**: The 5-step walkthrough (pairs → differences →
+  direction → projection → steer) is a distinct visualization mode, not just a
+  static plot. Should the DSL trigger it (e.g., `~ animate: ...`), or leave it
+  as a separate component?
+
+- **Hero viz**: Three.js 3D scene with auto-orbit. Probably stays as its own
+  thing — it's the only WebGL component.
+
+- **Analogy table**: The before/after occupation table is data, not a plot. Could
+  be generated from the DSL (multiple `?` lines + `~ steer`), but might be
+  cleaner as a separate widget.
+
+- **Neighbor count for analogies**: `? man : woman :: king` currently shows 10
+  results. Should the count be configurable (`? man : woman :: king @ 5`)?
+
+- **Direction arrow from steer pairs**: When `~` is present, should we
+  automatically show a direction arrow for the steered-out subspace? Currently
+  the gendered steering plot doesn't show one, but it would be informative.
+
+- **Multiple embeddings**: The doctor-after plot uses the steered embedding for
+  the analogy. The `~ steer` line defines which embedding to steer. Should the
+  DSL support running the analogy on the steered embedding explicitly?
+
+### Implementation plan
+
+1. Write a parser: text → structured spec (word groups, directions, steer pairs,
+   analogies, neighbor expansions, cross-links).
+
+2. Write a builder: spec → EmbeddingViz or SteeringViz config. This replaces
+   `buildVizWithDirection`, `buildAnalogyViz`, and the manual joint-MDS code.
+
+3. Rewrite `buildVisualizations()` to use the DSL (each plot is a string
+   constant parsed by the same code path).
+
+4. Replace the explorer's parser with the same DSL parser.
+
+5. Add syntax help to the explorer (tooltip or collapsible reference).
+
+
 ## AWESOMENESS
 
 - [x] Animate changes from 1 -> 2 -> 3 dimensions
