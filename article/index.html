@@ -111,6 +111,8 @@
       width: auto;
       margin: 0.5em 0;
     }
+    /* Hero legend doesn't work inline — hide on narrow screens */
+    .margin-note.hero-legend { display: none; }
     /* Numbered sidenotes: hide until clicked */
     .sidenote-number + .margin-note {
       display: none;
@@ -150,7 +152,7 @@
 <h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
 <p style="font-size: 13px; color: rgba(0,0,0,0.5); margin-top: -0.5em;"><a href="http://timvieira.github.io/" style="color: inherit; text-decoration: none; border-bottom: 1px solid rgba(0,0,0,0.2);">Tim Vieira</a></p>
 
-<span class="margin-note">
+<span class="margin-note hero-legend">
   <span style="color: #4a6a8a;">&#9679;</span> Gendered words<br>
   <span style="color: #5e8c61;">&#9679;</span> Occupations<br><br>
   Each dot is a word. Faded dots show original positions; bright dots show where they land after a gender direction is removed. Trails show the shift.
@@ -169,7 +171,7 @@
 
 <h2>What are Word Embeddings?</h2>
 
-<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
+<p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding represents a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
 
 <p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> (<a href="https://doi.org/10.1080/00437956.1954.11659520">Harris, 1954</a>): a word's meaning can be inferred from the words it co-occurs with.<label class="sidenote-number"></label><span class="margin-note">Co-occurrence counting is one approach. Others, like <a href="https://arxiv.org/abs/1301.3781">Word2vec</a>, learn by predicting context words directly. Contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> and GPT produce different vectors for the same word depending on context.</span> To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
@@ -180,7 +182,7 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>co-occurrence matrix</b> $\mathbf{X} \in \mathbb{R}^{V \times V}$, where $\mathbf{X}_{ij}$ counts how often words $i$ and $j$ appear near each other. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log counts:</p>
+<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/pubs/glove.pdf">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. Given a co-occurrence matrix $\mathbf{X} \in \mathbb{R}^{V \times V}$, where $\mathbf{X}_{ij}$ counts how often words $i$ and $j$ appear near each other, the goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log counts:</p>
 
 <p>$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
@@ -208,7 +210,7 @@
 </div>
 
 <h3>Numbers</h3>
-<p>Digits and their word forms occupy distinct but parallel subspaces:</p>
+<p>Digits and their word forms occupy distinct but parallel regions:</p>
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-numbers-digits"></div>
   <div class="eigen-margin" id="eigen-numbers-digits"></div>
@@ -226,9 +228,9 @@
 
 <h2>Word Analogies</h2>
 
-<p>These parallel structures give rise to <b>word analogies</b>: analogous pairs share roughly the same vector offset. The analogy "king is to man as queen is to woman" corresponds to:</p>
+<p>The superlatives already demonstrate analogies&mdash;poor is to poorer as rich is to richer&mdash;and the pattern generalizes. Analogous pairs share roughly the same vector offset. The classic example: "man is to woman as king is to queen" corresponds to:</p>
 
-<p>$$\overrightarrow{\text{king}} - \overrightarrow{\text{man}} \approx \overrightarrow{\text{queen}} - \overrightarrow{\text{woman}}$$</p>
+<p>$$\overrightarrow{\text{man}} - \overrightarrow{\text{woman}} \approx \overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$$</p>
 
 <p>More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$.</p>
 
@@ -273,9 +275,13 @@
   <div class="eigen-margin" id="eigen-size-pairs"></div>
 </div>
 
-<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$-th pair. The scatter matrix is:</p>
+<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i\textsuperscript{th}$ pair. The scatter matrix</p>
 
-<p>The scatter matrix $\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences. Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions of the concept and discards noise in the remaining components. Choosing $k$ involves a tradeoff: too small and you miss secondary directions of the concept (e.g., gender correlates with both pronouns and names, which may not be collinear); too large and you start removing variation unrelated to the concept, distorting the embedding. In practice, examining the eigenvalue spectrum of $\mathbf{C}$ helps&mdash;a sharp drop after the first few eigenvalues suggests the concept is low-dimensional. <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a> used $k = 1$; in this article, we use $k = 10$ to capture the full rank of our 10 defining pairs.</p>
+<p>$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
+
+<p>is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
+
+<p>Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions and discards weaker ones. Choosing $k$ involves a tradeoff: too small and you miss secondary directions of the concept (e.g., gender correlates with both pronouns and names, which may not be collinear); too large and you start removing variation unrelated to the concept, distorting the embedding. In practice, examining the eigenvalue spectrum of $\mathbf{C}$ helps&mdash;a sharp drop after the first few eigenvalues suggests the concept is low-dimensional. <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a> used $k = 1$; in this article, we use $k = 10$, the full rank of our 10 defining pairs. With 10 pairs in a 100-dimensional space, this removes only 10% of the embedding dimensions, leaving the remaining structure intact.</p>
 
 <h2>Steering by Subspace Projection</h2>
 
@@ -336,11 +342,11 @@
 
 <p>Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
 
-<p>More recent work has explored alternatives: <a href="https://arxiv.org/abs/1809.01496">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://arxiv.org/abs/2004.07667">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational.</p>
+<p>More recent work has explored alternatives: <a href="https://arxiv.org/abs/1809.01496">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://arxiv.org/abs/2004.07667">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational. The same linear structure that makes analogies possible also makes steering possible: the geometry that encodes meaning is the geometry we can edit.</p>
 
 <h2>Explore</h2>
 
-<p>Type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Use <code>word - word</code> to define a steering pair&mdash;when pairs are present, a <b>Steer</b> button appears to project out that subspace.</p>
+<p>Try it yourself: type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Use <code>word - word</code> to define a steering pair&mdash;when pairs are present, a <b>Steer</b> button appears to project out that subspace.</p>
 
 <div>
 <textarea id="explorer-input" rows="8" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">doctor nurse programmer teacher scientist
