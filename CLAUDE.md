@@ -47,28 +47,17 @@ The test suite loads the full 50K vocabulary and takes ~60s.
 
 ## Deploying
 
-The deploy repo is a GitHub Pages site at `/tmp/steering-embeddings` (remote: `git@github.com:timvieira/steering-embeddings.git`). To deploy:
+GitHub Actions deploys `article/` to GitHub Pages on every push to `main`. No manual steps needed.
 
-```bash
-# Copy article files (one-way sync, never edit the deploy repo directly)
-cp article/index.html /tmp/steering-embeddings/
-cp article/js/* /tmp/steering-embeddings/js/
-cp article/css/* /tmp/steering-embeddings/css/
-cp article/img/* /tmp/steering-embeddings/img/
-
-# Commit and push
-cd /tmp/steering-embeddings
-git add -A && git commit -m "Sync from main repo" && git push
-```
-
-Note: `data/` (binary vectors) are already in the deploy repo and rarely change. Only copy them if `export_vectors.py` has been re-run.
+- Site URL: `https://timvieira.github.io/steering-embeddings/`
+- `glove-small.bin` and `glove-medium.bin` are committed; `glove-large.bin` is gitignored (157M).
+- If `export_vectors.py` regenerates the bin files, commit the updated small/medium files.
 
 ## Workflow rules
 
 - **Always run tests** (`node article/test.mjs`) before committing. If tests fail, fix before committing.
 - **Update TODO.md** after completing each task — mark `[x]` with a brief explanation of what was done.
 - **Re-read files before editing** if another agent may have modified them. Check `git status` and `git log` frequently.
-- **Never edit deploy repos directly** — only edit in this main repo. If a deploy repo exists, copy files out one-way.
 - **Cache-busting**: JS module imports in index.html use `Date.now()` query strings so browsers load fresh code.
 - **Styling**: Uses EB Garamond font matching the blog (timvieira.github.io/blog). No external template — all CSS is inline.
 - **Math**: KaTeX with `$...$` (inline) and `$$...$$` (display) delimiters; custom macros in the `renderMathInElement` call. When referring to word vectors by name, use arrow notation: `$\overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$`, not plain text like "king − queen".

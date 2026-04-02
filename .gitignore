@@ -10,6 +10,6 @@ build/
 dist/
 *.egg-info/
 __pycache__/
-data/
+/data/
 vecs.npz
-article/data/
+article/data/glove-large.bin
