@@ -297,8 +297,9 @@
       are cosine-based, which changes the interpretation of "Euclidean distance"
       throughout
       - Added "normalized to unit length" to the GloVe description sentence.
-- [ ] Steering formula presents renormalization as inherent to the method, but
+- [x] Steering formula presents renormalization as inherent to the method, but
       it's only needed because we work on the unit sphere — note this
+      - Clarified that renormalization is a consequence of working with unit vectors, not inherent to projection.
 
 ### Hard
 
