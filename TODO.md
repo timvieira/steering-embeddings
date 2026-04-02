@@ -48,6 +48,18 @@
       aspect ratio.
 
 
+## Layout
+
+- [ ] Show an embedding visualization as early as possible — ideally right under
+      the first paragraph, before the co-occurrence matrix explanation. Give the
+      reader something concrete before the theory. Options:
+      - Show raw embedding vectors for a few words (e.g., cat, dog, king, queen)
+        as 100-dimensional lists of numbers. Then show that cat/dog are close
+        (high similarity) while cat/king are far (low similarity). Makes
+        "a list of numbers" tangible before jumping to co-occurrence matrices.
+      - An MDS plot of a small word group early on.
+      - Both: raw vectors first, then the plot.
+
 ## Visual Design
 
 - [SKIP] I don't want to see unncessary labels collisions.  Please improve the
@@ -305,11 +317,9 @@
 
 ### Hard
 
-- [ ] GloVe uses two separate embedding matrices ($W$ and $\tilde{W}$), not
-      $WW^\top$. The diagram, the objective, and the "released vectors drop the
-      biases" claim all assume a single matrix. Fixing properly requires
-      explaining the two-matrix setup and the $w + \tilde{w}$ averaging trick,
-      or explicitly flagging the simplification
+- [SKIP] GloVe uses two separate embedding matrices ($W$ and $\tilde{W}$), not
+      $WW^\top$. Intentionally simplified — the article is about embeddings and
+      steering, not GloVe internals. The less GloVe-specific detail the better.
 - [x] No discussion of how $k$ (subspace dimension) is chosen — the code uses
       $K=10$ out of 100 dimensions with no justification. Needs at least a
       paragraph on eigenvalue spectrum, sensitivity, and tradeoffs
