@@ -187,7 +187,7 @@
 
 <p>where $b_i$ and $b_j$ are per-word bias terms.<label class="sidenote-number"></label><span class="margin-note">Why the bias terms? Without them, a word like "the" that co-occurs frequently with everything would need a large vector magnitude to produce large dot products with every other word&mdash;distorting the geometry that encodes meaning. The biases $b_i$ absorb each word's baseline co-occurrence rate, freeing the vectors to focus on which words co-occur <em>more or less than expected</em>.</span> The parameters are fit by weighted least squares over all observed word pairs. This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
 
-<p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
+<p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text, normalized to unit length. All computations run in your browser.</p>
 
 <h2>Structure in the Embedding Space</h2>
 
