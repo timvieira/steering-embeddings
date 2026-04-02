@@ -1,40 +1,60 @@
 ## Questions:
 
-- [x] Is there a good reason to use Three.js for the hero visualization? Yes — keep it.
+- [x] crtical assessment of the fidelty of the math and code.
+  - Done: see "Article review (2026-04-02)" section below.
 
-- crtical assessment of the fidelty of the math and code.
-
-- [x] do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
-  - Yes. `steer(pairs, K=10)` keeps top-K eigenvectors. The scatter matrix has rank ≤ number of pairs, so higher components are noise. K=10 captures the dominant concept directions. This is a parameter the article should discuss (see "No discussion of how k is chosen" below).
-
-- [x] should we set the aspect ratio to be more equal?  does that make any sense?
-  - Yes. Equal aspect (1 data-unit = same pixels on both axes) is correct for MDS since it preserves distances. Implemented as default for all plots. See checklist below.
-
-- should we try to quantify how much of the variance is accounted for in
-  directions and sterring moves?  (would putting an uncertainty cone around an
-  arrow make sense?  Showing the numerical value would also be nice.)
-
-- is there a measure we can use for how well an analogy worked?  (For example,
-  the man:woman analogies after gender steering should all be mostly junk and
-  that should be something we can test for ideally.)
-
-- There are some cool examples (e.g., city:zipcode) and useful content in to
+- [ ] There are some cool examples (e.g., city:zipcode) and useful content in to
   draw from https://nlp.stanford.edu/projects/glove/
 
-- Are there places that could use visual aids?  (An example of a missing visual
-  aid is the matrix factoriization.)
+- [x] Are there places that are lacking mathematical detail or rigor?
+  - Addressed in article review (2026-04-02): log factorization, scatter matrix, $k$ justification. Remaining level of detail is appropriate for an interactive explainer.
 
-- Are there places that are lacking mathematical detail or rigor?  (E.g., matrix
-  factorization, and MDS explanation are a bit weak.)
 
-- AI explanation of surprising analogies — currently an "explain?" link that
-  opens Perplexity with a pre-filled query. Inline display would be better but
-  blocked by CORS (can't fetch from perplexity.ai in the browser). Options:
-  - **Link out to Perplexity** (current) — works, no server needed, but leaves the page.
-  - **Proxy server** — would allow inline display but breaks "runs entirely in the browser."
-  - **Perplexity API** — requires API key, not free, can't embed key in client JS.
-  - **iframe** — Perplexity blocks framing (X-Frame-Options).
-  - Could revisit if we ever add a backend, or if a free chat API with CORS support appears.
+## Article review (2026-04-02)
+
+### Mathematical issues
+
+- [x] "Factorizing the co-occurrence matrix" vs. the log (line 183): now says
+      "factorizing the log co-occurrence matrix." Also split the sentence and
+      linked the citation to the PDF instead of duplicating the project URL.
+
+- [x] Analogy framing mismatches the article's theme (line 229): reframed as
+      "man is to woman as king is to queen" with equation
+      $\vec{man} - \vec{woman} \approx \vec{king} - \vec{queen}$.
+
+- [x] Scatter matrix: redundant transition (lines 276–278): removed "The scatter
+      matrix is:" ending; now flows into a display equation, then prose continues.
+
+- [x] $k = 10$ contradicts the tradeoff discussion (line 278): added sentence
+      "With 10 pairs in a 100-dimensional space, this removes only 10% of the
+      embedding dimensions, leaving the remaining structure intact."
+
+- [x] "Discards noise" → "discards weaker ones."
+
+### Clarity / structural issues
+
+- [x] Scatter matrix paragraph: split into three paragraphs (definition +
+      display equation, eigendecomposition + basis, rank/tradeoff/$k$ choice).
+
+- [x] "Parallel subspaces" → "parallel regions" in Numbers section.
+
+- [x] Added "Try it yourself:" transition into Explore section.
+
+### Small writing issues
+
+- [x] Double GloVe citation: project page link kept on "GloVe", paper PDF link
+      on "(Pennington et al., 2014)".
+
+- [x] "Explains" → "represents" in the opening.
+
+### Narrative
+
+- [x] Transition from Structure to Analogies: now opens with "The superlatives
+      already demonstrate analogies — poor is to poorer as rich is to richer —
+      and the pattern generalizes."
+
+- [x] Discussion: added concluding sentence about geometry that encodes meaning
+      being the geometry we can edit.
 
 
 ## Remember this
@@ -43,9 +63,6 @@
   there isn't an unncessary change in zooming.  We worked really hard to getting
   this detail right in previous iterations - I would hate for that to get lost
   in this change.
-
-  [SKIP] TODO [2026-03-31 Tue] This issue reemerged when we switched to using equal
-      aspect ratio.
 
 
 ## Layout
@@ -59,13 +76,6 @@
         "a list of numbers" tangible before jumping to co-occurrence matrices.
       - An MDS plot of a small word group early on.
       - Both: raw vectors first, then the plot.
-
-## Visual Design
-
-- [SKIP] I don't want to see unncessary labels collisions.  Please improve the
-      layout, as it doesn't appear to try any alternative label placements to
-      avoid collisions.
-
 
 ## Article interactivity
 
@@ -146,7 +156,7 @@
 
 ## Plot DSL
 
-Design a plain-text specification language that can generate every static plot in
+- [ ] Implement the plot DSL: a plain-text specification language that can generate every static plot in
 the article and serve as the explorer's input format.
 
 ### Primitives
@@ -551,9 +561,6 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
 
 ### Hard
 
-- [SKIP] GloVe uses two separate embedding matrices ($W$ and $\tilde{W}$), not
-      $WW^\top$. Intentionally simplified — the article is about embeddings and
-      steering, not GloVe internals. The less GloVe-specific detail the better.
 - [x] No discussion of how $k$ (subspace dimension) is chosen — the code uses
       $K=10$ out of 100 dimensions with no justification. Needs at least a
       paragraph on eigenvalue spectrum, sensitivity, and tradeoffs
