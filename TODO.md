@@ -1,10 +1,11 @@
 ## Questions:
 
-- Is there a good question to use Three.js kept for hero visualization?
+- [x] Is there a good reason to use Three.js for the hero visualization? Yes — keep it.
 
 - crtical assessment of the fidelty of the math and code.
 
-- do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
+- [x] do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
+  - Yes. `steer(pairs, K=10)` keeps top-K eigenvectors. The scatter matrix has rank ≤ number of pairs, so higher components are noise. K=10 captures the dominant concept directions. This is a parameter the article should discuss (see "No discussion of how k is chosen" below).
 
 - [x] should we set the aspect ratio to be more equal?  does that make any sense?
   - Yes. Equal aspect (1 data-unit = same pixels on both axes) is correct for MDS since it preserves distances. Implemented as default for all plots. See checklist below.
@@ -43,13 +44,13 @@
   this detail right in previous iterations - I would hate for that to get lost
   in this change.
 
-  [ ] TODO [2026-03-31 Tue] This issue reemerged when we switched to using equal
+  [SKIP] TODO [2026-03-31 Tue] This issue reemerged when we switched to using equal
       aspect ratio.
 
 
 ## Visual Design
 
-- [ ] I don't want to see unncessary labels collisions.  Please improve the
+- [SKIP] I don't want to see unncessary labels collisions.  Please improve the
       layout, as it doesn't appear to try any alternative label placements to
       avoid collisions.
 
@@ -177,7 +178,8 @@
 
 ## Polish
 
-- [ ] co-occurence matrix symbol is used without introduction.
+- [x] co-occurence matrix symbol is used without introduction.
+  - Introduced $\mathbf{X}$ and $\mathbf{X}_{ij}$ inline before the GloVe equation.
 
 - [x] Fix plot horizontal alignment with Distill column
   - Used Distill's `l-body-outset` class + 48px left margin to align plots with text.
@@ -206,7 +208,7 @@
 - [x] Default to 50K vocabulary
   - Changed default from small (10K) to medium (50K). 10K was missing too many words (superlatives, gendered pairs).
 
-- [ ] Remove blog.css cache-buster script from index.html before deploying to production.
+- [x] Remove blog.css cache-buster script from index.html before deploying to production.
 
 ## Technical polish
 
@@ -292,9 +294,10 @@
 - [ ] The $\frac{1}{2}$ factor explanation ("two observations with one degree of
       freedom") is cryptic — rewrite with a clearer motivation or just drop the
       factor since eigenvectors are unaffected
-- [ ] Vectors are L2-normalized on load but this is never stated — all distances
+- [x] Vectors are L2-normalized on load but this is never stated — all distances
       are cosine-based, which changes the interpretation of "Euclidean distance"
       throughout
+      - Added "normalized to unit length" to the GloVe description sentence.
 - [ ] Steering formula presents renormalization as inherent to the method, but
       it's only needed because we work on the unit sphere — note this
 

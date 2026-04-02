@@ -15,8 +15,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
-<link rel="stylesheet" href="css/blog.css" id="blog-css">
-<script>document.getElementById('blog-css').href = 'css/blog.css?' + Date.now();</script>
+<link rel="stylesheet" href="css/blog.css">
 <style>
   /* === Standalone article overrides === */
   /* No sidebar, so cap body width for readability */
@@ -181,7 +180,7 @@
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
 
-<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b>. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log co-occurrence counts:</p>
+<p><a href="https://nlp.stanford.edu/projects/glove/">GloVe</a> (<a href="https://nlp.stanford.edu/projects/glove/">Pennington et al., 2014</a>) learns embeddings by approximately factorizing the <b>log co-occurrence matrix</b> $\mathbf{X} \in \mathbb{R}^{V \times V}$, where $\mathbf{X}_{ij}$ counts how often words $i$ and $j$ appear near each other. The goal is to find a low-dimensional vector $\overrightarrow{w}_i$ for each word such that dot products between vectors, after adjusting for per-word biases, reconstruct the log counts:</p>
 
 <p>$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
@@ -280,7 +279,7 @@
 
 <p>$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
 
-<p>$\mathbf{C}$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
+<p>$\mathbf{C}$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences. Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions of the concept and discards noise in the remaining components. (In this article, we use $k = 10$.)</p>
 
 <p>The animation below walks through this process: starting from word pairs, translating their difference vectors to a common origin to reveal a shared direction, then projecting that direction out.</p>
 
@@ -385,9 +384,8 @@ mother - father</textarea>
 </div></div><!-- /content /main -->
 
 <script type="module">
-const v = Date.now();
-const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${v}`);
-const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${v}`);
+const { Embeddings, mds, loadEmbeddings } = await import('./js/embeddings.js');
+const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import('./js/viz.js');
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
