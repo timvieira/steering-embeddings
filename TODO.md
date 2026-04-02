@@ -286,13 +286,15 @@
 
 ### Medium
 
-- [ ] MDS loss function (raw stress) doesn't match the implementation (classical
+- [x] MDS loss function (raw stress) doesn't match the implementation (classical
       MDS via double-centering). Either show the classical formulation or note
       that the optimization view is for intuition and the code uses the
       closed-form solution
-- [ ] The $\frac{1}{2}$ factor explanation ("two observations with one degree of
+      - Removed raw stress formula. Described the goal informally, then introduced classical MDS / PCA as the closed-form solution we actually use.
+- [x] The $\frac{1}{2}$ factor explanation ("two observations with one degree of
       freedom") is cryptic — rewrite with a clearer motivation or just drop the
       factor since eigenvectors are unaffected
+      - Already removed in previous rewrite of scatter matrix section.
 - [x] Vectors are L2-normalized on load but this is never stated — all distances
       are cosine-based, which changes the interpretation of "Euclidean distance"
       throughout
