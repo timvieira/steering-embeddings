@@ -1954,24 +1954,30 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
     const rawCoords = mdsData ? mdsData.coords[dims] : wordData.map(d => d.coord);
     const { centroid, dirVec } = computeDerived(dims, rawCoords);
 
-    // Direction arrow length
+    // Direction arrow spans the point cloud along dirVec
     const maxPairLen = Math.max(...pairs.map(p => {
       const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
       return Math.sqrt(diff.reduce((s, v) => s + v * v, 0));
     })) || 1;
-    const dirArrowLen = maxPairLen * 0.8 * 1.6;
+    // Project all word coords onto dirVec relative to centroid
+    const projections = wordData.map(d =>
+      d.coord.reduce((s, v, k) => s + (v - centroid[k]) * dirVec[k], 0)
+    );
+    const dirArrowMin = Math.min(...projections);
+    const dirArrowMax = Math.max(...projections);
 
     // --- Scales ---
     let xScale, yScale;
     let norm3D = null, normSteered3D = null, normCentroid3D = null;
-    let normDirEnd3D = null, normDiffEnds3D = null, normPlaneCorners = null;
+    let normDirStart3D = null, normDirEnd3D = null, normDiffEnds3D = null, normPlaneCorners = null;
 
     if (dims === 3) {
       // Collect every 3D point that will be drawn, normalize together
       const allPts = [];
       for (const d of wordData) { allPts.push(d.coord); allPts.push(d.steeredCoord); }
       allPts.push(centroid);
-      allPts.push(centroid.map((c, k) => c + dirVec[k] * dirArrowLen));
+      allPts.push(centroid.map((c, k) => c + dirVec[k] * dirArrowMin));
+      allPts.push(centroid.map((c, k) => c + dirVec[k] * dirArrowMax));
       for (const p of pairs) {
         const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
         allPts.push(centroid.map((c, k) => c + diff[k]));
@@ -1981,7 +1987,8 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       norm3D = wordData.map(d => nf(d.coord));
       normSteered3D = wordData.map(d => nf(d.steeredCoord));
       normCentroid3D = nf(centroid);
-      normDirEnd3D = nf(centroid.map((c, k) => c + dirVec[k] * dirArrowLen));
+      normDirStart3D = nf(centroid.map((c, k) => c + dirVec[k] * dirArrowMin));
+      normDirEnd3D = nf(centroid.map((c, k) => c + dirVec[k] * dirArrowMax));
       normDiffEnds3D = pairs.map(p => {
         const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
         return nf(centroid.map((c, k) => c + diff[k]));
@@ -2025,8 +2032,10 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       // 2D: data-driven domain with equal scaling
       const allX = wordData.flatMap(d => [d.coord[0], d.steeredCoord[0]]);
       const allY = wordData.flatMap(d => [d.coord[1], d.steeredCoord[1]]);
-      allX.push(centroid[0] + dirVec[0] * dirArrowLen);
-      allY.push(centroid[1] + dirVec[1] * dirArrowLen);
+      allX.push(centroid[0] + dirVec[0] * dirArrowMin);
+      allY.push(centroid[1] + dirVec[1] * dirArrowMin);
+      allX.push(centroid[0] + dirVec[0] * dirArrowMax);
+      allY.push(centroid[1] + dirVec[1] * dirArrowMax);
       for (const p of pairs) {
         allX.push(centroid[0] + wordData[p.to].coord[0] - wordData[p.from].coord[0]);
         allY.push(centroid[1] + wordData[p.to].coord[1] - wordData[p.from].coord[1]);
@@ -2051,6 +2060,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         words: project3Dto2D(norm3D, rotationAngle, tiltAngle),
         steered: project3Dto2D(normSteered3D, rotationAngle, tiltAngle),
         centroid: project3Dto2D([normCentroid3D], rotationAngle, tiltAngle)[0],
+        dirStart: project3Dto2D([normDirStart3D], rotationAngle, tiltAngle)[0],
         dirEnd: project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0],
         diffs: project3Dto2D(normDiffEnds3D, rotationAngle, tiltAngle),
       };
@@ -2105,14 +2115,14 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       .attr('marker-end', `url(#arrow-${cid})`)
       .attr('opacity', 0);
 
-    // Direction arrow
-    const cXY = dims === 2 ? [xScale(centroid[0]), yScale(centroid[1])]
-      : (() => { const p = project3Dto2D([normCentroid3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
+    // Direction arrow (spans point cloud)
+    const dsXY = dims === 2 ? [xScale(centroid[0] + dirVec[0] * dirArrowMin), yScale(centroid[1] + dirVec[1] * dirArrowMin)]
+      : (() => { const p = project3Dto2D([normDirStart3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
     const deXY = dims === 2
-      ? [xScale(centroid[0] + dirVec[0] * dirArrowLen), yScale(centroid[1] + dirVec[1] * dirArrowLen)]
+      ? [xScale(centroid[0] + dirVec[0] * dirArrowMax), yScale(centroid[1] + dirVec[1] * dirArrowMax)]
       : (() => { const p = project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
     const dirArrow = mainG.append('line')
-      .attr('x1', cXY[0]).attr('y1', cXY[1]).attr('x2', deXY[0]).attr('y2', deXY[1])
+      .attr('x1', dsXY[0]).attr('y1', dsXY[1]).attr('x2', deXY[0]).attr('y2', deXY[1])
       .attr('stroke', '#c0392b').attr('stroke-width', 2.5)
       .attr('stroke-dasharray', '8,4')
       .attr('marker-end', `url(#arrow-dir-${cid})`)
@@ -2394,7 +2404,7 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
 
         // Direction arrow + label
         dirArrow
-          .attr('x1', xScale(proj.centroid[0])).attr('y1', yScale(proj.centroid[1]))
+          .attr('x1', xScale(proj.dirStart[0])).attr('y1', yScale(proj.dirStart[1]))
           .attr('x2', xScale(proj.dirEnd[0])).attr('y2', yScale(proj.dirEnd[1]));
         dirLabelEl
           .attr('x', xScale(proj.dirEnd[0])).attr('y', yScale(proj.dirEnd[1]) - 10);

@@ -97,8 +97,8 @@
   .margin-note {
     float: right;
     clear: right;
-    width: 220px;
-    margin-right: -250px;
+    width: 300px;
+    margin-right: -330px;
     padding: 0.3em 0.5em;
     font-size: 0.75em;
     line-height: 1.3;
@@ -172,7 +172,7 @@
 
 <p>A dictionary explains a word using other words&mdash;a human-readable representation. A word embedding explains a word using a list of numbers&mdash;a machine-readable representation. Rather than hand-coding these numbers, we learn them from data, so that words with similar meanings end up with similar vectors.</p>
 
-<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> (<a href="https://doi.org/10.1080/00437956.1954.11659520">Harris, 1954</a>): a word's meaning can be inferred from the words it co-occurs with. To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
+<p>The learning principle behind word embeddings is the <em>distributional hypothesis</em> (<a href="https://doi.org/10.1080/00437956.1954.11659520">Harris, 1954</a>): a word's meaning can be inferred from the words it co-occurs with.<label class="sidenote-number"></label><span class="margin-note">Co-occurrence counting is one approach. Others, like <a href="https://arxiv.org/abs/1301.3781">Word2vec</a>, learn by predicting context words directly. Contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> and GPT produce different vectors for the same word depending on context.</span> To learn embeddings, we start with a text corpus and construct a <b>word co-occurrence matrix</b> that counts how often pairs of words appear together within a given window.</p>
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
@@ -186,8 +186,6 @@
 <p>$$\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$$</p>
 
 <p>where $b_i$ and $b_j$ are per-word bias terms.<label class="sidenote-number"></label><span class="margin-note">Why the bias terms? Without them, a word like "the" that co-occurs frequently with everything would need a large vector magnitude to produce large dot products with every other word&mdash;distorting the geometry that encodes meaning. The biases $b_i$ absorb each word's baseline co-occurrence rate, freeing the vectors to focus on which words co-occur <em>more or less than expected</em>.</span> The parameters are fit by weighted least squares over all observed word pairs. This factorization does more than compress the data. Because the objective is a dot product, relationships between words become linear operations on the vectors. The result is a space with approximately linear structure&mdash;which is why analogies work and the subspace methods in this article are possible.</p>
-
-<p>Co-occurrence statistics are not the only path to word embeddings. <a href="https://arxiv.org/abs/1301.3781">Word2vec</a> (<a href="https://arxiv.org/abs/1301.3781">Mikolov et al., 2013</a>) trains a neural network to predict context words from a target word (skip-gram) or vice versa (continuous bag of words), producing embeddings as a byproduct. More recently, contextual models like <a href="https://arxiv.org/abs/1810.04805">BERT</a> (<a href="https://arxiv.org/abs/1810.04805">Devlin et al., 2019</a>) and GPT train on entire sentences, producing different embeddings for the same word depending on its surrounding context. The methods in this article apply to any static word vectors, but we focus on GloVe for clarity.</p>
 
 <p>In this article, we use 100-dimensional GloVe vectors trained on 6 billion tokens of text. All computations run in your browser.</p>
 
@@ -237,7 +235,7 @@
 
 <p>More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$.</p>
 
-<p>Why does this work? Recall that GloVe's objective encourages $\overrightarrow{w}_i \cdot \overrightarrow{w}_j + b_i + b_j \approx \log \mathbf{X}_{ij}$. When we take differences&mdash;comparing how two words relate to a third&mdash;the bias terms cancel: $(\overrightarrow{w}_a - \overrightarrow{w}_b) \cdot \overrightarrow{w}_c \approx \log(\mathbf{X}_{ac} / \mathbf{X}_{bc})$. So relationships that show up as consistent ratios of co-occurrence counts&mdash;like "king" co-occurring with royal words at similar rates as "queen"&mdash;become consistent vector offsets in the embedding space.</p>
+<p>Why does this work? "King" and "queen" appear in many of the same contexts&mdash;royalty, thrones, crowns&mdash;so their co-occurrence patterns are similar. They differ mainly in gendered contexts, and that difference is the same one that separates "man" from "woman." Because GloVe embeds words so that dot products approximate log co-occurrence counts, these shared and differing patterns become geometric structure: the vector offset $\overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$ points in roughly the same direction as $\overrightarrow{\text{man}} - \overrightarrow{\text{woman}}$.</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-analogy-king"></div>
@@ -311,13 +309,13 @@
 <h2>Steering in Action</h2>
 
 <h3>Occupation Analogies: Before vs. After</h3>
-<p>Before steering, the analogy man : woman :: doctor yields "nurse." After steering, both man&rarr;woman and woman&rarr;man yield "physician":</p>
+<p>Before steering, the analogy man : woman :: doctor yields "nurse"&mdash;the nearest neighbor to $\overrightarrow{\text{doctor}} + (\overrightarrow{\text{woman}} - \overrightarrow{\text{man}})$ is nurse, reflecting a gendered association baked into the embeddings:</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-before"></div>
   <div class="eigen-margin" id="eigen-doctor-before"></div>
 </div>
-<p>After removing the gender subspace, the analogy no longer finds a gendered counterpart:</p>
+<p>After removing the gender subspace, the analogy no longer finds a gendered counterpart. Both man&rarr;woman and woman&rarr;man yield "physician":</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-after"></div>
@@ -681,14 +679,12 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
     if (proj < minProj) minProj = proj;
     if (proj > maxProj) maxProj = proj;
   }
-  const halfSpan = Math.max(Math.abs(minProj), Math.abs(maxProj));
-  const scale = halfSpan * 1.05;  // slight padding beyond outermost point
-
+  const pad = 1.05;  // slight padding beyond outermost point
   const anchorPos = new Float64Array(d);
   const anchorNeg = new Float64Array(d);
   for (let i = 0; i < d; i++) {
-    anchorPos[i] = centroid[i] + dir[i] * scale;
-    anchorNeg[i] = centroid[i] - dir[i] * scale;
+    anchorPos[i] = centroid[i] + dir[i] * maxProj * pad;
+    anchorNeg[i] = centroid[i] + dir[i] * minProj * pad;
   }
 
   // Build extended embeddings with anchor points
@@ -727,6 +723,37 @@ function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, viz
     hiddenPoints: new Set([anchorNegIdx, anchorPosIdx]),
     ...vizConfig,
   });
+
+  // Post-process MDS: reposition direction anchors to span the visible point cloud.
+  // MDS distorts 100-D distances, so the anchor positions may not visually span the data.
+  // Fix: project visible points onto the anchor direction in each MDS dimension, then
+  // move anchors to the min/max extents.
+  for (const dim of [1, 2, 3]) {
+    const coords = viz.mdsData.coords[dim];
+    if (!coords) continue;
+    const negC = coords[anchorNegIdx], posC = coords[anchorPosIdx];
+    // Direction vector in MDS space
+    const dv = posC.map((v, k) => v - negC[k]);
+    const dvLen = Math.sqrt(dv.reduce((s, v) => s + v * v, 0)) || 1;
+    const dvNorm = dv.map(v => v / dvLen);
+    // Midpoint of anchor line
+    const mid = posC.map((v, k) => (v + negC[k]) / 2);
+    // Project all visible points onto this direction
+    let minP = Infinity, maxP = -Infinity;
+    for (let i = 0; i < words.length; i++) {
+      const p = coords[i].reduce((s, v, k) => s + (v - mid[k]) * dvNorm[k], 0);
+      if (p < minP) minP = p;
+      if (p > maxP) maxP = p;
+    }
+    // Reposition anchors to span the point cloud (with slight padding)
+    const pad = 1.05;
+    for (let k = 0; k < coords[anchorNegIdx].length; k++) {
+      coords[anchorNegIdx][k] = mid[k] + dvNorm[k] * minP * pad;
+      coords[anchorPosIdx][k] = mid[k] + dvNorm[k] * maxP * pad;
+    }
+  }
+
+  viz.render();  // re-render with adjusted anchor positions
   vizInstances.push(viz);
   return viz;
 }

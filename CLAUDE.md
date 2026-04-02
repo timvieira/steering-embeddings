@@ -71,7 +71,7 @@ Note: `data/` (binary vectors) are already in the deploy repo and rarely change.
 - **Never edit deploy repos directly** — only edit in this main repo. If a deploy repo exists, copy files out one-way.
 - **Cache-busting**: JS module imports in index.html use `Date.now()` query strings so browsers load fresh code.
 - **Styling**: Uses EB Garamond font matching the blog (timvieira.github.io/blog). No external template — all CSS is inline.
-- **Math**: KaTeX with `$...$` (inline) and `$$...$$` (display) delimiters; custom macros in the `renderMathInElement` call.
+- **Math**: KaTeX with `$...$` (inline) and `$$...$$` (display) delimiters; custom macros in the `renderMathInElement` call. When referring to word vectors by name, use arrow notation: `$\overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$`, not plain text like "king − queen".
 - **Ordinals**: Write `$i\textsuperscript{th}$` (not `$i$-th` or `$i$th`). Same pattern for other ordinals like `$k\textsuperscript{th}$`.
 - **Citations**: Inline parenthetical links (e.g., "(Pennington et al., 2014)") with a References section at the end.
 - **Layout classes**: `l-body-outset` (negative margins for wider plots) and `l-page` (full viewport for hero) are custom CSS, not from any template.
