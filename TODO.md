@@ -62,6 +62,13 @@
 
 ## Visual Design
 
+- [ ] Finetune the appearance of the query point in analogy plots.
+      Currently rendered as a × marker with italic label in highlight green
+      (#5e8c61), 0.8 opacity, 16px bold. The circle is hidden (r=0) and a
+      dashed line connects from the base word (c) to the query point.
+      Also annotate the distances from the query point to nearby answer
+      words with their actual cosine distances.
+
 - [SKIP] I don't want to see unncessary labels collisions.  Please improve the
       layout, as it doesn't appear to try any alternative label placements to
       avoid collisions.
