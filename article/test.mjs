@@ -2,7 +2,7 @@
  * UI smoke tests for the Steering Word Embeddings article.
  *
  * Usage:
- *   1. Start server: python3 -m http.server 8768 --directory article
+ *   1. Start server: python3 ~/projects/blog/main/serve.py article/ --port 8768
  *   2. Run tests:    node article/test.mjs [URL]
  *
  * Requires puppeteer: npm install puppeteer (or use /tmp/node_modules)
@@ -77,7 +77,7 @@ async function testPlotCount() {
 
 async function testAlignment() {
   const m = await page.evaluate(() => {
-    const p = document.querySelector('article > p');
+    const p = document.querySelector('.entry-content > p') || document.querySelector('article p');
     const svg = document.querySelector('svg.plot');
     return {
       text: Math.round(p?.getBoundingClientRect().left),
@@ -442,11 +442,24 @@ async function testFemineFirst() {
 }
 
 async function testAcknowledgments() {
-  const appendix = await page.evaluate(() =>
-    document.querySelector('.appendix')?.textContent || '');
-  test('Mueller acknowledged', appendix.includes('Mueller'));
-  const citations = await page.evaluate(() =>
-    document.querySelectorAll('.references li').length);
+  const ackText = await page.evaluate(() => {
+    // Find Acknowledgments section by heading text
+    const headings = [...document.querySelectorAll('h2, h3')];
+    const ackH = headings.find(h => /acknowledg/i.test(h.textContent));
+    if (!ackH) return '';
+    let text = '';
+    let el = ackH.nextElementSibling;
+    while (el && !/^H[1-3]$/.test(el.tagName)) { text += el.textContent; el = el.nextElementSibling; }
+    return text;
+  });
+  test('Mueller acknowledged', ackText.includes('Mueller'));
+  const citations = await page.evaluate(() => {
+    const headings = [...document.querySelectorAll('h2, h3')];
+    const refH = headings.find(h => /references/i.test(h.textContent));
+    if (!refH) return 0;
+    const ol = refH.nextElementSibling;
+    return ol?.querySelectorAll('li').length || 0;
+  });
   test('Citations present', citations >= 2, `got ${citations}`);
 }
 

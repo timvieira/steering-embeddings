@@ -19,8 +19,8 @@ Uses GloVe embeddings, runs entirely in the browser.
 Always run tests before presenting work:
 
 ```bash
-# Start server (leave running)
-python3 -m http.server 8768 --directory article &
+# Start server (leave running) — serves article/ and proxies /blog/ to the blog repo
+python3 ~/projects/blog/main/serve.py article/ --port 8768 &
 
 # Run smoke tests
 node article/test.mjs http://localhost:8768/index.html

@@ -15,7 +15,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
-<link rel="stylesheet" href="css/blog.css">
+<link rel="stylesheet" href="/blog/css/blog.css">
 <style>
   /* === Standalone article overrides === */
   /* No sidebar, so cap body width for readability */
@@ -26,9 +26,6 @@
   /* blog.css sets text-align:justify on body — override for headings */
   h1, h2, h3, h4, h5, h6 { text-align: left; }
 
-  /* Subtitle */
-  h1 + h2 { font-weight: 300; font-size: 1.1em; font-style: normal; margin-top: -0.3em; margin-bottom: 0.3em; color: rgba(0,0,0,0.5); }
-
   /* Layout classes for wider-than-body content */
   .l-body-outset { margin-left: -48px; margin-right: -48px; }
   @media (max-width: 768px) { .l-body-outset { margin-left: 0; margin-right: 0; } }
@@ -38,7 +35,6 @@
 
   /* === Visualization layout === */
   svg.plot { user-select: none; -webkit-user-select: none; overflow: hidden; }
-  .katex { font-size: 1.05em; }
   .katex svg { overflow: hidden; }
 
   .figure-row { position: relative; margin: 0; }
@@ -54,7 +50,7 @@
   /* === Loading overlay === */
   .progress-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(255,255,255,0.95); display: flex; flex-direction: column;
+    background: #fffff8; display: flex; flex-direction: column;
     align-items: center; justify-content: center; z-index: 10000;
     transition: opacity 0.3s;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -65,7 +61,7 @@
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
 
   /* === UI controls === */
-  .vocab-selector { display: inline-flex; gap: 4px; background: #f7f7f7; border-radius: 4px; padding: 3px; }
+  .vocab-selector { display: inline-flex; gap: 4px; background: rgba(0,0,0,0.04); border-radius: 4px; padding: 3px; }
   .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   .vocab-selector button.active { background: #5778a4; color: white; }
 
@@ -78,7 +74,8 @@
   .analogy-result .answer { font-weight: 600; color: #5778a4; }
   .error { color: #5e8c61; font-size: 14px; }
 
-  img.cooccurrence-img { max-width: min(500px, 100%); }
+  img.cooccurrence-img { max-width: min(500px, 100%); border-radius: 4px; }
+  figcaption { font-size: 0.8em; color: #999; margin-top: 0.5em; }
   .analogy-input, .analogy-result { box-sizing: border-box; }
 
   #analogy-table table { border-collapse: collapse; font-size: 14px; width: 100%; max-width: 560px; }
@@ -86,9 +83,6 @@
   #analogy-table th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
   #analogy-table td.changed { color: #5e8c61; }
 
-  .appendix { margin-top: 2em; padding-top: 1em; border-top: 1px solid #ddd; font-size: 0.9em; color: #666; }
-  .references { margin-top: 2em; }
-  .references ol { font-size: 0.9em; line-height: 1.6; }
 
   /* DSL edit button */
   .dsl-edit-btn {
@@ -102,7 +96,7 @@
   .dsl-edit-btn.active { opacity: 1; color: #5778a4; border-color: #5778a4; }
   .dsl-editor {
     margin: 6px 0 2px 48px; border-radius: 6px; overflow: hidden;
-    background: #f5f6f8;
+    background: #f5f3ee;
     border: 1px solid rgba(0,0,0,0.06);
   }
   @media (max-width: 768px) { .dsl-editor { margin-left: 0; } }
@@ -112,7 +106,7 @@
     font-size: 13px; line-height: 1.6; tab-size: 2; letter-spacing: 0.01em;
     padding: 16px 18px; border: none; border-radius: 6px;
     resize: none; outline: none;
-    background: #f5f6f8; color: #3a3f4b;
+    background: #f5f3ee; color: #3a3f4b;
     caret-color: #5778a4;
     overflow-y: auto;
     scrollbar-width: thin;
@@ -122,7 +116,7 @@
   .dsl-editor textarea::-webkit-scrollbar-track { background: transparent; }
   .dsl-editor textarea::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
   .dsl-editor textarea::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
-  .dsl-editor textarea:focus { background: #f0f2f5; }
+  .dsl-editor textarea:focus { background: #f2efe9; }
   .dsl-editor textarea::selection { background: rgba(87,120,164,0.18); }
   .dsl-editor textarea::placeholder { color: #999; }
 
@@ -185,12 +179,17 @@
   </div>
 </div>
 
-<div id="main"><div id="content">
-<article>
-
-<h1>Steering Word Embeddings</h1>
-<h2>An interactive exploration of word vectors, analogies, and subspace projection.</h2>
-<p style="font-size: 13px; color: rgba(0,0,0,0.5); margin-top: -0.5em;"><a href="http://timvieira.github.io/" style="color: inherit; text-decoration: none; border-bottom: 1px solid rgba(0,0,0,0.2);">Tim Vieira</a></p>
+<div id="main">
+  <div id="content">
+    <div>
+      <article class="hentry" role="article">
+        <header>
+          <h1 class="entry-title">Steering Word Embeddings</h1>
+          <p class="meta">An interactive exploration of word vectors, analogies, and subspace projection.
+            <br><span class="byline author vcard">by <span class="fn"><a href="http://timvieira.github.io/">Tim Vieira</a></span></span>
+          </p>
+        </header>
+        <div class="entry-content">
 
 <span class="margin-note hero-legend">
   <span style="color: #4a6a8a;">&#9679;</span> Gendered words<br>
@@ -217,7 +216,7 @@
 
 <figure>
   <img class="cooccurrence-img" src="img/word-co-occurrence.png" alt="A word-by-word co-occurrence matrix where each cell shows how often two words appear near each other in a corpus. Rows and columns are labeled with words like 'the', 'of', 'and'; high-frequency pairs have larger counts.">
-  <span class="margin-note">A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus. (<a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a>)</span>
+  <figcaption>A word co-occurrence matrix: each cell counts how often two words appear near each other in a corpus. (<a href="http://web.stanford.edu/class/cs224u/materials/cs224u-vsm-overview.pdf">source</a>)</figcaption>
 </figure>
 
 <p>Each row is a sparse, high-dimensional representation of a word. Words in similar contexts get similar rows, so the raw counts capture similarity&mdash;but not the kind of geometric structure that supports analogies (more on analogies below).</p>
@@ -315,11 +314,7 @@
   <div class="eigen-margin" id="eigen-size-pairs"></div>
 </div>
 
-<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i\textsuperscript{th}$ pair. The scatter matrix</p>
-
-<p>$$\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$$</p>
-
-<p>is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
+<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i\textsuperscript{th}$ pair. The scatter matrix $\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
 
 <p>Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions and discards weaker ones. Choosing $k$ involves a tradeoff: too small and you miss secondary directions of the concept (e.g., gender correlates with both pronouns and names, which may not be collinear); too large and you start removing variation unrelated to the concept, distorting the embedding. In practice, examining the eigenvalue spectrum of $\mathbf{C}$ helps&mdash;a sharp drop after the first few eigenvalues suggests the concept is low-dimensional. <a href="https://arxiv.org/abs/1607.06520">Bolukbasi et al. (2016)</a> used $k = 1$; in this article, we use $k = 10$, the full rank of our 10 defining pairs. With 10 pairs in a 100-dimensional space, this removes only 10% of the embedding dimensions, leaving the remaining structure intact.</p>
 
@@ -395,7 +390,11 @@
 </ul>
 
 <div class="dsl-editor" style="margin-left: 0;">
-<textarea id="explorer-input" rows="8">doctor nurse programmer teacher scientist
+<textarea id="explorer-input" rows="8">doctor
+nurse
+programmer
+teacher
+scientist
 ? man : woman :: doctor
 > gender: woman - man, she - he, girl - boy, mother - father</textarea>
 </div>
@@ -408,27 +407,25 @@
   <div class="eigen-margin" id="eigen-explorer"></div>
 </div>
 
-</article>
+<h2>Acknowledgments</h2>
+<p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
 
-<section class="appendix">
-  <h3>Acknowledgments</h3>
-  <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
-</section>
+<h2>References</h2>
+<ol>
+  <li>Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V., & Kalai, A. (2016). <a href="https://arxiv.org/abs/1607.06520">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</a>. In <em>NeurIPS</em>.</li>
+  <li>Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). <a href="https://arxiv.org/abs/1810.04805">BERT: Pre-training of deep bidirectional transformers for language understanding</a>. <em>arXiv:1810.04805</em>.</li>
+  <li>Harris, Z. S. (1954). <a href="https://doi.org/10.1080/00437956.1954.11659520">Distributional structure</a>. <em>Word</em>, 10(2-3), 146-162.</li>
+  <li>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013). <a href="https://arxiv.org/abs/1301.3781">Efficient estimation of word representations in vector space</a>. <em>arXiv:1301.3781</em>.</li>
+  <li>Pennington, J., Socher, R., & Manning, C. D. (2014). <a href="https://nlp.stanford.edu/projects/glove/">GloVe: Global vectors for word representation</a>. In <em>EMNLP</em>.</li>
+  <li>Ravfogel, S., Elazar, Y., Gonen, H., Twiton, M., & Goldberg, Y. (2020). <a href="https://arxiv.org/abs/2004.07667">Null it out: Guarding protected attributes by iterative nullspace projection</a>. In <em>ACL</em>.</li>
+  <li>Zhao, J., Zhou, Y., Li, Z., Wang, W., & Chang, K.-W. (2018). <a href="https://arxiv.org/abs/1809.01496">Learning gender-neutral word embeddings</a>. In <em>EMNLP</em>.</li>
+</ol>
 
-<section class="references">
-  <h2>References</h2>
-  <ol>
-    <li>Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V., & Kalai, A. (2016). <a href="https://arxiv.org/abs/1607.06520">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</a>. In <em>NeurIPS</em>.</li>
-    <li>Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). <a href="https://arxiv.org/abs/1810.04805">BERT: Pre-training of deep bidirectional transformers for language understanding</a>. <em>arXiv:1810.04805</em>.</li>
-    <li>Harris, Z. S. (1954). <a href="https://doi.org/10.1080/00437956.1954.11659520">Distributional structure</a>. <em>Word</em>, 10(2-3), 146-162.</li>
-    <li>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013). <a href="https://arxiv.org/abs/1301.3781">Efficient estimation of word representations in vector space</a>. <em>arXiv:1301.3781</em>.</li>
-    <li>Pennington, J., Socher, R., & Manning, C. D. (2014). <a href="https://nlp.stanford.edu/projects/glove/">GloVe: Global vectors for word representation</a>. In <em>EMNLP</em>.</li>
-    <li>Ravfogel, S., Elazar, Y., Gonen, H., Twiton, M., & Goldberg, Y. (2020). <a href="https://arxiv.org/abs/2004.07667">Null it out: Guarding protected attributes by iterative nullspace projection</a>. In <em>ACL</em>.</li>
-    <li>Zhao, J., Zhou, Y., Li, Z., Wang, W., & Chang, K.-W. (2018). <a href="https://arxiv.org/abs/1809.01496">Learning gender-neutral word embeddings</a>. In <em>EMNLP</em>.</li>
-  </ol>
-</section>
-
-</div></div><!-- /content /main -->
+        </div><!-- /entry-content -->
+      </article>
+    </div>
+  </div>
+</div><!-- /content /main -->
 
 <script type="module">
 const { Embeddings, mds, loadEmbeddings, sortedSVD } = await import(`./js/embeddings.js?v=${Date.now()}`);
@@ -1141,7 +1138,32 @@ female male
 feminine masculine
 ~ she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males`;
 
-const DSL_PROFESSION_STEER = `caretaker homemaker doctor nurse programmer teacher wife husband soldier salesperson analyst therapist trainer instructor ceo assistant telemarketer bartender clerk designer father mother scientist manager boss employee
+const DSL_PROFESSION_STEER = `caretaker
+homemaker
+doctor
+nurse
+programmer
+teacher
+wife
+husband
+soldier
+salesperson
+analyst
+therapist
+trainer
+instructor
+ceo
+assistant
+telemarketer
+bartender
+clerk
+designer
+father
+mother
+scientist
+manager
+boss
+employee
 ~ she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males`;
 
 

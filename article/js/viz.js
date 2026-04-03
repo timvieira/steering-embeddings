@@ -83,7 +83,6 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
     .style('align-items', 'flex-end')
     .style('gap', '4px')
     .style('user-select', 'none')
-    .style('background', 'rgba(255,255,248,0.85)')
     .style('padding', '3px 6px')
     .style('border-radius', '3px');
 
@@ -412,10 +411,9 @@ function render3D(container, words, coords, arrows, options = {}) {
   el.querySelectorAll('canvas').forEach(c => c.remove());
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
 
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(width, height);
   renderer.domElement.style.border = '1px solid #e0e0e0';
   renderer.domElement.style.borderRadius = '4px';
@@ -1112,9 +1110,8 @@ function renderHero3D(container, wordData, options = {}) {
   el.querySelectorAll('canvas').forEach(c => c.remove());
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xfffff8);
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(width, height);
   el.appendChild(renderer.domElement);
 
@@ -2220,7 +2217,6 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       .attr('width', w).attr('height', margin.bottom + 6);
     const descDiv = descFO.append('xhtml:div')
       .style('font-size', '13px').style('color', '#555').style('line-height', '1.3')
-      .style('background', 'rgba(255,255,255,0.85)')
       .style('padding', '2px 4px').style('border-radius', '3px');
 
     const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')

@@ -60,6 +60,10 @@
       - An MDS plot of a small word group early on.
       - Both: raw vectors first, then the plot.
 
+## Math Rendering
+
+- [ ] Switch from KaTeX to MathJax to match the blog template (which uses MathJax 3).
+
 ## Visual Design
 
 - [ ] Finetune the appearance of the query point in analogy plots.
