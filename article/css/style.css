@@ -94,7 +94,8 @@ figcaption {
   max-width: var(--body-width);
 }
 
-/* Math */
+/* Math — KaTeX default 1.21em is too large for Garamond's small x-height */
+.katex { font-size: 1.05em; }
 .katex-display { margin: 1em 0; }
 
 /* Loading UI */
