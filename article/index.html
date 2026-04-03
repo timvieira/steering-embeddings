@@ -86,6 +86,42 @@
   .references { margin-top: 2em; }
   .references ol { font-size: 0.9em; line-height: 1.6; }
 
+  /* DSL edit button */
+  .dsl-edit-btn {
+    position: absolute; top: 4px; right: 4px; z-index: 5;
+    background: none; border: 1px solid transparent; border-radius: 3px;
+    padding: 2px 6px; font-size: 13px; color: #bbb; cursor: pointer;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .figure-row:hover .dsl-edit-btn { opacity: 0.6; }
+  .dsl-edit-btn:hover { opacity: 1 !important; border-color: #ddd; }
+  .dsl-edit-btn.active { opacity: 1; color: #5778a4; border-color: #5778a4; }
+  .dsl-editor {
+    margin: 6px 0 2px 48px; border-radius: 6px; overflow: hidden;
+    background: #f5f6f8;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  @media (max-width: 768px) { .dsl-editor { margin-left: 0; } }
+  .dsl-editor textarea {
+    width: 100%; box-sizing: border-box;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.6; tab-size: 2; letter-spacing: 0.01em;
+    padding: 16px 18px; border: none; border-radius: 6px;
+    resize: none; outline: none;
+    background: #f5f6f8; color: #3a3f4b;
+    caret-color: #5778a4;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0,0,0,0.12) transparent;
+  }
+  .dsl-editor textarea::-webkit-scrollbar { width: 6px; }
+  .dsl-editor textarea::-webkit-scrollbar-track { background: transparent; }
+  .dsl-editor textarea::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+  .dsl-editor textarea::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+  .dsl-editor textarea:focus { background: #f0f2f5; }
+  .dsl-editor textarea::selection { background: rgba(87,120,164,0.18); }
+  .dsl-editor textarea::placeholder { color: #999; }
+
   /* Tufte-style sidenote numbering */
   article { counter-reset: sidenote-counter; }
   .sidenote-number { counter-increment: sidenote-counter; }
@@ -346,17 +382,21 @@
 
 <h2>Explore</h2>
 
-<p>Try it yourself: type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Use <code>word - word</code> to define a steering pair&mdash;when pairs are present, a <b>Steer</b> button appears to project out that subspace.</p>
+<p>Try it yourself: type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Special line prefixes:</p>
+<ul style="font-size: 14px; margin-top: 0.3em; margin-bottom: 0.5em; padding-left: 1.2em;">
+  <li><code>word - word</code> &mdash; steering pair (projects out the subspace)</li>
+  <li><code>? a : b :: c</code> &mdash; analogy (solves for the fourth word)</li>
+  <li><code>&gt; label: a - b, c - d</code> &mdash; direction arrow (SVD of pair differences)</li>
+  <li><code>&gt; label: w1 w2 w3</code> &mdash; direction arrow (PCA of word sequence)</li>
+</ul>
 
-<div>
-<textarea id="explorer-input" rows="8" style="width: 100%; font-family: monospace; font-size: 14px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">doctor nurse programmer teacher scientist
-woman - man
-she - he
-girl - boy
-mother - father</textarea>
+<div class="dsl-editor" style="margin-left: 0;">
+<textarea id="explorer-input" rows="8">doctor nurse programmer teacher scientist
+? man : woman :: doctor
+> gender: woman - man, she - he, girl - boy, mother - father</textarea>
+</div>
 <div style="margin-top: 4px;">
   <span id="explorer-status" style="font-size: 13px; color: #999;"></span>
-</div>
 </div>
 
 <div class="figure-row l-body-outset">
@@ -388,7 +428,7 @@ mother - father</textarea>
 
 <script type="module">
 const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${Date.now()}`);
-const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSteering2D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${Date.now()}`);
+const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${Date.now()}`);
 
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
@@ -411,20 +451,6 @@ const GENDERED_WORDS = [
   ['mom','dad'], ['mother','father'], ['sister','brother'], ['aunt','uncle'],
   ['heiress','heir'], ['duchess','duke'], ['niece','nephew'], ['madame','sir'],
   ['female','male'], ['feminine','masculine'],
-];
-
-const SIZE_PAIRS = [
-  ['small','large'], ['tiny','huge'], ['little','big'],
-  ['narrow','wide'], ['short','tall'], ['thin','thick'],
-  ['shallow','deep'], ['minor','major'], ['miniature','giant'],
-];
-
-const SUPERLATIVES = [
-  ['poor','poorer','poorest'], ['rich','richer','richest'],
-  ['short','shorter','shortest'], ['slow','slower','slowest'],
-  ['fast','faster','fastest'], ['soft','softer','softest'],
-  ['strong','stronger','strongest'], ['mean','meaner','meanest'],
-  ['dark','darker','darkest'], ['smart','smarter','smartest'],
 ];
 
 const PROFESSIONS = [
@@ -488,31 +514,454 @@ function flatWords(groups, label = 'flatWords') {
   return result;
 }
 
-function buildAnalogyViz(plotId, eigenId, a, b, c, n, embToUse) {
-  const ab = embToUse.analogy(a, b, c, n);
-  const ba = embToUse.analogy(b, a, c, n);
-  const extra = ba.filter(w => !ab.includes(w));
-  const words = [a, b, c, ...ab, ...extra].filter(w => embToUse.has(w));
-  const unique = [...new Set(words)];
-  const idx = new Map(unique.map((w, i) => [w, i]));
-  const arrows = [
-    { from: idx.get(a), to: idx.get(b), color: 'red' },
-  ];
-  const crossGroupLines = [];
-  if (ab.length > 0 && idx.has(ab[0])) {
-    arrows.push({ from: idx.get(c), to: idx.get(ab[0]), color: 'red' });
-    // Parallelogram: dashed lines connecting a→c and b→answer
-    crossGroupLines.push([idx.get(a), idx.get(c)]);
-    crossGroupLines.push([idx.get(b), idx.get(ab[0])]);
+
+// ── DSL parser and builder ──────────────────────────────────────────
+
+function parseDSL(text) {
+  const displayGroups = [];
+  const steerPairs = [];
+  const analogies = [];
+  const directions = [];
+  let connectGroups = false;
+
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim().toLowerCase();
+    if (!line) continue;
+
+    // = connect
+    if (line.startsWith('=') && line.replace('=', '').trim() === 'connect') {
+      connectGroups = true;
+      continue;
+    }
+
+    // ? a : b :: c  — analogy
+    if (line.startsWith('?')) {
+      const body = line.slice(1).trim();
+      // Parse "a : b :: c"
+      const m = body.match(/^(\S+)\s*:\s*(\S+)\s*::\s*(\S+)$/);
+      if (m) {
+        analogies.push({ a: m[1], b: m[2], c: m[3] });
+      }
+      continue;
+    }
+
+    // > label: ... — direction arrow
+    if (line.startsWith('>')) {
+      const body = line.slice(1).trim();
+      const colonIdx = body.indexOf(':');
+      if (colonIdx < 0) continue;
+      const label = body.slice(0, colonIdx).trim();
+      const rest = body.slice(colonIdx + 1).trim();
+      if (rest.includes(' - ')) {
+        // Pair-difference mode: "a - b, c - d"
+        const pairs = rest.split(',').map(s => {
+          const parts = s.trim().split(/\s*-\s*/);
+          return parts.length === 2 ? [parts[0], parts[1]] : null;
+        }).filter(Boolean);
+        directions.push({ label, pairs, mode: 'pairs', words: null });
+      } else {
+        // PCA mode: "w1 w2 w3 ..."
+        const words = rest.split(/\s+/).filter(Boolean);
+        directions.push({ label, pairs: null, mode: 'pca', words });
+      }
+      continue;
+    }
+
+    // ~ a - b, c - d — steering pairs
+    if (line.startsWith('~')) {
+      const body = line.slice(1).trim();
+      const pairs = body.split(',').map(s => {
+        const parts = s.trim().split(/\s*-\s*/);
+        return parts.length === 2 ? [parts[0], parts[1]] : null;
+      }).filter(Boolean);
+      steerPairs.push(...pairs);
+      continue;
+    }
+
+    // Bare line — word group (may contain word - word pairs)
+    if (line.includes(' - ')) {
+      const parts = line.split(/\s*-\s*/).map(s => s.trim()).filter(Boolean);
+      if (parts.length === 2) {
+        steerPairs.push(parts);
+        displayGroups.push(parts);
+        continue;
+      }
+    }
+    const words = line.split(/\s+/).filter(Boolean);
+    if (words.length > 0) displayGroups.push(words);
   }
-  return new EmbeddingViz({
-    emb: embToUse, words: unique,
-    groups: [unique],
-    plotEl: document.getElementById(plotId),
-    eigenEl: document.getElementById(eigenId),
+
+  return { displayGroups, steerPairs, analogies, directions, connectGroups };
+}
+
+
+/**
+ * Compute a direction vector in embedding space.
+ * mode 'pairs': SVD on covariance of pair differences, oriented by mean difference.
+ * mode 'pca': PCA on word vectors, oriented first-to-last.
+ */
+function computeDirectionVec(pairs, words, mode, embToUse) {
+  const d = embToUse.dims;
+  const dir = new Float64Array(d);
+
+  if (mode === 'pairs') {
+    const C = new Float64Array(d * d);
+    let pairCount = 0;
+    for (const [w1, w2] of pairs) {
+      const v1 = embToUse.vec(w1), v2 = embToUse.vec(w2);
+      if (!v1 || !v2) continue;
+      const diff = new Float64Array(d);
+      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += diff[i] * diff[j];
+      pairCount++;
+    }
+    if (pairCount === 0) return null;
+
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+
+    // Orient: align with mean w1→w2 difference
+    const meanDiff = new Float64Array(d);
+    for (const [w1, w2] of pairs) {
+      const v1 = embToUse.vec(w1), v2 = embToUse.vec(w2);
+      if (!v1 || !v2) continue;
+      for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
+    }
+    let dot = 0;
+    for (let i = 0; i < d; i++) dot += dir[i] * meanDiff[i];
+    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+
+  } else if (mode === 'pca') {
+    const vecs = words.filter(w => embToUse.has(w)).map(w => embToUse.vec(w));
+    if (vecs.length === 0) return null;
+    const centroid = new Float64Array(d);
+    for (const v of vecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
+    for (let i = 0; i < d; i++) centroid[i] /= vecs.length;
+
+    const C = new Float64Array(d * d);
+    for (const v of vecs) {
+      for (let i = 0; i < d; i++)
+        for (let j = 0; j < d; j++)
+          C[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
+    }
+    const Cmat = [];
+    for (let i = 0; i < d; i++) {
+      Cmat.push([]);
+      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
+    }
+    const { u: svdU } = SVDJS.SVD(Cmat);
+    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+
+    // Orient: align with first→last word direction
+    const vFirst = vecs[0], vLast = vecs[vecs.length - 1];
+    let dot = 0;
+    for (let i = 0; i < d; i++) dot += dir[i] * (vLast[i] - vFirst[i]);
+    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+  }
+
+  return dir;
+}
+
+
+/**
+ * Build a visualization from a DSL string.
+ * options.emb — embedding to use (default: global emb)
+ * options.searchEmb — embedding for neighbor search (default: global emb)
+ * options.editable — whether to add edit button (default: true)
+ */
+function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
+  const embToUse = options.emb || emb;
+  const searchEmb = options.searchEmb || emb;
+  const editable = options.editable !== undefined ? options.editable : true;
+
+  const parsed = parseDSL(dslText);
+  const { displayGroups, steerPairs, analogies, directions, connectGroups } = parsed;
+  const d = embToUse.dims;
+
+  // Collect all display words (preserving order, deduping)
+  const seen = new Set();
+  const allDisplayWords = [];
+  for (const g of displayGroups) {
+    for (const w of g) {
+      if (!seen.has(w) && embToUse.has(w)) { seen.add(w); allDisplayWords.push(w); }
+    }
+  }
+
+  // Process analogies: solve and add answer words
+  const analogyArrows = [];
+  const analogyCrossLines = [];
+  const analogyHighlights = [];
+  for (const { a, b, c } of analogies) {
+    if (!embToUse.has(a) || !embToUse.has(b) || !embToUse.has(c)) continue;
+    const ab = embToUse.analogy(a, b, c, 10);
+    const ba = embToUse.analogy(b, a, c, 10);
+    const extra = ba.filter(w => !ab.includes(w));
+    const answerWords = [...ab, ...extra].filter(w => embToUse.has(w));
+    // Add a, b, c and answers to word list
+    for (const w of [a, b, c, ...answerWords]) {
+      if (!seen.has(w)) { seen.add(w); allDisplayWords.push(w); }
+    }
+    // Record arrows for the parallelogram
+    const idx = (w) => allDisplayWords.indexOf(w);
+    analogyArrows.push({ from: idx(a), to: idx(b), color: 'red' });
+    if (ab.length > 0 && seen.has(ab[0])) {
+      analogyArrows.push({ from: idx(c), to: idx(ab[0]), color: 'red' });
+      analogyCrossLines.push([idx(a), idx(c)]);
+      analogyCrossLines.push([idx(b), idx(ab[0])]);
+    }
+    analogyHighlights.push(idx(a), idx(b), idx(c));
+    if (ab.length > 0 && seen.has(ab[0])) analogyHighlights.push(idx(ab[0]));
+  }
+
+  // Valid groups for arrows
+  const validGroups = displayGroups.map(g => g.filter(w => embToUse.has(w))).filter(g => g.length > 0);
+
+  // ── Steering path ──
+  if (steerPairs.length > 0) {
+    const validPairs = steerPairs.filter(([a, b]) => embToUse.has(a) && embToUse.has(b));
+    if (validPairs.length === 0) return null;
+
+    const explorerSteered = embToUse.steer(validPairs, Math.min(10, validPairs.length));
+    const n = allDisplayWords.length;
+    const nn = 2 * n;
+    const D = new Float64Array(nn * nn);
+    for (let i = 0; i < nn; i++) {
+      for (let j = 0; j < i; j++) {
+        const wi = i < n ? explorerSteered.vec(allDisplayWords[i]) : embToUse.vec(allDisplayWords[i - n]);
+        const wj = j < n ? explorerSteered.vec(allDisplayWords[j]) : embToUse.vec(allDisplayWords[j - n]);
+        let dist = 0;
+        for (let k = 0; k < embToUse.dims; k++) dist += (wi[k] - wj[k]) ** 2;
+        dist = Math.sqrt(dist);
+        D[i * nn + j] = dist;
+        D[j * nn + i] = dist;
+      }
+    }
+    const wordToIdx = new Map(allDisplayWords.map((w, i) => [w, i]));
+    const groupArrows = [];
+    for (const g of validGroups) {
+      for (let i = 0; i < g.length - 1; i++) {
+        const a = wordToIdx.get(g[i]), b = wordToIdx.get(g[i + 1]);
+        if (a !== undefined && b !== undefined) groupArrows.push({ from: a, to: b });
+      }
+    }
+    const steerData = allDisplayWords.map(w => ({
+      word: w,
+      group: validPairs.some(([a, b]) => w === a || w === b) ? 'pair' : 'word',
+    }));
+    // Assign groups based on display groups (use first group name that contains each word)
+    for (const [wi, w] of allDisplayWords.entries()) {
+      for (const [gi, g] of validGroups.entries()) {
+        if (g.includes(w)) { steerData[wi].group = `group${gi}`; break; }
+      }
+    }
+
+    const plotElement = typeof plotEl === 'string' ? document.getElementById(plotEl) : plotEl;
+    const eigenElement = eigenEl ? (typeof eigenEl === 'string' ? document.getElementById(eigenEl) : eigenEl) : null;
+    if (plotElement) plotElement.innerHTML = '';
+    if (eigenElement) eigenElement.innerHTML = '';
+
+    const viz = new SteeringViz({
+      plotEl: plotElement,
+      eigenEl: eigenElement,
+      wordData: steerData,
+      distMatrix: D,
+      n,
+      arrows: groupArrows,
+      startSteered: true,
+    });
+
+    if (editable) addEditButton(plotElement, dslText, plotEl, eigenEl, options);
+    vizInstances.push(viz);
+    return viz;
+  }
+
+  // ── Non-steering path: EmbeddingViz with directions and/or analogies ──
+  if (allDisplayWords.length === 0) return null;
+
+  // Compute direction vectors and anchor points
+  const anchors = [];  // { negVec, posVec, negLabel, posLabel }
+  for (const dir of directions) {
+    let dirVec;
+    if (dir.mode === 'pairs') {
+      const validPairs = dir.pairs.filter(([a, b]) => embToUse.has(a) && embToUse.has(b));
+      dirVec = computeDirectionVec(validPairs, null, 'pairs', embToUse);
+    } else {
+      const validWords = dir.words.filter(w => embToUse.has(w));
+      dirVec = computeDirectionVec(null, validWords, 'pca', embToUse);
+    }
+    if (!dirVec) continue;
+
+    // Centroid of display words
+    const centroid = new Float64Array(d);
+    for (const w of allDisplayWords) {
+      const v = embToUse.vec(w);
+      for (let i = 0; i < d; i++) centroid[i] += v[i];
+    }
+    for (let i = 0; i < d; i++) centroid[i] /= allDisplayWords.length;
+
+    // Project all points onto direction to find extent
+    let minProj = Infinity, maxProj = -Infinity;
+    for (const w of allDisplayWords) {
+      const v = embToUse.vec(w);
+      let proj = 0;
+      for (let i = 0; i < d; i++) proj += (v[i] - centroid[i]) * dirVec[i];
+      if (proj < minProj) minProj = proj;
+      if (proj > maxProj) maxProj = proj;
+    }
+    const pad = 1.05;
+    const anchorPos = new Float64Array(d);
+    const anchorNeg = new Float64Array(d);
+    for (let i = 0; i < d; i++) {
+      anchorPos[i] = centroid[i] + dirVec[i] * maxProj * pad;
+      anchorNeg[i] = centroid[i] + dirVec[i] * minProj * pad;
+    }
+
+    // Use unique label for neg anchor (space-padded to avoid collisions)
+    const negLabel = ' '.repeat(anchors.length + 1);
+    anchors.push({ negVec: anchorNeg, posVec: anchorPos, negLabel, posLabel: dir.label });
+  }
+
+  // Build extended word list and embeddings
+  const extWords = [...allDisplayWords];
+  for (const a of anchors) {
+    extWords.push(a.negLabel);
+    extWords.push(a.posLabel);
+  }
+  const n = extWords.length;
+  const extVecs = new Float32Array(n * d);
+  for (let i = 0; i < allDisplayWords.length; i++) {
+    const v = embToUse.vec(allDisplayWords[i]);
+    for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
+  }
+  for (let ai = 0; ai < anchors.length; ai++) {
+    const negIdx = allDisplayWords.length + ai * 2;
+    const posIdx = allDisplayWords.length + ai * 2 + 1;
+    for (let j = 0; j < d; j++) {
+      extVecs[negIdx * d + j] = anchors[ai].negVec[j];
+      extVecs[posIdx * d + j] = anchors[ai].posVec[j];
+    }
+  }
+  const extEmb = anchors.length > 0 ? new Embeddings(extWords, extVecs, d) : null;
+  const vizEmb = extEmb || embToUse;
+
+  // Build arrows: group arrows + direction arrows + analogy arrows
+  const wordIdx = new Map(extWords.map((w, i) => [w, i]));
+  const arrows = [];
+  for (const g of validGroups) {
+    for (let i = 0; i < g.length - 1; i++) {
+      const a = wordIdx.get(g[i]), b = wordIdx.get(g[i + 1]);
+      if (a !== undefined && b !== undefined) arrows.push({ from: a, to: b });
+    }
+  }
+  // Direction arrows
+  const hiddenPoints = new Set();
+  for (let ai = 0; ai < anchors.length; ai++) {
+    const negIdx = allDisplayWords.length + ai * 2;
+    const posIdx = allDisplayWords.length + ai * 2 + 1;
+    arrows.push({ from: negIdx, to: posIdx, color: 'red', dashed: true, thick: true });
+    hiddenPoints.add(negIdx);
+    hiddenPoints.add(posIdx);
+  }
+  // Analogy arrows
+  arrows.push(...analogyArrows);
+
+  const plotElement = typeof plotEl === 'string' ? document.getElementById(plotEl) : plotEl;
+  const eigenElement = eigenEl ? (typeof eigenEl === 'string' ? document.getElementById(eigenEl) : eigenEl) : null;
+
+  const viz = new EmbeddingViz({
+    emb: vizEmb,
+    searchEmb: searchEmb,
+    words: extWords,
+    groups: validGroups,
+    plotEl: plotElement,
+    eigenEl: eigenElement,
     arrows,
-    crossGroupLines,
-    highlights: [idx.get(a), idx.get(b), idx.get(c), ...(ab.length > 0 && idx.has(ab[0]) ? [idx.get(ab[0])] : [])],
+    crossGroupLines: [...analogyCrossLines],
+    highlights: analogyHighlights,
+    hiddenPoints,
+    connectGroups,
+  });
+
+  // Post-process MDS: reposition direction anchors to span the visible point cloud
+  for (let ai = 0; ai < anchors.length; ai++) {
+    const negIdx = allDisplayWords.length + ai * 2;
+    const posIdx = allDisplayWords.length + ai * 2 + 1;
+    for (const dim of [1, 2, 3]) {
+      const coords = viz.mdsData.coords[dim];
+      if (!coords) continue;
+      const negC = coords[negIdx], posC = coords[posIdx];
+      const dv = posC.map((v, k) => v - negC[k]);
+      const dvLen = Math.sqrt(dv.reduce((s, v) => s + v * v, 0)) || 1;
+      const dvNorm = dv.map(v => v / dvLen);
+      const mid = posC.map((v, k) => (v + negC[k]) / 2);
+      let minP = Infinity, maxP = -Infinity;
+      for (let i = 0; i < allDisplayWords.length; i++) {
+        const p = coords[i].reduce((s, v, k) => s + (v - mid[k]) * dvNorm[k], 0);
+        if (p < minP) minP = p;
+        if (p > maxP) maxP = p;
+      }
+      const pad = 1.05;
+      for (let k = 0; k < coords[negIdx].length; k++) {
+        coords[negIdx][k] = mid[k] + dvNorm[k] * minP * pad;
+        coords[posIdx][k] = mid[k] + dvNorm[k] * maxP * pad;
+      }
+    }
+  }
+
+  if (anchors.length > 0) viz.render();  // re-render with adjusted anchor positions
+
+  if (editable) addEditButton(plotElement, dslText, plotEl, eigenEl, options);
+  vizInstances.push(viz);
+  return viz;
+}
+
+
+function addEditButton(plotElement, dslText, plotEl, eigenEl, options) {
+  const figureRow = plotElement.closest('.figure-row');
+  if (!figureRow) return;
+  // Don't add duplicate buttons
+  if (figureRow.querySelector('.dsl-edit-btn')) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'dsl-edit-btn';
+  btn.textContent = '\u270E';
+  btn.title = 'Edit plot DSL';
+  figureRow.appendChild(btn);
+
+  let editorDiv = null;
+  let debounceTimer = null;
+
+  btn.addEventListener('click', () => {
+    if (editorDiv) {
+      editorDiv.remove();
+      editorDiv = null;
+      btn.classList.remove('active');
+      return;
+    }
+    btn.classList.add('active');
+    editorDiv = document.createElement('div');
+    editorDiv.className = 'dsl-editor';
+    const textarea = document.createElement('textarea');
+    textarea.value = dslText.trim();
+    textarea.rows = Math.max(dslText.trim().split('\n').length + 2, 6);
+    editorDiv.appendChild(textarea);
+    figureRow.after(editorDiv);
+
+    textarea.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const eigenElement = eigenEl ? (typeof eigenEl === 'string' ? document.getElementById(eigenEl) : eigenEl) : null;
+        if (eigenElement) eigenElement.innerHTML = '';
+        buildFromDSL(textarea.value, plotEl, eigenEl, { ...options, editable: false });
+      }, 500);
+    });
   });
 }
 
@@ -574,367 +1023,107 @@ function buildHero() {
   });
 }
 
-// Build an EmbeddingViz with an SVD-derived direction arrow overlaid.
-// - words: flat list of words to plot
-// - pairs: array of [w1, w2] pairs whose differences define the direction
-// - groups: grouping for EmbeddingViz (controls default arrows)
-// - label: text label for the direction arrowhead
-// - plotId, eigenId: DOM element IDs
-// - vizConfig: extra config to pass to EmbeddingViz (e.g. connectGroups)
-// Two direction-finding modes:
-//
-// 'pairs' (default): SVD on the covariance of pair difference vectors.
-//   Correct when many word pairs share a consistent direction (gender,
-//   degree). The top eigenvector is the axis that best explains the
-//   paired variation. Oriented to align with mean w1→w2 difference.
-//
-// 'pca': PCA on the word vectors themselves (mean-center, then SVD).
-//   Correct for ordered sequences (numbers) where the words spread
-//   along a principal axis. Oriented so projections increase with
-//   word order (first word → last word).
-//
-function buildVizWithDirection(words, pairs, groups, label, plotId, eigenId, vizConfig = {}) {
-  if (words.length === 0) return null;
-  const d = emb.dims;
-  const mode = vizConfig.directionMode || 'pairs';
-  const dir = new Float64Array(d);
+// ── DSL strings for each plot ──
 
-  if (mode === 'pairs') {
-    // SVD on covariance of pair differences
-    const C = new Float64Array(d * d);
-    let pairCount = 0;
-    for (const [w1, w2] of pairs) {
-      const v1 = emb.vec(w1), v2 = emb.vec(w2);
-      if (!v1 || !v2) continue;
-      const diff = new Float64Array(d);
-      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
-      for (let i = 0; i < d; i++)
-        for (let j = 0; j < d; j++)
-          C[i * d + j] += diff[i] * diff[j];
-      pairCount++;
-    }
-    if (pairCount === 0) return null;
+const DSL_SUPERLATIVES = `poor poorer poorest
+rich richer richest
+short shorter shortest
+slow slower slowest
+fast faster fastest
+soft softer softest
+strong stronger strongest
+mean meaner meanest
+dark darker darkest
+smart smarter smartest
+> degree: poor - poorest, rich - richest, short - shortest, slow - slowest, fast - fastest, soft - softest, strong - strongest, mean - meanest, dark - darkest, smart - smartest`;
 
-    const Cmat = [];
-    for (let i = 0; i < d; i++) {
-      Cmat.push([]);
-      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
-    }
-    const { u: svdU } = SVDJS.SVD(Cmat);
-    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+const DSL_DIGITS = `1 2 3 4 5 6 7 8 9
+> counting: 1 2 3 4 5 6 7 8 9`;
 
-    // Orient: align with mean w1→w2 difference
-    const meanDiff = new Float64Array(d);
-    for (const [w1, w2] of pairs) {
-      const v1 = emb.vec(w1), v2 = emb.vec(w2);
-      if (!v1 || !v2) continue;
-      for (let i = 0; i < d; i++) meanDiff[i] += v2[i] - v1[i];
-    }
-    let dot = 0;
-    for (let i = 0; i < d; i++) dot += dir[i] * meanDiff[i];
-    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
+const DSL_NUM_WORDS = `one two three four five six seven eight nine
+> counting: one two three four five six seven eight nine`;
 
-  } else if (mode === 'pca') {
-    // PCA: mean-center word vectors, then top SVD vector
-    const centroid = new Float64Array(d);
-    const vecs = words.map(w => emb.vec(w));
-    for (const v of vecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
-    for (let i = 0; i < d; i++) centroid[i] /= words.length;
+const DSL_NUM_LINKED = `one 1
+two 2
+three 3
+four 4
+five 5
+six 6
+seven 7
+eight 8
+nine 9
+= connect
+> word vs digit: one - 1, two - 2, three - 3, four - 4, five - 5, six - 6, seven - 7, eight - 8, nine - 9
+> counting: one two three four five six seven eight nine`;
 
-    const C = new Float64Array(d * d);
-    for (const v of vecs) {
-      for (let i = 0; i < d; i++)
-        for (let j = 0; j < d; j++)
-          C[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
-    }
-    const Cmat = [];
-    for (let i = 0; i < d; i++) {
-      Cmat.push([]);
-      for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
-    }
-    const { u: svdU } = SVDJS.SVD(Cmat);
-    for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
+const DSL_GENDER_PAIRS = `woman man
+queen king
+actress actor
+girl boy
+mom dad
+mother father
+sister brother
+aunt uncle
+heiress heir
+duchess duke
+niece nephew
+madame sir
+female male
+feminine masculine
+> gender direction: woman - man, queen - king, actress - actor, girl - boy, mom - dad, mother - father, sister - brother, aunt - uncle, heiress - heir, duchess - duke, niece - nephew, madame - sir, female - male, feminine - masculine`;
 
-    // Orient: align with first→last word direction
-    const vFirst = vecs[0], vLast = vecs[vecs.length - 1];
-    let dot = 0;
-    for (let i = 0; i < d; i++) dot += dir[i] * (vLast[i] - vFirst[i]);
-    if (dot < 0) for (let i = 0; i < d; i++) dir[i] = -dir[i];
-  }
+const DSL_SIZE_PAIRS = `small large
+tiny huge
+little big
+narrow wide
+short tall
+thin thick
+shallow deep
+minor major
+miniature giant
+> size direction: small - large, tiny - huge, little - big, narrow - wide, short - tall, thin - thick, shallow - deep, minor - major, miniature - giant`;
 
-  // Centroid of all plotted words in 100-D
-  const centroid = new Float64Array(d);
-  for (const w of words) {
-    const v = emb.vec(w);
-    for (let i = 0; i < d; i++) centroid[i] += v[i];
-  }
-  for (let i = 0; i < d; i++) centroid[i] /= words.length;
+const DSL_ANALOGY_KING = `? man : woman :: king`;
 
-  // Anchor points: direction arrow spans the width of the point cloud
-  // Project all points onto the direction vector to find min/max extent
-  let minProj = Infinity, maxProj = -Infinity;
-  for (const w of words) {
-    const v = emb.vec(w);
-    let proj = 0;
-    for (let i = 0; i < d; i++) proj += (v[i] - centroid[i]) * dir[i];
-    if (proj < minProj) minProj = proj;
-    if (proj > maxProj) maxProj = proj;
-  }
-  const pad = 1.05;  // slight padding beyond outermost point
-  const anchorPos = new Float64Array(d);
-  const anchorNeg = new Float64Array(d);
-  for (let i = 0; i < d; i++) {
-    anchorPos[i] = centroid[i] + dir[i] * maxProj * pad;
-    anchorNeg[i] = centroid[i] + dir[i] * minProj * pad;
-  }
+const DSL_DOCTOR_BEFORE = `? man : woman :: doctor`;
 
-  // Build extended embeddings with anchor points
-  const allWords = [...words, ' ', label];
-  const anchorNegIdx = words.length;
-  const anchorPosIdx = words.length + 1;
-  const n = allWords.length;
+const DSL_DOCTOR_AFTER = `? man : woman :: doctor`;
 
-  const extVecs = new Float32Array(n * d);
-  for (let i = 0; i < words.length; i++) {
-    const v = emb.vec(words[i]);
-    for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
-  }
-  for (let j = 0; j < d; j++) {
-    extVecs[anchorNegIdx * d + j] = anchorNeg[j];
-    extVecs[anchorPosIdx * d + j] = anchorPos[j];
-  }
-  const extEmb = new Embeddings(allWords, extVecs, d);
+const DSL_GENDERED_STEER = `woman man
+queen king
+actress actor
+girl boy
+mom dad
+mother father
+sister brother
+aunt uncle
+heiress heir
+duchess duke
+niece nephew
+madame sir
+female male
+feminine masculine
+~ she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males`;
 
-  // Build arrows from groups + direction arrow
-  const wordIdx = new Map(allWords.map((w, i) => [w, i]));
-  const arrows = [];
-  for (const group of groups) {
-    for (let i = 0; i < group.length - 1; i++) {
-      const a = wordIdx.get(group[i]), b = wordIdx.get(group[i + 1]);
-      if (a !== undefined && b !== undefined) arrows.push({ from: a, to: b });
-    }
-  }
-  arrows.push({ from: anchorNegIdx, to: anchorPosIdx, color: 'red', dashed: true, thick: true });
+const DSL_PROFESSION_STEER = `caretaker homemaker doctor nurse programmer teacher wife husband soldier salesperson analyst therapist trainer instructor ceo assistant telemarketer bartender clerk designer father mother scientist manager boss employee
+~ she - he, woman - man, herself - himself, her - him, hers - his, gal - guy, girl - boy, girls - boys, female - male, females - males`;
 
-  const viz = new EmbeddingViz({
-    emb: extEmb, searchEmb: emb, words: allWords, groups,
-    plotEl: document.getElementById(plotId),
-    eigenEl: document.getElementById(eigenId),
-    arrows,
-    hiddenPoints: new Set([anchorNegIdx, anchorPosIdx]),
-    ...vizConfig,
-  });
-
-  // Post-process MDS: reposition direction anchors to span the visible point cloud.
-  // MDS distorts 100-D distances, so the anchor positions may not visually span the data.
-  // Fix: project visible points onto the anchor direction in each MDS dimension, then
-  // move anchors to the min/max extents.
-  for (const dim of [1, 2, 3]) {
-    const coords = viz.mdsData.coords[dim];
-    if (!coords) continue;
-    const negC = coords[anchorNegIdx], posC = coords[anchorPosIdx];
-    // Direction vector in MDS space
-    const dv = posC.map((v, k) => v - negC[k]);
-    const dvLen = Math.sqrt(dv.reduce((s, v) => s + v * v, 0)) || 1;
-    const dvNorm = dv.map(v => v / dvLen);
-    // Midpoint of anchor line
-    const mid = posC.map((v, k) => (v + negC[k]) / 2);
-    // Project all visible points onto this direction
-    let minP = Infinity, maxP = -Infinity;
-    for (let i = 0; i < words.length; i++) {
-      const p = coords[i].reduce((s, v, k) => s + (v - mid[k]) * dvNorm[k], 0);
-      if (p < minP) minP = p;
-      if (p > maxP) maxP = p;
-    }
-    // Reposition anchors to span the point cloud (with slight padding)
-    const pad = 1.05;
-    for (let k = 0; k < coords[anchorNegIdx].length; k++) {
-      coords[anchorNegIdx][k] = mid[k] + dvNorm[k] * minP * pad;
-      coords[anchorPosIdx][k] = mid[k] + dvNorm[k] * maxP * pad;
-    }
-  }
-
-  viz.render();  // re-render with adjusted anchor positions
-  vizInstances.push(viz);
-  return viz;
-}
 
 function buildVisualizations() {
   vizInstances = [];
 
-  // Build hero first
+  // Build hero (Three.js, not DSL)
   buildHero();
 
-  // Superlatives with "degree" direction (consecutive pairs: base→comp, comp→super)
-  const supWords = flatWords(SUPERLATIVES, 'superlatives');
-  if (supWords.length > 0) {
-    const supPairs = [];
-    for (const group of SUPERLATIVES) {
-      for (let i = 0; i < group.length - 1; i++) supPairs.push([group[i], group[i + 1]]);
-    }
-    buildVizWithDirection(supWords, supPairs, SUPERLATIVES, 'degree',
-      'plot-superlatives', 'eigen-superlatives');
-  }
+  // DSL-built plots
+  buildFromDSL(DSL_SUPERLATIVES, 'plot-superlatives', 'eigen-superlatives');
+  buildFromDSL(DSL_DIGITS, 'plot-numbers-digits', 'eigen-numbers-digits');
+  buildFromDSL(DSL_NUM_WORDS, 'plot-numbers-words', 'eigen-numbers-words');
+  buildFromDSL(DSL_NUM_LINKED, 'plot-numbers-linked', 'eigen-numbers-linked');
+  buildFromDSL(DSL_GENDER_PAIRS, 'plot-gender-pairs', 'eigen-gender-pairs');
+  buildFromDSL(DSL_SIZE_PAIRS, 'plot-size-pairs', 'eigen-size-pairs');
 
-  // Digits with "counting" direction via PCA (principal axis of the sequence)
-  const allDigits = '1 2 3 4 5 6 7 8 9'.split(' ');
-  warnMissing(allDigits, 'digits');
-  const digits = allDigits.filter(w => emb.has(w));
-  if (digits.length > 0) {
-    buildVizWithDirection(digits, [], [digits], 'counting',
-      'plot-numbers-digits', 'eigen-numbers-digits', { directionMode: 'pca' });
-  }
-
-  // Number words with "counting" direction via PCA
-  const allNumWords = 'one two three four five six seven eight nine'.split(' ');
-  warnMissing(allNumWords, 'number words');
-  const numWords = allNumWords.filter(w => emb.has(w));
-  if (numWords.length > 0) {
-    buildVizWithDirection(numWords, [], [numWords], 'counting',
-      'plot-numbers-words', 'eigen-numbers-words', { directionMode: 'pca' });
-  }
-
-  // Linked numbers: two direction arrows — "word vs digit" (pair SVD) and "counting" (PCA)
-  const numLinkedPairs = [['one','1'],['two','2'],['three','3'],['four','4'],
-    ['five','5'],['six','6'],['seven','7'],['eight','8'],['nine','9']];
-  const linkedWords = flatWords(numLinkedPairs, 'linked numbers');
-  if (linkedWords.length > 0) {
-    const d = emb.dims;
-    const vecs = linkedWords.map(w => emb.vec(w));
-
-    // Direction 1: "word vs digit" via pair-difference SVD
-    const C1 = new Float64Array(d * d);
-    for (const [w1, w2] of numLinkedPairs) {
-      const v1 = emb.vec(w1), v2 = emb.vec(w2);
-      if (!v1 || !v2) continue;
-      const diff = new Float64Array(d);
-      for (let i = 0; i < d; i++) diff[i] = v1[i] - v2[i];
-      for (let i = 0; i < d; i++)
-        for (let j = 0; j < d; j++)
-          C1[i * d + j] += diff[i] * diff[j];
-    }
-    const C1mat = [];
-    for (let i = 0; i < d; i++) { C1mat.push([]); for (let j = 0; j < d; j++) C1mat[i].push(C1[i * d + j]); }
-    const { u: u1 } = SVDJS.SVD(C1mat);
-    const dir1 = new Float64Array(d);
-    for (let i = 0; i < d; i++) dir1[i] = u1[i][0];
-    // Orient to match pair arrows: word→digit (v1 is word, v2 is digit)
-    const meanDiff = new Float64Array(d);
-    for (const [w1, w2] of numLinkedPairs) {
-      const v1 = emb.vec(w1), v2 = emb.vec(w2);
-      if (v1 && v2) for (let i = 0; i < d; i++) meanDiff[i] += v1[i] - v2[i];
-    }
-    let dot1 = 0;
-    for (let i = 0; i < d; i++) dot1 += dir1[i] * meanDiff[i];
-    if (dot1 < 0) for (let i = 0; i < d; i++) dir1[i] = -dir1[i];
-
-    // Direction 2: "counting" via PCA on just written words (not all 18,
-    // since PCA on the combined set would be dominated by word-vs-digit)
-    const wordForms = numLinkedPairs.map(p => p[0]).filter(w => emb.has(w));
-    const wordVecs = wordForms.map(w => emb.vec(w));
-    const centroid = new Float64Array(d);
-    for (const v of wordVecs) for (let i = 0; i < d; i++) centroid[i] += v[i];
-    for (let i = 0; i < d; i++) centroid[i] /= wordVecs.length;
-    const C2 = new Float64Array(d * d);
-    for (const v of wordVecs) {
-      for (let i = 0; i < d; i++)
-        for (let j = 0; j < d; j++)
-          C2[i * d + j] += (v[i] - centroid[i]) * (v[j] - centroid[j]);
-    }
-    const C2mat = [];
-    for (let i = 0; i < d; i++) { C2mat.push([]); for (let j = 0; j < d; j++) C2mat[i].push(C2[i * d + j]); }
-    const { u: u2 } = SVDJS.SVD(C2mat);
-    const dir2 = new Float64Array(d);
-    for (let i = 0; i < d; i++) dir2[i] = u2[i][0];
-    // Orient: first→last (one→nine in word order)
-    const vFirst = emb.vec(numLinkedPairs[0][0]), vLast = emb.vec(numLinkedPairs[numLinkedPairs.length - 1][0]);
-    let dot2 = 0;
-    for (let i = 0; i < d; i++) dot2 += dir2[i] * (vLast[i] - vFirst[i]);
-    if (dot2 < 0) for (let i = 0; i < d; i++) dir2[i] = -dir2[i];
-
-    // Anchor scale and centroid over ALL plotted words (both forms)
-    const allCentroid = new Float64Array(d);
-    for (const v of vecs) for (let i = 0; i < d; i++) allCentroid[i] += v[i];
-    for (let i = 0; i < d; i++) allCentroid[i] /= vecs.length;
-    let avgDist = 0;
-    for (const v of vecs) {
-      let dd = 0;
-      for (let i = 0; i < d; i++) dd += (v[i] - allCentroid[i]) ** 2;
-      avgDist += Math.sqrt(dd);
-    }
-    avgDist /= vecs.length;
-    const sc = avgDist * 1.2;
-
-    // 4 anchor points: dir1 neg/pos, dir2 neg/pos
-    const anchors = [
-      { vec: new Float64Array(d), label: ' ' },             // dir1 neg
-      { vec: new Float64Array(d), label: 'word vs digit' }, // dir1 pos
-      { vec: new Float64Array(d), label: '  ' },            // dir2 neg (two spaces to be unique)
-      { vec: new Float64Array(d), label: 'counting' },      // dir2 pos
-    ];
-    for (let i = 0; i < d; i++) {
-      anchors[0].vec[i] = allCentroid[i] - dir1[i] * sc;
-      anchors[1].vec[i] = allCentroid[i] + dir1[i] * sc;
-      anchors[2].vec[i] = allCentroid[i] - dir2[i] * sc;
-      anchors[3].vec[i] = allCentroid[i] + dir2[i] * sc;
-    }
-
-    // Build extended embeddings
-    const allWords = [...linkedWords, ...anchors.map(a => a.label)];
-    const n = allWords.length;
-    const extVecs = new Float32Array(n * d);
-    for (let i = 0; i < linkedWords.length; i++) {
-      const v = emb.vec(linkedWords[i]);
-      for (let j = 0; j < d; j++) extVecs[i * d + j] = v[j];
-    }
-    for (let ai = 0; ai < anchors.length; ai++) {
-      const off = (linkedWords.length + ai) * d;
-      for (let j = 0; j < d; j++) extVecs[off + j] = anchors[ai].vec[j];
-    }
-    const extEmb = new Embeddings(allWords, extVecs, d);
-
-    const a0 = linkedWords.length;  // dir1 neg
-    const a1 = a0 + 1;             // dir1 pos
-    const a2 = a0 + 2;             // dir2 neg
-    const a3 = a0 + 3;             // dir2 pos
-
-    // Arrows: group arrows + both direction arrows
-    const wordIdx = new Map(allWords.map((w, i) => [w, i]));
-    const arrows = [];
-    for (const group of numLinkedPairs) {
-      for (let i = 0; i < group.length - 1; i++) {
-        const a = wordIdx.get(group[i]), b = wordIdx.get(group[i + 1]);
-        if (a !== undefined && b !== undefined) arrows.push({ from: a, to: b });
-      }
-    }
-    arrows.push({ from: a0, to: a1, color: 'red', dashed: true, thick: true });
-    arrows.push({ from: a2, to: a3, color: 'red', dashed: true, thick: true });
-
-    vizInstances.push(new EmbeddingViz({
-      emb: extEmb, searchEmb: emb, words: allWords, groups: numLinkedPairs,
-      plotEl: document.getElementById('plot-numbers-linked'),
-      eigenEl: document.getElementById('eigen-numbers-linked'),
-      arrows,
-      connectGroups: true,
-      hiddenPoints: new Set([a0, a1, a2, a3]),
-    }));
-  }
-
-  // Gender pairs with SVD-derived gender direction
-  const genderPairWords = flatWords(GENDERED_WORDS, 'gendered words');
-  if (genderPairWords.length > 0) {
-    buildVizWithDirection(genderPairWords, GENDERED_WORDS, GENDERED_WORDS, 'gender direction',
-      'plot-gender-pairs', 'eigen-gender-pairs');
-  }
-
-  // Size pairs with SVD-derived size direction
-  const sizePairWords = flatWords(SIZE_PAIRS, 'size pairs');
-  if (sizePairWords.length > 0) {
-    buildVizWithDirection(sizePairWords, SIZE_PAIRS, SIZE_PAIRS, 'size direction',
-      'plot-size-pairs', 'eigen-size-pairs');
-  }
-
-  // Subspace identification animation (first 8 gender pairs)
+  // Subspace identification animation (keep as-is)
   const animPairDefs = GENDERED_WORDS.slice(0, 8);
   const animWords = flatWords(animPairDefs, 'subspace anim');
   if (animWords.length >= 4) {
@@ -953,55 +1142,12 @@ function buildVisualizations() {
     );
   }
 
-  if (emb.has('man') && emb.has('woman') && emb.has('king')) {
-    vizInstances.push(buildAnalogyViz('plot-analogy-king', 'eigen-analogy-king', 'man', 'woman', 'king', 10, emb));
-  }
+  buildFromDSL(DSL_ANALOGY_KING, 'plot-analogy-king', 'eigen-analogy-king');
+  buildFromDSL(DSL_GENDERED_STEER, 'plot-gendered-steer', 'eigen-gendered-steer');
+  buildFromDSL(DSL_DOCTOR_BEFORE, 'plot-doctor-before', 'eigen-doctor-before');
+  buildFromDSL(DSL_DOCTOR_AFTER, 'plot-doctor-after', 'eigen-doctor-after', { emb: steered });
 
-  // Animated steering for gendered words
-  const genWords = flatWords(GENDERED_WORDS, 'steering gendered words');
-  if (genWords.length > 0) {
-    const n = genWords.length;
-    // Joint MDS over [steered_0..n, orig_0..n]
-    const nn = 2 * n;
-    const D = new Float64Array(nn * nn);
-    for (let i = 0; i < nn; i++) {
-      for (let j = 0; j < i; j++) {
-        const wi = i < n ? steered.vec(genWords[i]) : emb.vec(genWords[i - n]);
-        const wj = j < n ? steered.vec(genWords[j]) : emb.vec(genWords[j - n]);
-        let dist = 0;
-        for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
-        dist = Math.sqrt(dist);
-        D[i * nn + j] = dist;
-        D[j * nn + i] = dist;
-      }
-    }
-    // Assign groups to words
-    const wordGroupMap = {};
-    for (const [w1, w2] of GENDERED_WORDS) {
-      wordGroupMap[w1] = 'gendered'; wordGroupMap[w2] = 'gendered';
-    }
-
-    const steerData = genWords.map((w, i) => ({
-      word: w,
-      group: wordGroupMap[w] || 'other',
-    }));
-
-    new SteeringViz({
-      plotEl: document.getElementById('plot-gendered-steer'),
-      eigenEl: document.getElementById('eigen-gendered-steer'),
-      wordData: steerData,
-      distMatrix: D,
-      n,
-      startSteered: true,
-    });
-  }
-
-  if (emb.has('doctor')) {
-    vizInstances.push(buildAnalogyViz('plot-doctor-before', 'eigen-doctor-before', 'man', 'woman', 'doctor', 10, emb));
-    vizInstances.push(buildAnalogyViz('plot-doctor-after', 'eigen-doctor-after', 'man', 'woman', 'doctor', 10, steered));
-  }
-
-  // Occupation analogy table: before vs. after steering
+  // Occupation analogy table (keep as-is — HTML table, not a plot)
   const analogyOccupations = ['doctor','programmer','boss','scientist','nurse','teacher','homemaker','assistant'];
   const tableEl = document.getElementById('analogy-table');
   if (tableEl) {
@@ -1021,37 +1167,10 @@ function buildVisualizations() {
     tableEl.innerHTML = html;
   }
 
-  // Profession steering plot
-  warnMissing(PROFESSIONS, 'professions');
-  const profWords = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
-  if (profWords.length > 0) {
-    const n = profWords.length;
-    const nn = 2 * n;
-    const D = new Float64Array(nn * nn);
-    for (let i = 0; i < nn; i++) {
-      for (let j = 0; j < i; j++) {
-        const wi = i < n ? steered.vec(profWords[i]) : emb.vec(profWords[i - n]);
-        const wj = j < n ? steered.vec(profWords[j]) : emb.vec(profWords[j - n]);
-        let dist = 0;
-        for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
-        dist = Math.sqrt(dist);
-        D[i * nn + j] = dist;
-        D[j * nn + i] = dist;
-      }
-    }
-    const profSteerData = profWords.map((w, i) => ({
-      word: w, group: 'occupation',
-    }));
-    new SteeringViz({
-      plotEl: document.getElementById('plot-profession-steer'),
-      eigenEl: document.getElementById('eigen-profession-steer'),
-      wordData: profSteerData,
-      distMatrix: D,
-      n,
-      startSteered: true,
-    });
-  }
+  // Profession steering plot (DSL)
+  buildFromDSL(DSL_PROFESSION_STEER, 'plot-profession-steer', 'eigen-profession-steer');
 
+  // Profession ranking bar chart (keep as-is)
   const rankEl = document.getElementById('profession-ranking');
   const profs = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
   const ranked = profs.map(w => {
@@ -1061,7 +1180,6 @@ function buildVisualizations() {
     return { word: w, shift: Math.sqrt(diff) };
   }).sort((a, b) => b.shift - a.shift);
 
-  // D3 vertical bar chart for profession ranking (compact, 45° labels)
   rankEl.innerHTML = '';
   rankEl.style.textAlign = 'center';
   const maxShift = ranked[0]?.shift || 1;
@@ -1130,7 +1248,9 @@ function setupAnalogyInput() {
       ` <a href="${perplexityUrl}" target="_blank" rel="noopener" title="Explain with AI" style="font-size:13px;color:#999;text-decoration:none;border-bottom:1px dashed #ccc;">explain?</a>` +
       `<br><span style="color:#999;font-size:14px">Also: ${answers.slice(1).join(', ')}</span>`;
 
-    buildAnalogyViz('plot-analogy-custom', 'eigen-analogy-custom', a, b, c, 10, emb);
+    // Build analogy viz via DSL
+    const dslText = `? ${a} : ${b} :: ${c}`;
+    buildFromDSL(dslText, 'plot-analogy-custom', 'eigen-analogy-custom', { editable: false });
   }
 
   go.addEventListener('click', runAnalogy);
@@ -1140,55 +1260,26 @@ function setupAnalogyInput() {
 }
 
 
-let explorerViz = null;
-
 function setupExplorer() {
   const input = document.getElementById('explorer-input');
   const status = document.getElementById('explorer-status');
 
-  function parseInput() {
+  function runExplorer() {
     const text = input.value.trim();
-    if (!text) return null;
+    if (!text) { status.textContent = 'Enter some words above.'; return; }
 
-    const steerPairs = [];
-    const displayGroups = [];
-    for (const line of text.split('\n')) {
-      const trimmed = line.trim().toLowerCase();
-      if (!trimmed) continue;
-      if (trimmed.includes(' - ')) {
-        const parts = trimmed.split(' - ').map(s => s.trim()).filter(Boolean);
-        if (parts.length === 2) {
-          steerPairs.push(parts);
-          displayGroups.push(parts);
-          continue;
-        }
-      }
-      const words = trimmed.split(/\s+/).filter(Boolean);
-      if (words.length > 0) displayGroups.push(words);
-    }
-
+    // Use parseDSL to analyze the input for status message
+    const parsed = parseDSL(text);
+    const allGroupWords = parsed.displayGroups.flat();
     const seen = new Set();
     const allWords = [];
     const missing = [];
-    for (const g of displayGroups) {
-      for (const w of g) {
-        if (seen.has(w)) continue;
-        seen.add(w);
-        if (emb.has(w)) allWords.push(w);
-        else missing.push(w);
-      }
+    for (const w of allGroupWords) {
+      if (seen.has(w)) continue;
+      seen.add(w);
+      if (emb.has(w)) allWords.push(w);
+      else missing.push(w);
     }
-
-    const validGroups = displayGroups.map(g => g.filter(w => emb.has(w))).filter(g => g.length > 0);
-    const validPairs = steerPairs.filter(([a, b]) => emb.has(a) && emb.has(b));
-
-    return { allWords, missing, validGroups, validPairs };
-  }
-
-  function runExplorer() {
-    const parsed = parseInput();
-    if (!parsed) { status.textContent = 'Enter some words above.'; return; }
-    const { allWords, missing, validGroups, validPairs } = parsed;
 
     if (allWords.length < 2) {
       status.innerHTML = `<span class="error">Need at least 2 words in vocabulary.</span>`;
@@ -1197,7 +1288,7 @@ function setupExplorer() {
     }
 
     let msg = `${allWords.length} words`;
-    if (validPairs.length > 0) msg += `, ${validPairs.length} steering pairs`;
+    if (parsed.steerPairs.length > 0) msg += `, ${parsed.steerPairs.length} steering pairs`;
     if (missing.length > 0) msg += ` (not found: ${missing.join(', ')})`;
     status.textContent = msg;
 
@@ -1206,50 +1297,7 @@ function setupExplorer() {
     plotEl.innerHTML = '';
     eigenEl.innerHTML = '';
 
-    if (validPairs.length > 0) {
-      // Steer and plot the result with ghosts at original positions
-      const explorerSteered = emb.steer(validPairs, Math.min(10, validPairs.length));
-      const n = allWords.length;
-      const nn = 2 * n;
-      const D = new Float64Array(nn * nn);
-      for (let i = 0; i < nn; i++) {
-        for (let j = 0; j < i; j++) {
-          const wi = i < n ? explorerSteered.vec(allWords[i]) : emb.vec(allWords[i - n]);
-          const wj = j < n ? explorerSteered.vec(allWords[j]) : emb.vec(allWords[j - n]);
-          let dist = 0;
-          for (let k = 0; k < emb.dims; k++) dist += (wi[k] - wj[k]) ** 2;
-          dist = Math.sqrt(dist);
-          D[i * nn + j] = dist;
-          D[j * nn + i] = dist;
-        }
-      }
-      const steerData = allWords.map(w => ({
-        word: w,
-        group: validPairs.some(([a, b]) => w === a || w === b) ? 'pair' : 'word',
-      }));
-      const wordToIdx = new Map(allWords.map((w, i) => [w, i]));
-      const groupArrows = [];
-      for (const g of validGroups) {
-        for (let i = 0; i < g.length - 1; i++) {
-          const a = wordToIdx.get(g[i]), b = wordToIdx.get(g[i + 1]);
-          if (a !== undefined && b !== undefined) groupArrows.push({ from: a, to: b });
-        }
-      }
-      new SteeringViz({
-        plotEl, eigenEl,
-        wordData: steerData,
-        distMatrix: D,
-        n,
-        arrows: groupArrows,
-        startSteered: true,  // show steered state immediately, no animation
-      });
-    } else {
-      // No steering pairs — just plot
-      explorerViz = new EmbeddingViz({
-        emb, searchEmb: emb, words: allWords, groups: validGroups,
-        plotEl, eigenEl,
-      });
-    }
+    buildFromDSL(text, plotEl, eigenEl, { editable: false });
   }
 
   // Debounced live update as user types
