@@ -427,7 +427,7 @@
 </div></div><!-- /content /main -->
 
 <script type="module">
-const { Embeddings, mds, loadEmbeddings } = await import(`./js/embeddings.js?v=${Date.now()}`);
+const { Embeddings, mds, loadEmbeddings, sortedSVD } = await import(`./js/embeddings.js?v=${Date.now()}`);
 const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${Date.now()}`);
 
 const SIZES = {
@@ -624,7 +624,7 @@ function computeDirectionVec(pairs, words, mode, embToUse) {
       Cmat.push([]);
       for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
     }
-    const { u: svdU } = SVDJS.SVD(Cmat);
+    const { u: svdU } = sortedSVD(Cmat);
     for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
 
     // Orient: align with mean w1→w2 difference
@@ -656,7 +656,7 @@ function computeDirectionVec(pairs, words, mode, embToUse) {
       Cmat.push([]);
       for (let j = 0; j < d; j++) Cmat[i].push(C[i * d + j]);
     }
-    const { u: svdU } = SVDJS.SVD(Cmat);
+    const { u: svdU } = sortedSVD(Cmat);
     for (let i = 0; i < d; i++) dir[i] = svdU[i][0];
 
     // Orient: align with first→last word direction
@@ -698,6 +698,7 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
   const analogyArrows = [];
   const analogyCrossLines = [];
   const analogyHighlights = [];
+  const analogyQueryVecs = [];  // synthetic query vectors to include in MDS
   for (const { a, b, c } of analogies) {
     if (!embToUse.has(a) || !embToUse.has(b) || !embToUse.has(c)) continue;
     const ab = embToUse.analogy(a, b, c, 10);
@@ -708,6 +709,12 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
     for (const w of [a, b, c, ...answerWords]) {
       if (!seen.has(w)) { seen.add(w); allDisplayWords.push(w); }
     }
+    // Compute query vector: b - a + c (normalized) for MDS display
+    const va = embToUse.vec(a), vb = embToUse.vec(b), vc = embToUse.vec(c);
+    const queryVec = new Float32Array(d);
+    for (let i = 0; i < d; i++) queryVec[i] = vb[i] - va[i] + vc[i];
+    Embeddings.normalize(queryVec);
+    analogyQueryVecs.push({ label: 'query', vec: queryVec, baseWord: c });
     // Record arrows for the parallelogram
     const idx = (w) => allDisplayWords.indexOf(w);
     analogyArrows.push({ from: idx(a), to: idx(b), color: 'red' });
@@ -828,11 +835,22 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
     anchors.push({ negVec: anchorNeg, posVec: anchorPos, negLabel, posLabel: dir.label });
   }
 
-  // Build extended word list and embeddings
+  // Build extended word list and embeddings (anchors + query points)
   const extWords = [...allDisplayWords];
   for (const a of anchors) {
     extWords.push(a.negLabel);
     extWords.push(a.posLabel);
+  }
+  // Add analogy query points as synthetic words
+  const queryPointIndices = [];
+  for (let qi = 0; qi < analogyQueryVecs.length; qi++) {
+    const q = analogyQueryVecs[qi];
+    // Use zero-width space prefix to avoid collision with real words
+    const uniqueLabel = '\u200B' + q.label + (qi > 0 ? String(qi + 1) : '');
+    q.extLabel = uniqueLabel;
+    q.extIdx = extWords.length;
+    extWords.push(uniqueLabel);
+    queryPointIndices.push(q.extIdx);
   }
   const n = extWords.length;
   const extVecs = new Float32Array(n * d);
@@ -848,7 +866,11 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
       extVecs[posIdx * d + j] = anchors[ai].posVec[j];
     }
   }
-  const extEmb = anchors.length > 0 ? new Embeddings(extWords, extVecs, d) : null;
+  for (const q of analogyQueryVecs) {
+    for (let j = 0; j < d; j++) extVecs[q.extIdx * d + j] = q.vec[j];
+  }
+  const needsExt = anchors.length > 0 || analogyQueryVecs.length > 0;
+  const extEmb = needsExt ? new Embeddings(extWords, extVecs, d) : null;
   const vizEmb = extEmb || embToUse;
 
   // Build arrows: group arrows + direction arrows + analogy arrows
@@ -871,6 +893,15 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
   }
   // Analogy arrows
   arrows.push(...analogyArrows);
+  // Query point arrows: dashed line from base word (c) to query
+  const queryPoints = new Set();
+  for (const q of analogyQueryVecs) {
+    const baseIdx = wordIdx.get(q.baseWord);
+    if (baseIdx !== undefined) {
+      arrows.push({ from: baseIdx, to: q.extIdx, color: 'red', dashed: true });
+    }
+    queryPoints.add(q.extIdx);
+  }
 
   const plotElement = typeof plotEl === 'string' ? document.getElementById(plotEl) : plotEl;
   const eigenElement = eigenEl ? (typeof eigenEl === 'string' ? document.getElementById(eigenEl) : eigenEl) : null;
@@ -886,6 +917,7 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
     crossGroupLines: [...analogyCrossLines],
     highlights: analogyHighlights,
     hiddenPoints,
+    queryPoints,
     connectGroups,
   });
 

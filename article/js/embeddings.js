@@ -138,7 +138,7 @@ class Embeddings {
         Cmat[i].push(C[i * d + j]);
       }
     }
-    const { u: svdU } = SVDJS.SVD(Cmat);
+    const { u: svdU } = sortedSVD(Cmat);
     const basis = [];
     for (let k = 0; k < K; k++) {
       const v = new Float64Array(d);
@@ -167,6 +167,21 @@ class Embeddings {
 
     return new Embeddings(this.words, newVecs, d);
   }
+}
+
+
+/**
+ * Sorted SVD wrapper: SVDJS does not guarantee descending singular value order.
+ * Returns { u, q, v } with singular values sorted descending and vectors reordered.
+ */
+function sortedSVD(matrix) {
+  const { u, q, v } = SVDJS.SVD(matrix);
+  const order = q.map((_, i) => i).sort((a, b) => q[b] - q[a]);
+  return {
+    u: u.map(row => order.map(j => row[j])),
+    q: order.map(j => q[j]),
+    v: v.map(row => order.map(j => row[j])),
+  };
 }
 
 
@@ -209,7 +224,7 @@ function mds(distMatrix, n, dimensions = 2) {
   }
 
   // SVD via svd-js: B = U * diag(q) * V^T
-  const { u, q } = SVDJS.SVD(B);
+  const { u, q } = sortedSVD(B);
 
   // Eigenvalues are the singular values (B is symmetric PSD, so singular values = eigenvalues)
   const eigenvalues = q.slice(0, Math.min(dimensions, n));
@@ -294,4 +309,4 @@ async function loadEmbeddings(url, onProgress) {
   return new Embeddings(words, vectors, numDims);
 }
 
-export { Embeddings, mds, loadEmbeddings };
+export { Embeddings, mds, loadEmbeddings, sortedSVD };

@@ -170,6 +170,7 @@ function render2D(container, words, coords, arrows, options = {}) {
     fixedDomainY = null, // optional: separate Y domain (overrides fixedDomain)
     disableZoom = false,  // true in 3D mode (orbit handles interaction)
     hiddenPoints = new Set(),  // indices of points to hide (no circle or label)
+    queryPoints = new Set(),   // indices of analogy query points (× marker)
   } = options;
   // Detect 1D mode early: all y-coords are ~0 (set by _getCoords2D for dims===1)
   const is1D = coords.every(c => Math.abs(c[1]) < 1e-9);
@@ -316,9 +317,23 @@ function render2D(container, words, coords, arrows, options = {}) {
   circlesEnter.merge(circles).transition().duration(dur)
     .attr('cx', d => xScale(d.c[0]))
     .attr('cy', d => yScale(d.c[1]))
-    .attr('r', d => hiddenPoints.has(d.i) ? 0 : highlightSet.has(d.i) ? 5 : 3.5)
+    .attr('r', d => (hiddenPoints.has(d.i) || queryPoints.has(d.i)) ? 0 : highlightSet.has(d.i) ? 5 : 3.5)
     .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight :
       neighborWords.has(d.word) ? '#999' : COLORS.point);
+
+  // --- Query point markers (× at analogy query positions) ---
+  const queryData = pointData.filter(d => queryPoints.has(d.i));
+  const qmarks = g.selectAll('text.query-marker').data(queryData, d => d.word);
+  qmarks.exit().transition().duration(dur).style('opacity', 0).remove();
+  const qmarksEnter = qmarks.enter().append('text').attr('class', 'query-marker')
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+    .attr('font-size', '16px').attr('font-weight', 'bold')
+    .attr('fill', COLORS.highlight).attr('opacity', 0.8)
+    .style('cursor', 'pointer')
+    .text('×');
+  qmarksEnter.merge(qmarks).transition().duration(dur)
+    .attr('x', d => xScale(d.c[0]))
+    .attr('y', d => yScale(d.c[1]));
 
   // --- Labels (keyed by word) ---
   // In 1D mode, alternate labels above/below the line (sorted by x) to reduce overlap.
@@ -361,16 +376,16 @@ function render2D(container, words, coords, arrows, options = {}) {
       const [sx, sy] = startXY(d.i);
       return `translate(${sx}, ${sy - 8}) rotate(0)`;
     })
-    .text(d => d.word);
+    .text(d => queryPoints.has(d.i) ? d.word.replace(/^\u200B/, '') : d.word);
   labelsEnter.merge(labels)
     .attr('text-anchor', labelAnchor)
     .transition().duration(dur)
     .attr('transform', d => labelTransformFor(d))
-    .attr('font-size', d => hiddenPoints.has(d.i) ? '13px' : neighborWords.has(d.word) ? '10px' : '11px')
+    .attr('font-size', d => (hiddenPoints.has(d.i) || queryPoints.has(d.i)) ? '13px' : neighborWords.has(d.word) ? '10px' : '11px')
     .attr('font-weight', 'normal')
-    .attr('font-style', d => hiddenPoints.has(d.i) ? 'italic' : 'normal')
-    .attr('fill', d => hiddenPoints.has(d.i) ? COLORS.highlight : neighborWords.has(d.word) ? '#666' : '#333')
-    .attr('opacity', d => hiddenPoints.has(d.i) ? 0.7 : 1)
+    .attr('font-style', d => (hiddenPoints.has(d.i) || queryPoints.has(d.i)) ? 'italic' : 'normal')
+    .attr('fill', d => (hiddenPoints.has(d.i) || queryPoints.has(d.i)) ? COLORS.highlight : neighborWords.has(d.word) ? '#666' : '#333')
+    .attr('opacity', d => (hiddenPoints.has(d.i) || queryPoints.has(d.i)) ? 0.7 : 1)
     .style('opacity', 1);
 
   // --- Click handlers ---
@@ -647,6 +662,7 @@ class EmbeddingViz {
     this.highlights = config.highlights || [];
     this.crossGroupLines = config.crossGroupLines || [];
     this.hiddenPoints = config.hiddenPoints || new Set();
+    this.queryPoints = config.queryPoints || new Set();
     this.connectGroups = config.connectGroups || false;
     this.dims = config.initialDims || 2;
     this.searchEmb = config.searchEmb || config.emb;  // full vocab for neighbor search
@@ -1065,6 +1081,7 @@ class EmbeddingViz {
       fixedDomainX, fixedDomainY,
       disableZoom: this.dims === 3,
       hiddenPoints: this.hiddenPoints,
+      queryPoints: this.queryPoints,
       width: plotWidth,
       height: plotHeight,
     };
