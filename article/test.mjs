@@ -2,7 +2,7 @@
  * UI smoke tests for the Steering Word Embeddings article.
  *
  * Usage:
- *   1. Start server: python3 ~/projects/blog/main/serve.py article/ --port 8768
+ *   1. Start server: blog dev
  *   2. Run tests:    node article/test.mjs [URL]
  *
  * Requires puppeteer: npm install puppeteer (or use /tmp/node_modules)

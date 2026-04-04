@@ -9,6 +9,7 @@ Uses GloVe embeddings, runs entirely in the browser.
 - `article/js/embeddings.js` — embedding operations: loading, nearest neighbors, analogies, MDS, steering
 - `article/js/viz.js` — all visualization code: D3 plots (1D/2D/projected-3D), Three.js hero, steering animation
 - `article/css/style.css` — styles (mostly overridden by inline styles in index.html)
+- `blog.toml` — config for the `blog` dev server (no build step, serves article/ on port 8768)
 - `article/data/glove-{small,medium,large}.bin` — binary GloVe vectors (10K/50K/400K words)
 - `article/export_vectors.py` — script to produce the binary files from raw GloVe
 - `article/test.mjs` — Puppeteer smoke tests
@@ -20,7 +21,7 @@ Always run tests before presenting work:
 
 ```bash
 # Start server (leave running) — serves article/ and proxies /blog/ to the blog repo
-python3 ~/projects/blog/main/serve.py article/ --port 8768 &
+blog dev &
 
 # Run smoke tests
 node article/test.mjs http://localhost:8768/index.html
@@ -52,6 +53,7 @@ GitHub Actions deploys `article/` to GitHub Pages on every push to `main`. No ma
 - Site URL: `https://timvieira.github.io/steering-embeddings/`
 - `glove-small.bin` and `glove-medium.bin` are committed; `glove-large.bin` is gitignored (157M).
 - If `export_vectors.py` regenerates the bin files, commit the updated small/medium files.
+- CSS is loaded from `/blog/css/blog.css` (root-relative), which resolves on GitHub Pages since the blog is on the same domain. The `blog dev` server proxies `/blog/` to the blog repo locally.
 
 ## Workflow rules
 
@@ -59,7 +61,7 @@ GitHub Actions deploys `article/` to GitHub Pages on every push to `main`. No ma
 - **Update TODO.md** after completing each task — mark `[x]` with a brief explanation of what was done.
 - **Re-read files before editing** if another agent may have modified them. Check `git status` and `git log` frequently.
 - **Cache-busting**: JS module imports in index.html use `Date.now()` query strings so browsers load fresh code.
-- **Styling**: Uses EB Garamond font matching the blog (timvieira.github.io/blog). No external template — all CSS is inline.
+- **Styling**: Uses EB Garamond font matching the blog (timvieira.github.io/blog). Blog base CSS loaded from `/blog/css/blog.css`; article-specific overrides are inline.
 - **Math**: KaTeX with `$...$` (inline) and `$$...$$` (display) delimiters; custom macros in the `renderMathInElement` call. When referring to word vectors by name, use arrow notation: `$\overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$`, not plain text like "king − queen".
 - **Ordinals**: Write `$i\textsuperscript{th}$` (not `$i$-th` or `$i$th`). Same pattern for other ordinals like `$k\textsuperscript{th}$`.
 - **Citations**: Inline parenthetical links (e.g., "(Pennington et al., 2014)") with a References section at the end.

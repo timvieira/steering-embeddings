@@ -1,0 +1,3 @@
+build = false
+output = "article"
+port = 8768
