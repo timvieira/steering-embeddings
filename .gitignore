@@ -13,3 +13,4 @@ __pycache__/
 /data/
 vecs.npz
 article/data/glove-large.bin
+article/css/blog.css
