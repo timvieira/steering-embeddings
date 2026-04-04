@@ -2,6 +2,8 @@
 
 Exploring word embeddings using GloVe vectors — analogies, visualization, debiasing, and concept interpolation.
 
+**[Read the interactive article](https://timvieira.github.io/steering-embeddings/)**
+
 ## Overview
 
 - **`embedding.py`** — Core `Embeddings` class for loading GloVe vectors, computing analogies (`king - man + woman = queen`), finding similar words via KD-tree, MDS-based visualization, and a subspace debiasing method that projects out gender-correlated directions.
