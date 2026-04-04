@@ -23,8 +23,9 @@
   /* No blog header/sidebar, so remove the sidebar margin */
   #content { margin-right: 0; }
 
-  /* blog.css sets text-align:justify on body — override for headings */
+  /* blog.css sets text-align:justify on body — override for headings and references */
   h1, h2, h3, h4, h5, h6 { text-align: left; }
+  .references li { text-align: left; }
 
   /* Layout classes for wider-than-body content */
   .l-body-outset { margin-left: -48px; margin-right: -48px; }
@@ -411,7 +412,7 @@ scientist
 <p>This article grew out of a homework assignment co-written with <a href="https://damueller.com">David Mueller</a> for a machine learning course at Johns Hopkins University.</p>
 
 <h2>References</h2>
-<ol>
+<ol class="references">
   <li>Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V., & Kalai, A. (2016). <a href="https://arxiv.org/abs/1607.06520">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</a>. In <em>NeurIPS</em>.</li>
   <li>Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). <a href="https://arxiv.org/abs/1810.04805">BERT: Pre-training of deep bidirectional transformers for language understanding</a>. <em>arXiv:1810.04805</em>.</li>
   <li>Harris, Z. S. (1954). <a href="https://doi.org/10.1080/00437956.1954.11659520">Distributional structure</a>. <em>Word</em>, 10(2-3), 146-162.</li>
