@@ -32,6 +32,22 @@ yet. Smoke tests: 35/35 pass.
     say plainly what it does.
   - The explorer does the same: `Math.min(10, validPairs.length)` is always
     full rank for ≤ 10 pairs.
+  - Results by k (2026-11-02, 50K, input words excluded as in the article):
+
+    |                        | before    | k=1           | k=2           | k=3           | k=10          |
+    |------------------------|-----------|---------------|---------------|---------------|---------------|
+    | man:woman::doctor      | nurse     | physician     | physician     | physician     | physician     |
+    | man:woman::nurse       | nurses    | physician     | nurses        | nurses        | doctor        |
+    | man:woman::homemaker   | housewife | schoolteacher | schoolteacher | schoolteacher | schoolteacher |
+    | woman:man::doctor      | dr.       | nurse         | nurse         | nurse         | physician     |
+    | woman↔man distance     | 0.579     | 0.441         | 0.429         | 0.381         | 0.000         |
+
+    The other five occupations (programmer, boss, scientist, teacher,
+    assistant) give the same answer at every k. The prose claim "both
+    man→woman and woman→man yield physician" (`index.html:359`) only holds at
+    k = 10. At k = 1–3, woman:man::doctor still returns "nurse".
+  - Recommendation (pending timv): k = 1, say that one direction isn't
+    enough, and show k = 10 as the option that collapses the pairs.
 
 - [ ] **Arrow anchors and analogy query points are part of the MDS input.**
   `buildFromDSL` (`index.html:845`) adds two synthetic anchor points per
