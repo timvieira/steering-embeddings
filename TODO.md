@@ -131,8 +131,14 @@ yet. Smoke tests: 35/35 pass.
   physician after steering.)
 - [x] References: BERT was cited as arXiv:1810.04805, but it was published at
   NAACL 2019.
-  - Fixed: the References entry now says "In *NAACL*". The inline link still
-    points to arXiv, which is where the paper is freely available.
+  - Fixed: the References entry now says "In *NAACL*", and both BERT links
+    (margin note and References) point to the ACL Anthology page
+    (https://aclanthology.org/N19-1423/).
+  - Same for the other papers with free published versions: GloVe
+    (D14-1162), Zhao et al. (D18-1521) and Ravfogel et al.
+    (2020.acl-main.647) now link to the ACL Anthology, and Bolukbasi et al.
+    to the NeurIPS proceedings. Mikolov et al. (arXiv only) and Harris (DOI)
+    are unchanged; the "GloVe" name still links to the project page.
 - [ ] If the input-word exclusion gets discussed, add Nissim et al. (2020,
   *Computational Linguistics*) to the references.
 - [ ] The co-occurrence figure is taken from the CS224U slides and linked as
