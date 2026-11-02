@@ -1112,6 +1112,8 @@ function renderHero3D(container, wordData, options = {}) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  // Render at the screen's pixel density so the hero is sharp on high-DPI displays.
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
   renderer.setSize(width, height);
   el.appendChild(renderer.domElement);
 

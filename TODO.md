@@ -74,9 +74,12 @@ yet. Smoke tests: 35/35 pass.
     has a fixed width (~590 px, `index.html:1251`); display equations may
     also overflow (no `overflow-x` on `.katex-display`).
   - The eigenvalue bars sit on top of plot points.
-  - The hero is blurry (no `renderer.setPixelRatio` in `viz.js`) and cuts off
-    words at the edges. Its legend is hidden on narrow screens, so it has no
-    explanation there.
+  - [x] The hero was blurry on high-DPI screens.
+    - Fixed: added `renderer.setPixelRatio(window.devicePixelRatio)` in
+      `renderHero3D`. Checked in headless Chrome: at 390 px @2x the canvas now
+      renders at 708×1000 for a 354×500 area; desktop @1x is unchanged.
+  - The hero still cuts off words at the edges. Its legend is hidden on narrow
+    screens, so it has no explanation there.
   - Justified text leaves large gaps between words on narrow screens.
 - [ ] **`lsi.html` is deployed but unlinked and unstyled.** It loads
   `css/blog.css`, which returns a 404 on Pages. Remove it from the deploy, or
@@ -126,9 +129,12 @@ yet. Smoke tests: 35/35 pass.
   results, the 400K button, or the hardcoded prose claims. (The prose claims
   hold at both 10K and 50K: king → queen, doctor → nurse, and doctor →
   physician after steering.)
-- [ ] References: BERT is cited as arXiv:1810.04805, but it was published at
-  NAACL 2019. If the input-word exclusion gets discussed, add Nissim et al.
-  (2020, *Computational Linguistics*).
+- [x] References: BERT was cited as arXiv:1810.04805, but it was published at
+  NAACL 2019.
+  - Fixed: the References entry now says "In *NAACL*". The inline link still
+    points to arXiv, which is where the paper is freely available.
+- [ ] If the input-word exclusion gets discussed, add Nissim et al. (2020,
+  *Computational Linguistics*) to the references.
 - [ ] The co-occurrence figure is taken from the CS224U slides and linked as
   the source. Check whether reusing it is fine, or redraw it.
 - [ ] No social-preview metadata (`og:title`, `og:image`) and no publication
