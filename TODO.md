@@ -1,3 +1,189 @@
+## Pre-launch review (2026-10-28)
+
+Numbers below were computed on the 50K vocabulary with a one-off Python
+script that mirrors `embeddings.js` (unit-normalized vectors,
+query = normalize(b − a + c), cosine top-n). The script is not in the repo
+yet. Smoke tests: 35/35 pass.
+
+### Needs a decision from timv (undisclosed choices that change results)
+
+- [ ] **Analogies exclude the three input words.** `embeddings.js:88` passes
+  `new Set([a, b, c])` to `mostSimilar`. With the inputs kept, the top answer
+  for man : woman :: X is X itself for every occupation in the table (doctor,
+  programmer, boss, scientist, nurse, teacher, homemaker, assistant) and for
+  king. For doctor, "nurse" is second. This is the critique in Nissim, van
+  Noord & van der Goot (2020), "Fair is better than sensational: man is to
+  doctor as woman is to doctor". The doctor → nurse example depends on this
+  choice and the article doesn't mention it. Decide how to present it.
+
+- [ ] **k = 10 with 10 steering pairs truncates nothing.** `index.html:495`
+  calls `emb.steer(GENDER_PAIRS, 10)` with 10 pairs, so the whole span of
+  the difference vectors is projected out. The text at `index.html:324` says
+  truncation "focuses on the dominant directions", but no truncation happens.
+  - steered(woman) = steered(man) exactly (distance 0.0, was 0.58). The same
+    goes for every defining pair (she/he, girl/boy, female/male, ...).
+  - So every "after steering" man : woman :: X query equals steered(X), and
+    the answer is X's nearest neighbor in the steered space. The after-column
+    of the analogy table and "both man→woman and woman→man yield physician"
+    hold by construction.
+  - Scatter eigenvalues: 1.942, 1.211, 0.693, 0.216, 0.165, 0.097, 0.088,
+    0.067, 0.051, 0.023. The top 1/2/3 hold 43% / 69% / 85% of the trace.
+  - Options: use k = 1–3 (Bolukbasi et al. used k = 1), or keep k = 10 and
+    say plainly what it does.
+  - The explorer does the same: `Math.min(10, validPairs.length)` is always
+    full rank for ≤ 10 pairs.
+
+- [ ] **Arrow anchors and analogy query points are part of the MDS input.**
+  `buildFromDSL` (`index.html:845`) adds two synthetic anchor points per
+  direction arrow, plus the analogy query point, to the word list before MDS.
+  The text says each plot is "MDS on a small, hand-picked set of words".
+  Measured effect (|cos(MDS axis 1, arrow direction)|, then the 2D % explained):
+  - superlatives: 0.88 → 0.94; 31.3% → 33.6%
+  - size pairs: 0.59 → 0.78; 36.4% → 37.2%
+  - gender pairs: 0.44 → 0.52; 38.6% → 38.3%
+  Options: fit MDS on the words only and place the arrow afterwards, or
+  disclose it in the text.
+
+- [ ] **Missing words are dropped silently in the article plots.**
+  `buildFromDSL` filters out-of-vocabulary words, pairs and analogies with no
+  warning (`warnMissing` is only called from `flatWords`, which only the
+  subspace animation uses). It also does `if (!dirVec) continue` and returns
+  null when no steering pair is valid. The hero filters the same way.
+  Today this only matters at 10K, where "miniature" is missing, so the size
+  plot silently loses the miniature/giant pair. (Checked every word in the
+  DSL constants and JS word lists: nothing missing at 50K.) The 10K file is
+  the top 10K words plus 27 must-have words. The explorer does show "not
+  found" visibly. Options: show a note on the plot, or fail loudly.
+
+- [ ] **MDS can't detect negative eigenvalues.** `mds()` (`embeddings.js:193`)
+  takes the SVD of the double-centered matrix B and treats singular values as
+  eigenvalues. Singular values are never negative, so the `Math.max(0, ·)`
+  guards (`embeddings.js:237`, `viz.js:46`, `viz.js:1215`) never fire, and a
+  negative eigenvalue would come back as a positive one and count toward
+  "% explained". Harmless in theory for Euclidean distances, but unchecked.
+  Proposal: get the sign from uᵀBu (or use a symmetric eigensolver) and fail
+  loudly if a negative eigenvalue is larger than rounding error.
+
+### Live-site bugs
+
+- [ ] **400K button returns 404.** `glove-large.bin` is gitignored, and at
+  157 MB it's over GitHub's 100 MB file limit. Remove the button or host the
+  file elsewhere.
+- [ ] **Phone layout (checked at 390 px):**
+  - The page scrolls sideways (scrollWidth 610 px). The profession bar chart
+    has a fixed width (~590 px, `index.html:1251`); display equations may
+    also overflow (no `overflow-x` on `.katex-display`).
+  - The eigenvalue bars sit on top of plot points.
+  - The hero is blurry (no `renderer.setPixelRatio` in `viz.js`) and cuts off
+    words at the edges. Its legend is hidden on narrow screens, so it has no
+    explanation there.
+  - Justified text leaves large gaps between words on narrow screens.
+- [ ] **`lsi.html` is deployed but unlinked and unstyled.** It loads
+  `css/blog.css`, which returns a 404 on Pages. Remove it from the deploy, or
+  fix the CSS path and link it.
+- [ ] Remove the draft banner (last step before launch).
+- [ ] **The loading overlay hides the whole article until the vectors
+  arrive.** `#loading-overlay` is a fixed full-screen layer, so readers can't
+  read any prose until the 20 MB file has downloaded (2.2 s locally; much
+  longer on a slow connection). Consider rendering the prose immediately and
+  showing per-plot placeholders instead.
+- [ ] **Old animations keep running after a vocabulary switch** (from
+  reading the code; not measured). `renderHero3D` removes the old canvas but
+  never calls the old hero's `destroy()`, so its animation loop and WebGL
+  context stay alive. `buildVisualizations` resets `vizInstances = []` without
+  stopping the old plots' rotation loops. A switch from 50K to 10K was checked
+  in a headless browser: it shows one hero canvas and one SVG per plot, with
+  no errors.
+
+### Smaller items
+
+- [ ] The doctor "after" plot's edit box shows the same plot definition as
+  "before" (`DSL_DOCTOR_AFTER`), with no sign that it uses steered vectors.
+  Consider adding the `~` line so the definition says what the plot does.
+- [ ] Gender is defined by four different pair sets: 10 `GENDER_PAIRS` for
+  steering, 14 `GENDERED_WORDS` for the arrow plot, the first 8 of those for
+  the animation, and 3 in the prose example. Unify them or explain why they
+  differ.
+- [ ] The profession bar chart and steering plot include wife, husband,
+  mother and father, which aren't occupations.
+- [ ] Label collisions in the superlatives plot (strong/short/stronger/shorter
+  overlap). Label collisions were marked [SKIP] under Visual Design; noting
+  again only because they get much worse on phones.
+- [ ] Unmeasured claim at `index.html:324`: removing 10 of 100 dimensions
+  "leaving the remaining structure intact". Could be measured, e.g. as
+  nearest-neighbor overlap for non-gendered words before and after steering.
+- [ ] **The `~ label:` form from the DSL spec silently drops the first pair.**
+  `~ steer: she - he, woman - man` parses "steer: she" as a word, and the
+  pair is then filtered out. The article's own DSL constants don't use a
+  label, but the spec below does. Hyphenated words (e.g. "x-ray") also break
+  in any line that contains " - ".
+- [ ] Dead code: `render3D` (the old Three.js inline 3D), `render1D` and
+  `renderSteering2D` in `viz.js` are exported but never called. The
+  click-to-expand handler is a stub that returns null, with the original in a
+  comment, and four click-to-expand tests are commented out in `test.mjs`.
+  Delete it, or keep it for re-enabling?
+- [ ] Test gaps: nothing covers phone width, vocabulary switching, steering
+  results, the 400K button, or the hardcoded prose claims. (The prose claims
+  hold at both 10K and 50K: king → queen, doctor → nurse, and doctor →
+  physician after steering.)
+- [ ] References: BERT is cited as arXiv:1810.04805, but it was published at
+  NAACL 2019. If the input-word exclusion gets discussed, add Nissim et al.
+  (2020, *Computational Linguistics*).
+- [ ] The co-occurrence figure is taken from the CS224U slides and linked as
+  the source. Check whether reusing it is fine, or redraw it.
+- [ ] No social-preview metadata (`og:title`, `og:image`) and no publication
+  date on the page. Match whatever the blog does.
+- [ ] **Not yet reviewed:** most of `viz.js` (2.5K lines), including the
+  subspace-animation math, the 2D→3D view search, and the steering-plot
+  rendering. Also no desktop visual pass beyond the smoke tests, and no
+  browser other than headless Chrome.
+- [ ] The "far more aligned than random" claim (`index.html:308`) holds:
+  woman−man vs she−he 0.64, woman−man vs queen−king 0.44, she−he vs
+  queen−king 0.58. Random word-pair differences (top 20K words, 5000 draws):
+  mean 0.00, 99th percentile 0.31. Consider putting these numbers in the text.
+- [ ] **Stale entries below** (each checked against the current code; not yet
+  edited):
+  - Questions / aspect ratio: "See checklist below". There is no such
+    checklist.
+  - Questions / truncation: wrong answer (correction added in place).
+  - Interactivity / steering transition: "Added `renderSteering2D`". That
+    function is no longer called; `SteeringViz` replaced it.
+  - Interactivity / explorer: "Click-to-expand ... all work". The feature is
+    disabled.
+  - Interactivity / parallelogram: "in `buildAnalogyViz`". That function was
+    removed in the DSL refactor; it's `buildFromDSL` now.
+  - Interactivity / eigenvalue bars: the one-time fading "click bars" hint is
+    gone. Only a hover tooltip remains ("Click to switch dimensions").
+  - Interactivity / profession ranking: says horizontal orange bars, labels on
+    the left, values on the right. Now it's vertical steel-blue bars with
+    rotated labels, and values appear only on hover.
+  - Content / MDS math: "step-by-step derivations (double centering, ...)".
+    These were later replaced by a short classical-MDS paragraph with no
+    derivation.
+  - Content / Discussion and Boo-boos / acknowledgements: "dt-cite",
+    "dt-appendix". Distill is gone; there's a plain References list now.
+  - Math review / analogy explanation: "rewrote as bias cancellation ...
+    log co-occurrence ratios". The current text has neither.
+  - Polish / alignment: "Used Distill's `l-body-outset`". It's custom CSS now.
+  - Polish / click-to-expand in all dimensions, neighbors persist, neighbor
+    styling in 1D/3D: the feature is disabled, and the 3D part (Three.js
+    raycasting, spheres) refers to the dead `render3D`.
+  - Polish / auto-orbit (`controls.autoRotate`) and larger 3D labels
+    (Three.js sprites): inline 3D is D3 SVG now; Three.js is only used for
+    the hero.
+  - Technical polish / opening paragraph: describes the "queen closer to king
+    than bicycle" opening. The article is back to the dictionary paragraph
+    (commit 2003639).
+  - Technical polish / Large (400K): "Enabled". It works locally only and
+    returns 404 on the live site.
+  - Plot DSL spec: says `= link` but the code uses `= connect`. Says
+    `~ steer: ...` but a label isn't supported (see above). The "Doctor after
+    steering" spec has a `~` line, but the code passes `emb: steered`.
+  - Plot DSL / "Add syntax help to the explorer": partly done. The article
+    lists `word - word`, `?` and `>`, but not `~` or `=`.
+- [ ] Smoke tests don't check the prose claims (nurse, physician, the table),
+  which are hardcoded while the results are computed live.
+
 ## Questions:
 
 - [x] Is there a good reason to use Three.js for the hero visualization? Yes — keep it.
@@ -6,6 +192,8 @@
 
 - [x] do we truncate the svd in subspace identification (the text suggests that we do)?  Why?
   - Yes. `steer(pairs, K=10)` keeps top-K eigenvectors. The scatter matrix has rank ≤ number of pairs, so higher components are noise. K=10 captures the dominant concept directions. This is a parameter the article should discuss (see "No discussion of how k is chosen" below).
+  - Correction (2026-10-28): with 10 pairs and K=10, nothing is truncated.
+    See "k = 10 with 10 steering pairs truncates nothing" under Pre-launch review.
 
 - [x] should we set the aspect ratio to be more equal?  does that make any sense?
   - Yes. Equal aspect (1 data-unit = same pixels on both axes) is correct for MDS since it preserves distances. Implemented as default for all plots. See checklist below.
