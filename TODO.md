@@ -15,6 +15,39 @@ yet. Smoke tests: 35/35 pass.
   Noord & van der Goot (2020), "Fair is better than sensational: man is to
   doctor as woman is to doctor". The doctor → nurse example depends on this
   choice and the article doesn't mention it. Decide how to present it.
+  - Scores with nothing removed (cosine to normalize(b − a + c)):
+    king 0.84, queen 0.77, monarch 0.68; doctor 0.87, nurse 0.77,
+    physician 0.72; homemaker 0.91, housewife 0.74; programmer 0.85,
+    educator 0.59.
+  - What depends on it: all analogy plots (king, doctor before/after, "Try
+    your own", explorer default): the answer words shown, the highlight and
+    the parallelogram's 4th corner. Also the "Try your own" sentence and
+    "Also:" list (shown after clicking ?), the occupation table, and the prose
+    at `index.html:279`, `:353`, `:359`, `:366`. `:353` is false as written:
+    "the nearest neighbor to doctor + (woman − man) is nurse"; it's doctor.
+  - Prior work: the rule comes from Mikolov et al.'s analogy test (word2vec,
+    gensim). Linzen (2016, RepEval) found that without it, the nearest word
+    to a* − a + b is b in 93% of cases. Bolukbasi et al. searched for whole
+    pairs (x, y) with ‖x − y‖ ≤ 1 rather than solving a : b :: c : ?.
+    Nissim et al. recommend reporting the full top-N whenever a rank-N word
+    is reported.
+  - Proposal (pending timv): keep the exclusion, say so in the text, and
+    report top-3 lists with scores, input word included.
+
+- [ ] **The analogy plots show the wrong word as closest to the query.** In
+  100-D the query is closest to the input word (king; doctor). In the MDS
+  layout the plots use, the closest is the excluded-rule answer:
+  - man:woman::king: queen is nearest in 2D and 3D; king isn't among the 4
+    nearest in 2D.
+  - man:woman::doctor: nurse is nearest in 2D and 3D; in 2D, doctor is 5.9×
+    farther than nurse.
+  - 2D keeps only 40–42% of the variation for these word sets.
+  So the plot appears to confirm the answer that only wins because the input
+  word is removed. Options: label nearby words with their 100-D similarity
+  to the query (overlaps the Visual Design TODO); add a caveat; or lay out
+  analogy plots in a 2D slice through the query, c and the top answer, which
+  keeps those three distances exact. Recommendation (pending timv): slice +
+  labels.
 
 - [ ] **k = 10 with 10 steering pairs truncates nothing.** `index.html:495`
   calls `emb.steer(GENDER_PAIRS, 10)` with 10 pairs, so the whole span of
@@ -82,6 +115,13 @@ yet. Smoke tests: 35/35 pass.
 
 ### Live-site bugs
 
+- [x] **The analogy query marker (×) froze in 3D.** The 3D rotation loop
+  (`EmbeddingViz._startRotation` → `tick`) moved circles, labels, arrows and
+  lines, but not `text.query-marker`, so the × stayed put while its "query"
+  label and dashed line rotated (measured: 24.5 px apart, then 35.5 px one
+  second later).
+  - Fixed: `tick` now updates the query markers too. The × stays on its label
+    (0.0 px) while rotating. Added smoke test `testQueryMarker3D`.
 - [ ] **400K button returns 404.** `glove-large.bin` is gitignored, and at
   157 MB it's over GitHub's 100 MB file limit. Remove the button or host the
   file elsewhere.

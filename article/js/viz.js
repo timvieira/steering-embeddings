@@ -909,6 +909,10 @@ class EmbeddingViz {
         .attr('cy', d => yScale(projected[d.i][1]));
       g.selectAll('text.word-label')
         .attr('transform', d => `translate(${xScale(projected[d.i][0])}, ${yScale(projected[d.i][1]) - 8}) rotate(0)`);
+      // Analogy query markers (×)
+      g.selectAll('text.query-marker')
+        .attr('x', d => xScale(projected[d.i][0]))
+        .attr('y', d => yScale(projected[d.i][1]));
 
       // Update arrows
       g.selectAll('line.arrow')

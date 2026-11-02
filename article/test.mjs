@@ -421,6 +421,39 @@ async function testPanZoomDoesNotBreakOtherPlots() {
   test('Pan+zoom: steering plot also has zoom', steeringSvg);
 }
 
+async function testQueryMarker3D() {
+  // In 3D the plot auto-rotates; the analogy query marker (×) must move with its label.
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-analogy-king svg g.eigen-col');
+    if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 2500));
+  const sample = () => page.evaluate(() => {
+    const g = document.querySelector('#plot-analogy-king svg.plot g.main');
+    const m = g?.querySelector('text.query-marker');
+    const lab = g && [...g.querySelectorAll('text.word-label')].find(t => t.textContent === 'query');
+    const t = lab?.getAttribute('transform')?.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
+    if (!m || !t) return null;
+    return { mx: +m.getAttribute('x'), my: +m.getAttribute('y'), lx: +t[1], ly: +t[2] + 8 };
+  });
+  const s1 = await sample();
+  await new Promise(r => setTimeout(r, 1000));
+  const s2 = await sample();
+  // Restore 2D so later tests (pan/zoom) see the default state
+  await page.evaluate(() => {
+    const bars = document.querySelectorAll('#eigen-analogy-king svg g.eigen-col');
+    if (bars.length >= 2) bars[1].dispatchEvent(new Event('click'));
+  });
+  await new Promise(r => setTimeout(r, 1500));
+  test('Query marker 3D: marker and label found', !!(s1 && s2));
+  if (!s1 || !s2) return;
+  const gap = s => Math.hypot(s.mx - s.lx, s.my - s.ly);
+  test('Query marker 3D: marker moves while rotating', Math.hypot(s2.mx - s1.mx, s2.my - s1.my) > 1,
+    `moved ${Math.hypot(s2.mx - s1.mx, s2.my - s1.my).toFixed(1)}px`);
+  test('Query marker 3D: marker stays on its label', gap(s1) < 1 && gap(s2) < 1,
+    `gaps ${gap(s1).toFixed(1)}px, ${gap(s2).toFixed(1)}px`);
+}
+
 async function testSuperlativesComplete() {
   const words = await page.evaluate(() =>
     [...document.querySelectorAll('#plot-superlatives svg.plot text.word-label')]
@@ -526,6 +559,7 @@ await testSteeringAnimation();
 // await testClickToExpand3D();
 // await testClickToExpand1D();
 await testDimensionTransitionAnimation();
+await testQueryMarker3D();
 await testPanZoom();
 await testPanZoomDoesNotBreakOtherPlots();
 await testSuperlativesComplete();
