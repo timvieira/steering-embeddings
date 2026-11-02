@@ -78,6 +78,10 @@ class Embeddings {
   }
 
   // Solve analogy: a is to b as c is to ?
+  // Returns the n words most similar to normalize(b - a + c), EXCLUDING a, b, and c.
+  // The exclusion is the standard rule (Mikolov et al., 2013) and it changes results:
+  // without it the top answer is usually c itself (e.g. man:woman::king -> king 0.84,
+  // queen 0.77). The article discloses this where analogies are introduced.
   analogy(a, b, c, n = 1) {
     const va = this.vec(a), vb = this.vec(b), vc = this.vec(c);
     if (!va || !vb || !vc) return [];

@@ -63,7 +63,7 @@ GitHub Actions deploys `article/` to GitHub Pages on every push to `main`. No ma
 - **Cache-busting**: JS module imports in index.html use `Date.now()` query strings so browsers load fresh code.
 - **Styling**: Uses EB Garamond font matching the blog (timvieira.github.io/blog). Blog base CSS loaded from `/blog/css/blog.css`; article-specific overrides are inline.
 - **Math**: KaTeX with `$...$` (inline) and `$$...$$` (display) delimiters; custom macros in the `renderMathInElement` call. When referring to word vectors by name, use arrow notation: `$\overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$`, not plain text like "king − queen".
-- **Ordinals**: Write `$i\textsuperscript{th}$` (not `$i$-th` or `$i$th`). Same pattern for other ordinals like `$k\textsuperscript{th}$`.
+- **Ordinals**: Write `$i$<sup>th</sup>` (HTML superscript; not `$i$-th` or `$i$th`). Same pattern for other ordinals like `$k$<sup>th</sup>`. Don't use `\textsuperscript` — KaTeX doesn't support it, so the math fails to parse and shows up raw on the page.
 - **Citations**: Inline parenthetical links (e.g., "(Pennington et al., 2014)") with a References section at the end.
 - **Layout classes**: `l-body-outset` (negative margins for wider plots) and `l-page` (full viewport for hero) are custom CSS, not from any template.
 - **D3 zoom vs orbit**: In 3D projected mode, D3 zoom is NOT attached (would conflict with orbit drag). When reusing an SVG from 2D, stale zoom listeners must be removed: `svg.on('.zoom', null)`.

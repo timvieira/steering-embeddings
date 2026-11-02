@@ -92,6 +92,14 @@ async function testAlignment() {
 async function testMathRendering() {
   const count = await page.evaluate(() => document.querySelectorAll('.katex').length);
   test('KaTeX equations rendered', count >= 4, `got ${count}`);
+
+  // KaTeX leaves math it can't parse as raw text, so any visible $ means a parse failure
+  // (e.g. \textsuperscript, which KaTeX doesn't support).
+  const raw = await page.evaluate(() =>
+    [...document.querySelectorAll('#content p, #content li, #content .margin-note, #content figcaption')]
+      .filter(el => el.innerText.includes('$'))
+      .map(el => el.innerText.replace(/\s+/g, ' ').match(/.{0,40}\$.{0,40}/)?.[0]));
+  test('No unrendered math in prose', raw.length === 0, raw.join(' | ').substring(0, 200));
 }
 
 async function testAnalogyInput() {

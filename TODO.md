@@ -31,8 +31,19 @@ yet. Smoke tests: 35/35 pass.
     pairs (x, y) with ‖x − y‖ ≤ 1 rather than solving a : b :: c : ?.
     Nissim et al. recommend reporting the full top-N whenever a rank-N word
     is reported.
-  - Proposal (pending timv): keep the exclusion, say so in the text, and
-    report top-3 lists with scores, input word included.
+  - Decision (timv, 2026-11-02): keep the exclusion.
+  - [x] Disclosed. `index.html:279` now says the answer leaves out a, b and c,
+    that otherwise it's usually c (Linzen, 2016), gives king 0.84 vs queen
+    0.77, and notes the rule is standard since Mikolov et al. (2013) and can
+    make analogies look more striking (Nissim et al., 2020). The false doctor
+    sentence (`:353`) now gives doctor 0.87, nurse 0.77, physician 0.72, and
+    says the gendered association is nurse outranking physician. The explorer
+    help says `?` leaves out a, b and c. A comment on `analogy()` in
+    `embeddings.js` explains the rule. Linzen and Nissim et al. were added to
+    References.
+  - [ ] Still open: the "after steering" sentences (`:359`, `:366`) depend on
+    the k decision. Showing top-3 lists with scores in the table is proposed
+    but not decided.
 
 - [ ] **The analogy plots show the wrong word as closest to the query.** In
   100-D the query is closest to the input word (king; doctor). In the MDS
@@ -122,6 +133,13 @@ yet. Smoke tests: 35/35 pass.
   second later).
   - Fixed: `tick` now updates the query markers too. The × stays on its label
     (0.0 px) while rotating. Added smoke test `testQueryMarker3D`.
+- [x] **An ordinal rendered as raw LaTeX.** `$i\textsuperscript{th}$` in the
+  scatter-matrix paragraph showed up raw ("KaTeX parse error: Undefined
+  control sequence: \textsuperscript"), because KaTeX doesn't support
+  `\textsuperscript`. The project CLAUDE.md prescribed that form.
+  - Fixed: now `$i$<sup>th</sup>` (the convention from timv's
+    conditional-poisson-sampling memory); CLAUDE.md updated to match.
+    `testMathRendering` now also fails if any prose shows a raw `$`.
 - [ ] **400K button returns 404.** `glove-large.bin` is gitignored, and at
   157 MB it's over GitHub's 100 MB file limit. Remove the button or host the
   file elsewhere.

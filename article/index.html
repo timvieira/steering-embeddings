@@ -276,7 +276,7 @@
 
 <p>$$\overrightarrow{\text{man}} - \overrightarrow{\text{woman}} \approx \overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$$</p>
 
-<p>More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$.</p>
+<p>More generally, $a : b :: c : d$ means $\overrightarrow{a} - \overrightarrow{b} \approx \overrightarrow{c} - \overrightarrow{d}$. Rearranging, we can solve for an unknown fourth word: $\overrightarrow{d} \approx \overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$. To find $d$, we take the word whose vector has the highest cosine similarity to $\overrightarrow{c} - \overrightarrow{a} + \overrightarrow{b}$, leaving out $a$, $b$, and $c$ themselves. Leaving them out matters: otherwise the answer is usually $c$ itself (<a href="https://aclanthology.org/W16-2503/">Linzen, 2016</a>). For man : woman :: king, king scores 0.84 and queen 0.77, so queen is the answer only because king is ruled out. This rule has been standard since <a href="https://arxiv.org/abs/1301.3781">Mikolov et al. (2013)</a>, and it can make analogies look more striking than they are (<a href="https://aclanthology.org/2020.cl-2.7/">Nissim et al., 2020</a>).</p>
 
 <p>Why does this work? "King" and "queen" appear in many of the same contexts&mdash;royalty, thrones, crowns&mdash;so their co-occurrence patterns are similar. They differ mainly in gendered contexts, and that difference is the same one that separates "man" from "woman." Because GloVe embeds words so that dot products approximate log co-occurrence counts, these shared and differing patterns become geometric structure: the vector offset $\overrightarrow{\text{king}} - \overrightarrow{\text{queen}}$ points in roughly the same direction as $\overrightarrow{\text{man}} - \overrightarrow{\text{woman}}$.</p>
 
@@ -319,7 +319,7 @@
   <div class="eigen-margin" id="eigen-size-pairs"></div>
 </div>
 
-<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i\textsuperscript{th}$ pair. The scatter matrix $\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
+<p>To find this subspace systematically, we collect many such pairs and compute a scatter matrix from their difference vectors. Given $p$ pairs $(w_i^+, w_i^-)$, let $\mathbf{d}_i \defeq \overrightarrow{w}_i^+ - \overrightarrow{w}_i^-$ be the difference vector for the $i$<sup>th</sup> pair. The scatter matrix $\mathbf{C} \defeq \sum_{i=1}^{p} \mathbf{d}_i \, \mathbf{d}_i^\top$ is a $D \times D$ positive semidefinite matrix whose eigenvectors point in the directions of greatest variation among the difference vectors. Taking the eigendecomposition $\mathbf{C} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^\top$ and keeping the top-$k$ columns of $\mathbf{U}$ gives an orthogonal basis $\mathcal{B} = \{\overrightarrow{b}_1, \dots, \overrightarrow{b}_k\}$ for the subspace that best explains the pair differences.</p>
 
 <p>Since $\mathbf{C}$ is a sum of $p$ rank-one matrices, it has rank at most $p$&mdash;so with 10 word pairs, at most 10 eigenvalues are nonzero. Truncating to $k \le p$ focuses on the dominant directions and discards weaker ones. Choosing $k$ involves a tradeoff: too small and you miss secondary directions of the concept (e.g., gender correlates with both pronouns and names, which may not be collinear); too large and you start removing variation unrelated to the concept, distorting the embedding. In practice, examining the eigenvalue spectrum of $\mathbf{C}$ helps&mdash;a sharp drop after the first few eigenvalues suggests the concept is low-dimensional. <a href="https://proceedings.neurips.cc/paper/2016/hash/a486cd07e4ac3d270571622f4f316ec5-Abstract.html">Bolukbasi et al. (2016)</a> used $k = 1$; in this article, we use $k = 10$, the full rank of our 10 defining pairs. With 10 pairs in a 100-dimensional space, this removes only 10% of the embedding dimensions, leaving the remaining structure intact.</p>
 
@@ -350,7 +350,7 @@
 <h2>Steering in Action</h2>
 
 <h3>Occupation Analogies: Before vs. After</h3>
-<p>Before steering, the analogy man : woman :: doctor yields "nurse"&mdash;the nearest neighbor to $\overrightarrow{\text{doctor}} + (\overrightarrow{\text{woman}} - \overrightarrow{\text{man}})$ is nurse, reflecting a gendered association baked into the embeddings:</p>
+<p>Before steering, the analogy man : woman :: doctor yields "nurse." As with king, the word most similar to $\overrightarrow{\text{doctor}} + (\overrightarrow{\text{woman}} - \overrightarrow{\text{man}})$ is doctor itself (0.87). Next comes nurse (0.77), ahead of physician (0.72), which is doctor's nearest neighbor. That nurse outranks physician reflects a gendered association in the embeddings:</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-before"></div>
@@ -389,7 +389,7 @@
 <p>Try it yourself: type word groups below (one group per line). Words on the same line are plotted together and connected by arrows. Special line prefixes:</p>
 <ul style="font-size: 14px; margin-top: 0.3em; margin-bottom: 0.5em; padding-left: 1.2em;">
   <li><code>word - word</code> &mdash; steering pair (projects out the subspace)</li>
-  <li><code>? a : b :: c</code> &mdash; analogy (solves for the fourth word)</li>
+  <li><code>? a : b :: c</code> &mdash; analogy (solves for the fourth word, leaving out a, b, and c)</li>
   <li><code>&gt; label: a - b, c - d</code> &mdash; direction arrow (SVD of pair differences)</li>
   <li><code>&gt; label: w1 w2 w3</code> &mdash; direction arrow (PCA of word sequence)</li>
 </ul>
@@ -420,7 +420,9 @@ scientist
   <li>Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V., & Kalai, A. (2016). <a href="https://proceedings.neurips.cc/paper/2016/hash/a486cd07e4ac3d270571622f4f316ec5-Abstract.html">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</a>. In <em>NeurIPS</em>.</li>
   <li>Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). <a href="https://aclanthology.org/N19-1423/">BERT: Pre-training of deep bidirectional transformers for language understanding</a>. In <em>NAACL</em>.</li>
   <li>Harris, Z. S. (1954). <a href="https://doi.org/10.1080/00437956.1954.11659520">Distributional structure</a>. <em>Word</em>, 10(2-3), 146-162.</li>
+  <li>Linzen, T. (2016). <a href="https://aclanthology.org/W16-2503/">Issues in evaluating semantic spaces using word analogies</a>. In <em>RepEval Workshop</em>.</li>
   <li>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013). <a href="https://arxiv.org/abs/1301.3781">Efficient estimation of word representations in vector space</a>. <em>arXiv:1301.3781</em>.</li>
+  <li>Nissim, M., van Noord, R., & van der Goot, R. (2020). <a href="https://aclanthology.org/2020.cl-2.7/">Fair is better than sensational: Man is to doctor as woman is to doctor</a>. <em>Computational Linguistics</em>, 46(2), 487-497.</li>
   <li>Pennington, J., Socher, R., & Manning, C. D. (2014). <a href="https://aclanthology.org/D14-1162/">GloVe: Global vectors for word representation</a>. In <em>EMNLP</em>.</li>
   <li>Ravfogel, S., Elazar, Y., Gonen, H., Twiton, M., & Goldberg, Y. (2020). <a href="https://aclanthology.org/2020.acl-main.647/">Null it out: Guarding protected attributes by iterative nullspace projection</a>. In <em>ACL</em>.</li>
   <li>Zhao, J., Zhou, Y., Li, Z., Wang, W., & Chang, K.-W. (2018). <a href="https://aclanthology.org/D18-1521/">Learning gender-neutral word embeddings</a>. In <em>EMNLP</em>.</li>
