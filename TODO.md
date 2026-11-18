@@ -41,9 +41,9 @@ yet. Smoke tests: 35/35 pass.
     help says `?` leaves out a, b and c. A comment on `analogy()` in
     `embeddings.js` explains the rule. Linzen and Nissim et al. were added to
     References.
-  - [ ] Still open: the "after steering" sentences (`:359`, `:366`) depend on
-    the k decision. Showing top-3 lists with scores in the table is proposed
-    but not decided.
+  - [x] The "after steering" sentences (`:359`, `:366`) now say the result is
+    guaranteed (see the k item below). Showing top-3 lists with scores in the
+    table was proposed but not adopted.
 
 - [ ] **The analogy plots show the wrong word as closest to the query.** In
   100-D the query is closest to the input word (king; doctor). In the MDS
@@ -90,8 +90,27 @@ yet. Smoke tests: 35/35 pass.
     assistant) give the same answer at every k. The prose claim "both
     man→woman and woman→man yield physician" (`index.html:359`) only holds at
     k = 10. At k = 1–3, woman:man::doctor still returns "nurse".
-  - Recommendation (pending timv): k = 1, say that one direction isn't
-    enough, and show k = 10 as the option that collapses the pairs.
+  - Decision (timv, 2026-11-18): keep k = 10 and the plain linear-algebra
+    method. k is "just a silly hyperparameter"; the issue is whether the
+    learned direction generalizes, and the article should admit it doesn't
+    fully, not try to solve it.
+  - [x] Disclosed (2026-11-18). `:359` now says the physician result is
+    guaranteed: woman/man is a steering pair and steering makes the two
+    vectors identical, so the analogy reduces to doctor's nearest neighbor.
+    A new paragraph after the plot tests a pair steering never saw:
+    king : queen :: doctor still gives nurse, lead over physician 0.17 → 0.05
+    (same at 10K and 50K; reproduced with the article's JS). `:366` says the
+    table's "after" column is each occupation's nearest neighbor. The
+    Discussion drops "surgical" and adds a paragraph: the direction must be
+    learned, can be a poor fit (describes the examples, or the concept isn't
+    linear), and the fit should be measured on held-out pairs; cites Gonen &
+    Goldberg (2019) and Wang et al. (2020). The old sentence on the linear
+    assumption was folded into that paragraph. Belrose et al. (2023, LEACE)
+    added as a pointer next to Ravfogel et al. All three added to References.
+  - [ ] Still open: the `:324` paragraph still describes truncation as
+    focusing on the dominant directions (left as is per timv). The explorer's
+    `~` steering is full rank for ≤ 10 pairs, so the user's pairs become
+    identical; not disclosed in the explorer help.
 
 - [ ] **Arrow anchors and analogy query points are part of the MDS input.**
   `buildFromDSL` (`index.html:845`) adds two synthetic anchor points per
@@ -123,6 +142,45 @@ yet. Smoke tests: 35/35 pass.
   "% explained". Harmless in theory for Euclidean distances, but unchecked.
   Proposal: get the sign from uᵀBu (or use a symmetric eigensolver) and fail
   loudly if a negative eigenvalue is larger than rounding error.
+
+### For after launch: does the gender direction generalize? (2026-11-18)
+
+timv decided not to solve this before launch (see the k item). Findings, all
+at 50K, input words excluded. Steering pairs = the 10 GENDER_PAIRS; held-out
+pairs = the 11 GENDERED_WORDS pairs not among them (queen/king, actress/actor,
+mom/dad, mother/father, sister/brother, aunt/uncle, heiress/heir,
+duchess/duke, niece/nephew, madame/sir, feminine/masculine). The analysis
+scripts were in a session scratchpad, not the repo.
+
+- [ ] **Held-out gender direction** (top eigenvector of the 11 held-out pair
+  differences; cos 0.72 with the top steering direction). Occupation spread
+  along it (mean |score − mean| over 22 occupations): 0.165 before, 0.059 /
+  0.049 / 0.047 at k = 1 / 3 / 10. A random direction gives 0.065. The order
+  of occupations survives: rank correlation with before 0.76 / 0.66 / 0.69;
+  an unrelated direction gives about 0 (95th percentile 0.47).
+- [ ] **The top steering direction mixes in word frequency.** Masculine words
+  project at −0.4 to −0.5 on it, feminine words near 0; "the" projects at
+  −0.42, and the most-male-side words are sports terms (defensive, tackle,
+  nfl). female/male has no component on it. Matches Wang et al. (2020).
+- [ ] **The "Which Words Changed Most?" chart is misleading.** It ranks words
+  by distance moved, which is their distance from the origin within the
+  removed subspace, not how gendered they are. At k = 1, manager moves most
+  (0.51) and mother barely moves (0.03). The text says "Words with large
+  shifts had a large gender component."
+- [ ] **The occupation table is mostly near-ties.** Most answers are plurals
+  or near-synonyms (bosses, programmers, researcher, student) that win by
+  0.01–0.05. Only doctor → nurse and homemaker → housewife are clearly
+  gendered.
+- [ ] **More pairs help; the leftover is linear.** Adding 45 gendered pairs
+  (55 total; 5 more were dropped as missing from 50K: policewoman/policeman,
+  lass/lad, landlady/landlord, womanhood/manhood, gals/guys), k = 1: cos with
+  the held-out direction 0.72 → 0.91, occupation spread 0.028, "the" moves
+  0.29 instead of 0.42. Classifiers trained on the 55 pairs' words, tested on
+  the 22 held-out words (chance 11): after steering with the article's 10
+  pairs, logistic regression gets 22 (k = 1) and 21 (k = 10); with 55 pairs
+  at k = 1 it gets 12, RBF SVM 12, 5-NN 10. king : queen :: doctor still
+  gives nurse in every setting (lead 0.06 with 55 pairs). Caveats: one
+  split, 22 test words, pairs chosen by Claude.
 
 ### Live-site bugs
 

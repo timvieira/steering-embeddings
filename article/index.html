@@ -356,14 +356,16 @@
   <div class="plot-container" id="plot-doctor-before"></div>
   <div class="eigen-margin" id="eigen-doctor-before"></div>
 </div>
-<p>After removing the gender subspace, the analogy no longer finds a gendered counterpart. Both man&rarr;woman and woman&rarr;man yield "physician":</p>
+<p>After steering, both man&rarr;woman and woman&rarr;man yield "physician." But this result is guaranteed: woman/man is one of the pairs we used to find the subspace, and steering makes $\overrightarrow{\text{woman}}$ and $\overrightarrow{\text{man}}$ identical, so the analogy reduces to doctor's nearest neighbor:</p>
 
 <div class="figure-row l-body-outset">
   <div class="plot-container" id="plot-doctor-after"></div>
   <div class="eigen-margin" id="eigen-doctor-after"></div>
 </div>
 
-<p>The doctor example is not an isolated case. The table below runs the same analogy&mdash;man : woman :: <em>occupation</em>&mdash;across several professions, before and after steering:</p>
+<p>A fairer test uses a pair that steering never saw. There, gender survives: king : queen :: doctor still yields "nurse," though its lead over physician shrinks from 0.17 to 0.05.</p>
+
+<p>The table below runs man : woman :: <em>occupation</em> across several professions, before and after steering. For the same reason, the "after" column is just each occupation's nearest neighbor:</p>
 
 <div id="analogy-table" style="margin-bottom: 1.5em;"></div>
 
@@ -378,11 +380,13 @@
 
 <h2>Discussion</h2>
 
-<p>Subspace projection is a surgical intervention: it removes a specific, interpretable direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
+<p>Subspace projection removes a specific, interpretable direction from the embedding space while leaving everything else largely intact. But it has limitations worth noting.</p>
 
-<p>Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations. Projecting out a subspace also assumes the concept lives in a linear subspace, which is an approximation; real-world concepts may have nonlinear structure that a flat projection can't fully capture.</p>
+<p>Projecting out a subspace discards information indiscriminately: if some gender-correlated information is genuinely useful for a downstream task&mdash;distinguishing "actress" from "actor," for example&mdash;it will be lost along with the unwanted stereotypical associations.</p>
 
-<p>More recent work has explored alternatives: <a href="https://aclanthology.org/D18-1521/">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://aclanthology.org/2020.acl-main.647/">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational. The same linear structure that makes analogies possible also makes steering possible: the geometry that encodes meaning is the geometry we can edit.</p>
+<p>Steering is only as good as the direction it removes, and that direction has to be learned from examples. It can be a poor fit: it may describe the example pairs rather than the concept, or the concept may not be linearly encoded at all, in which case no single direction captures it. Either way, the fit should be measured, for example by testing the direction on pairs that weren't used to learn it. Ours only partly passes: steering weakens gender in words it never saw but doesn't remove it, as the king : queen :: doctor example shows. <a href="https://aclanthology.org/N19-1061/">Gonen &amp; Goldberg (2019)</a> found the same for debiasing methods generally, and <a href="https://aclanthology.org/2020.acl-main.484/">Wang et al. (2020)</a> showed that word frequency distorts the learned direction.</p>
+
+<p>More recent work has explored alternatives: <a href="https://aclanthology.org/D18-1521/">Zhao et al. (2018)</a> proposed learning gender-neutral embeddings during training rather than correcting them post-hoc, and <a href="https://aclanthology.org/2020.acl-main.647/">Ravfogel et al. (2020)</a> proposed iteratively projecting out every direction a classifier can exploit, removing a concept more thoroughly than a single projection. <a href="https://proceedings.neurips.cc/paper_files/paper/2023/hash/d066d21c619d0a78c5b557fa3291a8f4-Abstract.html">Belrose et al. (2023)</a> do this in closed form, provably preventing any linear classifier from detecting the concept while changing the embeddings as little as possible. These methods address some of the limitations here, but the core idea&mdash;that embeddings contain interpretable subspaces we can identify and manipulate&mdash;remains foundational. The same linear structure that makes analogies possible also makes steering possible: the geometry that encodes meaning is the geometry we can edit.</p>
 
 <h2>Explore</h2>
 
@@ -417,14 +421,17 @@ scientist
 
 <h2>References</h2>
 <ol class="references">
+  <li>Belrose, N., Schneider-Joseph, D., Ravfogel, S., Cotterell, R., Raff, E., & Biderman, S. (2023). <a href="https://proceedings.neurips.cc/paper_files/paper/2023/hash/d066d21c619d0a78c5b557fa3291a8f4-Abstract.html">LEACE: Perfect linear concept erasure in closed form</a>. In <em>NeurIPS</em>.</li>
   <li>Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V., & Kalai, A. (2016). <a href="https://proceedings.neurips.cc/paper/2016/hash/a486cd07e4ac3d270571622f4f316ec5-Abstract.html">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</a>. In <em>NeurIPS</em>.</li>
   <li>Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). <a href="https://aclanthology.org/N19-1423/">BERT: Pre-training of deep bidirectional transformers for language understanding</a>. In <em>NAACL</em>.</li>
+  <li>Gonen, H., & Goldberg, Y. (2019). <a href="https://aclanthology.org/N19-1061/">Lipstick on a pig: Debiasing methods cover up systematic gender biases in word embeddings but do not remove them</a>. In <em>NAACL</em>.</li>
   <li>Harris, Z. S. (1954). <a href="https://doi.org/10.1080/00437956.1954.11659520">Distributional structure</a>. <em>Word</em>, 10(2-3), 146-162.</li>
   <li>Linzen, T. (2016). <a href="https://aclanthology.org/W16-2503/">Issues in evaluating semantic spaces using word analogies</a>. In <em>RepEval Workshop</em>.</li>
   <li>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013). <a href="https://arxiv.org/abs/1301.3781">Efficient estimation of word representations in vector space</a>. <em>arXiv:1301.3781</em>.</li>
   <li>Nissim, M., van Noord, R., & van der Goot, R. (2020). <a href="https://aclanthology.org/2020.cl-2.7/">Fair is better than sensational: Man is to doctor as woman is to doctor</a>. <em>Computational Linguistics</em>, 46(2), 487-497.</li>
   <li>Pennington, J., Socher, R., & Manning, C. D. (2014). <a href="https://aclanthology.org/D14-1162/">GloVe: Global vectors for word representation</a>. In <em>EMNLP</em>.</li>
   <li>Ravfogel, S., Elazar, Y., Gonen, H., Twiton, M., & Goldberg, Y. (2020). <a href="https://aclanthology.org/2020.acl-main.647/">Null it out: Guarding protected attributes by iterative nullspace projection</a>. In <em>ACL</em>.</li>
+  <li>Wang, T., Lin, X. V., Rajani, N. F., McCann, B., Ordonez, V., & Xiong, C. (2020). <a href="https://aclanthology.org/2020.acl-main.484/">Double-hard debias: Tailoring word embeddings for gender bias mitigation</a>. In <em>ACL</em>.</li>
   <li>Zhao, J., Zhou, Y., Li, Z., Wang, W., & Chang, K.-W. (2018). <a href="https://aclanthology.org/D18-1521/">Learning gender-neutral word embeddings</a>. In <em>EMNLP</em>.</li>
 </ol>
 
