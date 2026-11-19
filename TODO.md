@@ -3,11 +3,11 @@
 Numbers below were computed on the 50K vocabulary with a one-off Python
 script that mirrors `embeddings.js` (unit-normalized vectors,
 query = normalize(b − a + c), cosine top-n). The script is not in the repo
-yet. Smoke tests: 35/35 pass.
+yet. Smoke tests: 35/35 passed then (39/39 as of 2026-11-18).
 
 ### Needs a decision from timv (undisclosed choices that change results)
 
-- [ ] **Analogies exclude the three input words.** `embeddings.js:88` passes
+- [x] **Analogies exclude the three input words.** `embeddings.js:88` passes
   `new Set([a, b, c])` to `mostSimilar`. With the inputs kept, the top answer
   for man : woman :: X is X itself for every occupation in the table (doctor,
   programmer, boss, scientist, nurse, teacher, homemaker, assistant) and for
@@ -123,7 +123,7 @@ yet. Smoke tests: 35/35 pass.
   Options: fit MDS on the words only and place the arrow afterwards, or
   disclose it in the text.
 
-- [ ] **Missing words are dropped silently in the article plots.**
+- [x] **Missing words are dropped silently in the article plots.**
   `buildFromDSL` filters out-of-vocabulary words, pairs and analogies with no
   warning (`warnMissing` is only called from `flatWords`, which only the
   subspace animation uses). It also does `if (!dirVec) continue` and returns
@@ -133,8 +133,18 @@ yet. Smoke tests: 35/35 pass.
   DSL constants and JS word lists: nothing missing at 50K.) The 10K file is
   the top 10K words plus 27 must-have words. The explorer does show "not
   found" visibly. Options: show a note on the plot, or fail loudly.
+  - Done (2026-11-19, timv chose the note). `noteMissing()` in `index.html`
+    puts a line under any plot, table or chart that leaves a word out: "Not
+    among the 10K words, so left out of this plot: miniature. Any pair or
+    analogy that uses it is left out too." It covers every `buildFromDSL`
+    plot (display words, steering pairs, analogies, direction pairs), the
+    hero, the subspace animation, the occupation table and the bar chart,
+    and also logs to the console. `steer()` now throws on a missing pair word
+    or K > number of pairs instead of skipping; `init` shows that error in
+    the loading overlay. Neither fires with the shipped vocabularies. Tests:
+    no notes at 50K; at 10K exactly one, on the size plot, naming miniature.
 
-- [ ] **MDS can't detect negative eigenvalues.** `mds()` (`embeddings.js:193`)
+- [x] **MDS can't detect negative eigenvalues.** `mds()` (`embeddings.js:193`)
   takes the SVD of the double-centered matrix B and treats singular values as
   eigenvalues. Singular values are never negative, so the `Math.max(0, ·)`
   guards (`embeddings.js:237`, `viz.js:46`, `viz.js:1215`) never fire, and a
@@ -142,6 +152,13 @@ yet. Smoke tests: 35/35 pass.
   "% explained". Harmless in theory for Euclidean distances, but unchecked.
   Proposal: get the sign from uᵀBu (or use a symmetric eigensolver) and fail
   loudly if a negative eigenvalue is larger than rounding error.
+  - Not needed (2026-11-19, timv's point): every MDS input here is Euclidean
+    distances between real vectors (words, steered words, synthetic anchors,
+    query points), so B = X_c X_cᵀ is PSD and its eigenvalues can't be
+    negative in exact arithmetic. Only rounding-size negatives are possible,
+    and those come back as rounding-size positives, which changes nothing.
+    It would matter only if non-Euclidean distances (e.g. cosine) were ever
+    passed in.
 
 ### For after launch: does the gender direction generalize? (2026-11-18)
 
@@ -198,24 +215,51 @@ scripts were in a session scratchpad, not the repo.
   - Fixed: now `$i$<sup>th</sup>` (the convention from timv's
     conditional-poisson-sampling memory); CLAUDE.md updated to match.
     `testMathRendering` now also fails if any prose shows a raw `$`.
-- [ ] **400K button returns 404.** `glove-large.bin` is gitignored, and at
+- [x] **400K button returns 404.** `glove-large.bin` is gitignored, and at
   157 MB it's over GitHub's 100 MB file limit. Remove the button or host the
   file elsewhere.
-- [ ] **Phone layout (checked at 390 px):**
-  - The page scrolls sideways (scrollWidth 610 px). The profession bar chart
-    has a fixed width (~590 px, `index.html:1251`); display equations may
-    also overflow (no `overflow-x` on `.katex-display`).
-  - The eigenvalue bars sit on top of plot points.
+  - Fixed (2026-11-19): removed both 400K buttons and the `large` entry in
+    `SIZES`. CLAUDE.md says the 400K file is local-only. Test: no
+    `data-size="large"` element.
+- [x] **Phone layout (checked at 390 px):**
+  - [x] The page scrolled sideways (scrollWidth 610 px). Fixed: the occupation
+    bar chart fits its container (22 px columns on desktop, 13 px on a phone,
+    with vertical labels when columns are under 18 px); display equations
+    scroll inside their own box (`.katex-display { overflow-x: auto }`) and use
+    1em math under 600 px. scrollWidth is now 390.
+  - [x] The eigenvalue bars sat on top of plot points (4 plots). Fixed: under
+    768 px they sit below the plot, right-aligned.
   - [x] The hero was blurry on high-DPI screens.
     - Fixed: added `renderer.setPixelRatio(window.devicePixelRatio)` in
       `renderHero3D`. Checked in headless Chrome: at 390 px @2x the canvas now
       renders at 708×1000 for a 354×500 area; desktop @1x is unchanged.
-  - The hero still cuts off words at the edges. Its legend is hidden on narrow
-    screens, so it has no explanation there.
-  - Justified text leaves large gaps between words on narrow screens.
-- [ ] **`lsi.html` is deployed but unlinked and unstyled.** It loads
+  - [x] The hero cut off words at the edges, and its legend was hidden on
+    narrow screens. Fixed for canvases under 600 px: `renderHero3D` searches
+    for the closest camera distance at which every dot and label (measured
+    text width) stays inside the canvas at all 72 sampled orbit angles, and
+    scales labels with distance to 0.8× their desktop on-screen size. The
+    phone canvas is 0.8× as tall as wide (was 354×500). The legend now shows
+    as a block above the hero. Desktop framing is unchanged.
+  - [x] Justified text left large gaps on narrow screens. Fixed: `p` and `li`
+    are left-aligned under 600 px.
+  - [x] The loading overlay's vocabulary buttons ran off-screen. Fixed: the
+    progress bar is `min(300px, 80vw)` and the buttons wrap.
+  - Tests: a 390 px page checks for no sideways scroll and no eigenvalue bars
+    over plot points.
+  - [ ] Still open: the steering equation (`index.html:344`) is wider than a
+    phone, so readers scroll it sideways inside its box. Splitting it at
+    "where" would fit. Because the hero has to fit every orbit angle, the
+    cloud fills only ~60% of the phone canvas width.
+  - [ ] Seen on desktop (1400 px, pre-existing, not changed): the hero clips
+    labels at the top at some angles, and the hero legend's right edge runs
+    ~30 px past the window.
+- [x] **`lsi.html` is deployed but unlinked and unstyled.** It loads
   `css/blog.css`, which returns a 404 on Pages. Remove it from the deploy, or
   fix the CSS path and link it.
+  - Fixed (2026-11-19, timv: remove from deploy): a step in
+    `.github/workflows/deploy.yml` deletes `article/lsi.html` and
+    `article/js/lsi.js` before upload. Both stay in the repo and work under
+    `blog dev`. Noted in CLAUDE.md.
 - [ ] Remove the draft banner (last step before launch).
 - [ ] **The loading overlay hides the whole article until the vectors
   arrive.** `#loading-overlay` is a fixed full-screen layer, so readers can't
@@ -260,7 +304,9 @@ scripts were in a session scratchpad, not the repo.
 - [ ] Test gaps: nothing covers phone width, vocabulary switching, steering
   results, the 400K button, or the hardcoded prose claims. (The prose claims
   hold at both 10K and 50K: king → queen, doctor → nurse, and doctor →
-  physician after steering.)
+  physician after steering. Added 2026-11-18: king : queen :: doctor gives
+  nurse after steering, lead over physician 0.17 → 0.05.) Merged here: a
+  duplicate entry saying the same thing.
 - [x] References: BERT was cited as arXiv:1810.04805, but it was published at
   NAACL 2019.
   - Fixed: the References entry now says "In *NAACL*", and both BERT links
@@ -271,8 +317,9 @@ scripts were in a session scratchpad, not the repo.
     (2020.acl-main.647) now link to the ACL Anthology, and Bolukbasi et al.
     to the NeurIPS proceedings. Mikolov et al. (arXiv only) and Harris (DOI)
     are unchanged; the "GloVe" name still links to the project page.
-- [ ] If the input-word exclusion gets discussed, add Nissim et al. (2020,
+- [x] If the input-word exclusion gets discussed, add Nissim et al. (2020,
   *Computational Linguistics*) to the references.
+  - Done with the exclusion disclosure (2026-11-02).
 - [ ] The co-occurrence figure is taken from the CS224U slides and linked as
   the source. Check whether reusing it is fine, or redraw it.
 - [ ] No social-preview metadata (`og:title`, `og:image`) and no publication
@@ -285,8 +332,9 @@ scripts were in a session scratchpad, not the repo.
   woman−man vs she−he 0.64, woman−man vs queen−king 0.44, she−he vs
   queen−king 0.58. Random word-pair differences (top 20K words, 5000 draws):
   mean 0.00, 99th percentile 0.31. Consider putting these numbers in the text.
-- [ ] **Stale entries below** (each checked against the current code; not yet
-  edited):
+- [x] **Stale entries below** (each checked against the current code).
+  - Done (2026-11-19): each entry now has a dated "Update" note in place
+    saying what is true now; the DSL spec has one note at its top.
   - Questions / aspect ratio: "See checklist below". There is no such
     checklist.
   - Questions / truncation: wrong answer (correction added in place).
@@ -325,8 +373,6 @@ scripts were in a session scratchpad, not the repo.
     steering" spec has a `~` line, but the code passes `emb: steered`.
   - Plot DSL / "Add syntax help to the explorer": partly done. The article
     lists `word - word`, `?` and `>`, but not `~` or `=`.
-- [ ] Smoke tests don't check the prose claims (nurse, physician, the table),
-  which are hardcoded while the results are computed live.
 
 ## Questions:
 
@@ -341,6 +387,7 @@ scripts were in a session scratchpad, not the repo.
 
 - [x] should we set the aspect ratio to be more equal?  does that make any sense?
   - Yes. Equal aspect (1 data-unit = same pixels on both axes) is correct for MDS since it preserves distances. Implemented as default for all plots. See checklist below.
+  - Update (2026-11-19): there is no checklist below; equal aspect is the default in the D3 plots.
 
 - should we try to quantify how much of the variance is accounted for in
   directions and sterring moves?  (would putting an uncertainty cone around an
@@ -419,24 +466,29 @@ scripts were in a session scratchpad, not the repo.
 
 - [x] Animated steering transition (play button, words slide from original to steered with trails)
   - Added `renderSteering2D` in viz.js. Computes joint MDS over original+steered positions, then D3 transitions animate words from original to steered with ghost dots and trails. Steer/Reset buttons. Replaces the two separate before/after gendered pair plots.
+  - Update (2026-11-19): `renderSteering2D` is no longer called; `SteeringViz` replaced it (see "Dead code" under Pre-launch review).
 
 - [x] Build-your-own word groups explorer (text area → instant MDS plot)
   - Added "Explore" section at bottom with textarea and MDS viz. Live update on input (debounced 500ms).
   - `word - word` syntax defines steering pairs; Steer button appears when pairs are present.
   - Words on a line connected by arrows. Ghost arrows + ghost dots show original positions during steering.
   - Click-to-expand, pan/zoom, dimension switching all work.
+  - Update (2026-11-19): click-to-expand is disabled now (the handler is a stub); pan/zoom and dimension switching still work.
 
 - [x] Draw the parallelogram in analogy visualizations: show a→b and c→answer
   as parallel arrows to make the vector arithmetic visible.
   - Added dashed crossGroupLines connecting a→c and b→answer in buildAnalogyViz.
+  - Update (2026-11-19): `buildAnalogyViz` was removed in the DSL refactor; analogy plots are built by `buildFromDSL`.
 
 - [x] Make the eigenvalue bars more discoverable — add a tooltip or small
   "click to change dimensions" hint on first appearance.
   - Added SVG tooltip explaining eigenvalues and click-to-switch. Added one-time "click bars to change dimensions" hint that fades out after 4s.
+  - Update (2026-11-19): the fading hint is gone; only the hover tooltip remains ("Click to switch dimensions").
 
 - [x] Replace the plain `<ol>` profession ranking with a horizontal bar chart
   showing shift magnitude, consistent with the rest of the visual style.
   - D3 horizontal bar chart with orange bars, word labels on left, shift values on right.
+  - Update (2026-11-19): it's now vertical steel-blue bars with rotated labels; values appear only on hover.
 
 
 ## Content
@@ -450,6 +502,7 @@ scripts were in a session scratchpad, not the repo.
     eigendecomposition, coordinate extraction) and subspace identification
     (difference vectors, second moment matrix, SVD). Includes
     dimensionality/rank discussion and centering explanation.
+  - Update (2026-11-19): the step-by-step MDS derivation was later replaced by a short classical-MDS paragraph with no derivation.
 
 - [x] adjust the explanation to indicate that there are other ways one might
   come up with embeddings for words that are not based on co-occurence
@@ -466,12 +519,14 @@ scripts were in a session scratchpad, not the repo.
 - [x] Add intuition for *why* analogies work — connect the log-bilinear GloVe
   objective to the linearity of the resulting space.
   - Added paragraph after the analogy formula connecting log co-occurrence ratios to vector offsets.
+  - Update (2026-11-19): that paragraph is gone; the current text doesn't mention co-occurrence ratios.
 
 - [x] Add a concluding section after Results: discuss what the results mean,
   limitations (projecting out gender may damage useful information), and
   connections to more recent debiasing work.
   - Added Discussion section covering limitations and citing Zhao et al. and Ravfogel et al. (INLP).
   - Fixed: Zhao et al. and Ravfogel et al. were plain text — converted to proper dt-cite with bibliography entries.
+  - Update (2026-11-19): Distill is gone; citations are inline links with a plain References list.
 
 - [x] Expand the "Identifying Subspaces" section with a worked example: show
   2-3 gender pair difference vectors pointing in roughly the same direction
@@ -492,6 +547,12 @@ scripts were in a session scratchpad, not the repo.
 - [x] Implement the plot DSL: a plain-text specification language that can generate every static plot in
 the article and serve as the explorer's input format.
   - Added `parseDSL`, `computeDirectionVec`, `buildFromDSL` functions. All 11 article plots converted to DSL string constants. Edit button (✎) on each plot for live DSL editing. Removed `buildVizWithDirection` and `buildAnalogyViz`.
+
+Update (2026-11-19): the spec below differs from the code in three places. The
+code uses `= connect`, not `= link`. `~ steer: ...` isn't supported: a label
+makes the first pair parse as a word, which is then dropped (see Pre-launch
+review). The "Doctor after steering" spec has a `~` line, but the code passes
+`emb: steered` instead.
 
 ### Primitives
 
@@ -731,6 +792,7 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
    - Subtle pencil icon in top-right of figure-row, visible on hover. Toggles a textarea with the DSL, live re-rendering on change (debounced 500ms).
 
 - [ ] Add syntax help to the explorer (tooltip or collapsible reference).
+  - Partly done (checked 2026-11-19): the article lists `word - word`, `?` and `>` above the explorer, but not `~` or `=`.
 
 
 ## AWESOMENESS
@@ -784,6 +846,7 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
 
 - [x] Fix plot horizontal alignment with Distill column
   - Used Distill's `l-body-outset` class + 48px left margin to align plots with text.
+  - Update (2026-11-19): Distill is gone; `l-body-outset` is custom CSS in `index.html`.
 
 - [x] Pan + zoom on all 2D and 1D plots
   - Added d3.zoom to all SVG plots (render2D, render1D, renderSteering2D). Scroll to zoom (0.5x-5x), drag background to pan. Zoom filter excludes clicks on circles/text so click-to-expand still works.
@@ -792,6 +855,7 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
   - 2D: D3 click handlers on circles and text labels.
   - 3D: Three.js raycasting on sphere meshes with drag-vs-click detection.
   - 1D: D3 click handlers on circles and text labels with stopPropagation.
+  - Update (2026-11-19): click-to-expand is disabled, and the 3D part (raycasting, spheres) belonged to the dead `render3D`. This also applies to the two entries below.
 
   - [x] Expanded neighbors persist across dimension switches.
 
@@ -805,9 +869,11 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
 
 - [x] Larger 3D text labels
   - Doubled canvas size (512x128) and font size (48px bold) for Three.js sprite labels.
+  - Update (2026-11-19, also for auto-orbit above): inline 3D is D3 SVG now; Three.js is only used for the hero.
 
 - [x] Default to 50K vocabulary
   - Changed default from small (10K) to medium (50K). 10K was missing too many words (superlatives, gendered pairs).
+  - Update (2026-11-19): no longer true; the 10K file adds must-have words, and only "miniature" is missing at 10K.
 
 - [x] Remove blog.css cache-buster script from index.html before deploying to production.
 
@@ -837,10 +903,12 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
 - [x] Clean up the "Large (400K)" vocab option — buttons are commented out in
   HTML but config and data file exist. Either enable it or remove the dead code.
   - Enabled: added Large (400K) buttons to both loading and inline vocab selectors.
+  - Update (2026-11-19): it only worked locally (the file is gitignored and returned 404 live); see "400K button returns 404" under Pre-launch review.
 
 - [x] Tighten the opening paragraph — lead with something more concrete or
   surprising rather than the dictionary-definition style.
   - Replaced dictionary/embedding parallel with concrete example: "queen" is closer to "king" than "bicycle" — leads with the payoff.
+  - Update (2026-11-19): the article is back to the dictionary paragraph (commit 2003639).
 
 - [x] Add context to the hero visualization — readers land on trails and colored
   dots before they know what embeddings or steering are.
@@ -884,6 +952,8 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
       dropped the confusing "two observations with one degree of freedom" explanation
 - [x] Analogy explanation — restored bias terms, rewrote as bias cancellation in differences
       yielding log co-occurrence ratios
+  - Update (2026-11-19): the current text has neither the bias-cancellation argument nor log
+    co-occurrence ratios (also true of "Add intuition for *why* analogies work" under Content).
 
 ### Medium
 
@@ -927,6 +997,7 @@ caretaker homemaker doctor nurse programmer teacher wife husband soldier salespe
 - [x] Acknowledgements should be references.
 
   - Converted to dt-cite references in dt-appendix.
+  - Update (2026-11-19): Distill is gone; there's a plain References list and an Acknowledgments section.
 
 - [x] Acknowledge David Mueller https://damueller.com who co-wrote a homework assignment about word embeddings for a machine learning course at JHU.
 

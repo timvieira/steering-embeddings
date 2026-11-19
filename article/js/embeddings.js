@@ -109,14 +109,15 @@ class Embeddings {
 
   // Steer (debias) embeddings by projecting out a subspace.
   // pairs: array of [word1, word2] pairs defining the subspace
-  // K: number of dimensions to project out
+  // K: number of dimensions to project out. The scatter matrix has rank at most
+  //    pairs.length, so K must not exceed it (further eigenvectors would be arbitrary).
+  // Throws if a pair word is not in the vocabulary, rather than skipping the pair:
+  // callers filter missing words and report them on the page first.
   steer(pairs, K = 10) {
-    // Collect the pair vectors
-    const pairVecs = [];
-    for (const [w1, w2] of pairs) {
-      const v1 = this.vec(w1), v2 = this.vec(w2);
-      if (v1 && v2) pairVecs.push([v1, v2]);
-    }
+    const missing = pairs.flat().filter(w => !this.has(w));
+    if (missing.length > 0) throw new Error(`steer: not in vocabulary: ${missing.join(', ')}`);
+    if (K > pairs.length) throw new Error(`steer: K = ${K} exceeds the number of pairs (${pairs.length})`);
+    const pairVecs = pairs.map(([w1, w2]) => [this.vec(w1), this.vec(w2)]);
 
     // Compute covariance matrix: sum of np.cov for each pair.
     // For a pair [v1, v2], np.cov gives the outer product of the

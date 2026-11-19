@@ -1145,6 +1145,60 @@ function renderHero3D(container, wordData, options = {}) {
   const maxAbs = Math.max(...allCoords.map(Math.abs)) || 1;
   const scale = 2 / maxAbs;
 
+  // Camera distance and label size. Wide canvases keep the original framing. On a
+  // narrow canvas (phones) the default camera cuts off words at the sides, so find the
+  // closest distance at which every word and its label stays in frame at every orbit
+  // angle, and grow the labels with the distance so their on-screen size stays at
+  // 0.8x the desktop size.
+  const DEFAULT_DIST = Math.hypot(2, 1.3, 2);
+  let camDist = DEFAULT_DIST, labelScale = 1;
+  if (width < 600) {
+    const k = 0.8 * (500 / height) / DEFAULT_DIST;   // label scale per unit of distance
+    const toVec = c => new THREE.Vector3(c[0] * scale, c[1] * scale, c[2] * scale);
+    const dots = wordData.flatMap(d => [toVec(d.origCoord), toVec(d.steeredCoord)]);
+    // Each label's text half-width, as a fraction of its sprite's width (the sprite is
+    // a 512px canvas with the word drawn centered in bold 44px).
+    const measure = document.createElement('canvas').getContext('2d');
+    measure.font = 'bold 44px sans-serif';
+    const labels = wordData.map(d => ({ pos: toVec(d.steeredCoord), half: measure.measureText(d.word).width / 512 / 2 }));
+    const elev = Math.atan2(1.3, Math.hypot(2, 2));
+    const probe = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.1, 100);
+    const v = new THREE.Vector3(), right = new THREE.Vector3();
+    const fits = (D) => {
+      const ls = Math.max(1, k * D);
+      for (let a = 0; a < 72; a++) {
+        const th = (a / 72) * 2 * Math.PI;
+        probe.position.set(D * Math.cos(elev) * Math.sin(th), D * Math.sin(elev), D * Math.cos(elev) * Math.cos(th));
+        probe.lookAt(0, 0, 0);
+        probe.updateMatrixWorld();
+        right.set(Math.cos(th), 0, -Math.sin(th));
+        for (const p of dots) {
+          v.copy(p).project(probe);
+          if (Math.abs(v.x) > 0.97 || Math.abs(v.y) > 0.97) return false;
+        }
+        // Both ends of each label's text, at the top of the label (it sits 0.14 * ls above its dot).
+        for (const { pos, half } of labels) {
+          for (const sgn of [1, -1]) {
+            v.copy(pos).addScaledVector(right, sgn * half * 0.7 * ls);
+            v.y += (0.14 + 0.06) * ls;
+            v.project(probe);
+            if (Math.abs(v.x) > 0.97 || Math.abs(v.y) > 0.97) return false;
+          }
+        }
+      }
+      return true;
+    };
+    if (!fits(30)) throw new Error(`renderHero3D: words don't fit a ${width}x${height} canvas`);
+    let lo = DEFAULT_DIST, hi = 30;
+    if (fits(lo)) hi = lo;
+    for (let i = 0; i < 25 && hi - lo > 0.01; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) hi = mid; else lo = mid;
+    }
+    camDist = hi;
+    labelScale = Math.max(1, k * camDist);
+  }
+
   // Group colors
   const groupNames = [...new Set(wordData.map(d => d.group))];
   const groupPalette = ['#4a6a8a', '#5e8c61', '#8a6d94', '#b05c5c', '#6a9e9e', '#8b7355'];
@@ -1188,12 +1242,13 @@ function renderHero3D(container, wordData, options = {}) {
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMat = new THREE.SpriteMaterial({ map: texture });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.position.set(sx[0], sx[1] + 0.14, sx[2]);
-    sprite.scale.set(0.7, 0.175, 1);
+    sprite.position.set(sx[0], sx[1] + 0.14 * labelScale, sx[2]);
+    sprite.scale.set(0.7 * labelScale, 0.175 * labelScale, 1);
     scene.add(sprite);
   }
 
-  camera.position.set(2, 1.3, 2);
+  const f = camDist / DEFAULT_DIST;
+  camera.position.set(2 * f, 1.3 * f, 2 * f);
   camera.lookAt(0, 0, 0);
 
   let animId = null;

@@ -45,8 +45,21 @@
   .figure-row .plot-container { margin-left: 48px; }
   .figure-row .eigen-margin { position: absolute; right: 6px; bottom: 6px; z-index: 10; }
   @media (max-width: 768px) { .figure-row .plot-container { margin-left: 0; } }
+  /* On narrow screens the eigenvalue bars go below the plot instead of covering its points */
+  @media (max-width: 768px) { .figure-row .eigen-margin { position: static; display: flex; justify-content: flex-end; margin-top: 2px; } }
+
+  /* Wide display equations scroll within their own box instead of widening the page */
+  .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+  @media (max-width: 600px) {
+    .katex-display > .katex { font-size: 1em; }
+    /* Justified text leaves large gaps between words in a narrow column */
+    p, li { text-align: left; }
+  }
 
   .variance-caption { font-size: 12px; color: #999; margin-bottom: 4px; }
+  .missing-words { font-size: 13px; color: #a15c00; margin: 2px 0 10px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .missing-words.in-figure { margin-left: 48px; }
+  @media (max-width: 768px) { .missing-words.in-figure { margin-left: 0; } }
 
   /* === Loading overlay === */
   .progress-overlay {
@@ -57,7 +70,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   .progress-overlay.hidden { opacity: 0; pointer-events: none; }
-  .progress-bar { width: 300px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .progress-bar { width: min(300px, 80vw); height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
   .progress-bar .fill { height: 100%; background: #5778a4; width: 0%; transition: width 0.1s; }
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
 
@@ -65,6 +78,7 @@
   .vocab-selector { display: inline-flex; gap: 4px; background: rgba(0,0,0,0.04); border-radius: 4px; padding: 3px; }
   .vocab-selector button { border: none; background: none; padding: 4px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; color: #999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   .vocab-selector button.active { background: #5778a4; color: white; }
+  .progress-overlay .vocab-selector { flex-wrap: wrap; justify-content: center; max-width: 90vw; }
 
   .analogy-input { display: flex; gap: 8px; align-items: center; margin-top: 1em; margin-bottom: 1em; flex-wrap: wrap; }
   .analogy-input input { border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; font-size: 15px; width: 120px; font-family: inherit; }
@@ -146,8 +160,8 @@
       width: auto;
       margin: 0.5em 0;
     }
-    /* Hero legend doesn't work inline — hide on narrow screens */
-    .margin-note.hero-legend { display: none; }
+    /* Hero legend: a short block above the hero */
+    .margin-note.hero-legend { display: block; margin: 0 0 0.5em; }
     /* Numbered sidenotes: hide until clicked */
     .sidenote-number + .margin-note {
       display: none;
@@ -174,7 +188,6 @@
     <div class="vocab-selector" id="vocab-selector-loading">
       <button data-size="small">Small (10K, 4MB)</button>
       <button class="active" data-size="medium">Medium (50K, 20MB)</button>
-      <button data-size="large">Large (400K, 160MB)</button>
 
     </div>
   </div>
@@ -208,7 +221,6 @@
   <span class="vocab-selector" id="vocab-selector">
     <button data-size="small">10K</button>
     <button class="active" data-size="medium">50K</button>
-    <button data-size="large">400K</button>
 
   </span>
 </p>
@@ -448,8 +460,9 @@ const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSubspaceAn
 const SIZES = {
   small:  { url: 'data/glove-small.bin',  label: '10K words' },
   medium: { url: 'data/glove-medium.bin', label: '50K words' },
-  large:  { url: 'data/glove-large.bin',  label: '400K words' },
 };
+
+let vocabLabel = SIZES.medium.label;  // shown in missing-word notes
 
 let emb = null;
 let steered = null;
@@ -500,8 +513,16 @@ async function init(size = 'medium') {
     return;
   }
 
+  vocabLabel = SIZES[size].label;
   text.textContent = 'Computing steering vectors...';
-  steered = emb.steer(GENDER_PAIRS, 10);
+  try {
+    steered = emb.steer(GENDER_PAIRS, 10);
+  } catch (err) {
+    fill.style.background = '#d9534f';
+    text.innerHTML = `<span style="color:#d9534f">Can't steer with the ${SIZES[size].label}: ${err.message}</span>`;
+    console.error('Steering error:', err);
+    return;
+  }
 
   overlay.classList.add('hidden');
   buildVisualizations();
@@ -514,6 +535,25 @@ function warnMissing(words, label) {
     console.warn(`[${label}] Words not in vocabulary: ${missing.join(', ')}`);
   }
   return missing;
+}
+
+// Plots leave out words that aren't in the loaded vocabulary. Say so on the page,
+// right after the plot, instead of dropping them silently. Call this on every build:
+// it also removes the note left by an earlier build.
+function noteMissing(el, missing, what = 'plot') {
+  if (!el) return;
+  const key = el.id;
+  document.querySelectorAll(`.missing-words[data-for="${key}"]`).forEach(n => n.remove());
+  const unique = [...new Set(missing)];
+  if (unique.length === 0) return;
+  const anchor = el.closest('.figure-row') || el;
+  const note = document.createElement('div');
+  note.className = 'missing-words' + (anchor.classList.contains('figure-row') ? ' in-figure' : '');
+  note.dataset.for = key;
+  note.textContent = `Not among the ${vocabLabel}, so left out of this ${what}: ${unique.join(', ')}. ` +
+    `Any pair or analogy that uses ${unique.length === 1 ? 'it' : 'them'} is left out too.`;
+  anchor.after(note);
+  console.warn(`[${key}] Not among the ${vocabLabel}: ${unique.join(', ')}`);
 }
 
 function flatWords(groups, label = 'flatWords') {
@@ -699,6 +739,15 @@ function buildFromDSL(dslText, plotEl, eigenEl, options = {}) {
   const parsed = parseDSL(dslText);
   const { displayGroups, steerPairs, analogies, directions, connectGroups } = parsed;
   const d = embToUse.dims;
+
+  const dslWords = [
+    ...displayGroups.flat(),
+    ...steerPairs.flat(),
+    ...analogies.flatMap(({ a, b, c }) => [a, b, c]),
+    ...directions.flatMap(dir => dir.mode === 'pairs' ? dir.pairs.flat() : dir.words),
+  ];
+  noteMissing(typeof plotEl === 'string' ? document.getElementById(plotEl) : plotEl,
+              dslWords.filter(w => !embToUse.has(w)));
 
   // Collect all display words (preserving order, deduping)
   const seen = new Set();
@@ -1029,6 +1078,7 @@ function buildHero() {
   for (const w of PROFESSIONS) {
     addWord(w, 'profession');
   }
+  noteMissing(document.getElementById('hero-viz'), [...GENDERED_WORDS.flat(), ...PROFESSIONS].filter(w => !emb.has(w)));
 
   if (heroWords.length === 0) return;
 
@@ -1064,9 +1114,10 @@ function buildHero() {
     origCoord: coords[n + i],       // next n entries are original
   }));
 
+  const heroW = document.getElementById('hero-viz').clientWidth || 800;
   renderHero3D(document.getElementById('hero-viz'), wordData, {
-    width: document.getElementById('hero-viz').clientWidth || 800,
-    height: 500,
+    width: heroW,
+    height: heroW < 600 ? Math.round(0.8 * heroW) : 500,  // shorter on phones
   });
 }
 
@@ -1198,6 +1249,7 @@ function buildVisualizations() {
   // Subspace identification animation (keep as-is)
   const animPairDefs = GENDERED_WORDS.slice(0, 8);
   const animWords = flatWords(animPairDefs, 'subspace anim');
+  noteMissing(document.getElementById('plot-subspace-anim'), animPairDefs.flat().filter(w => !emb.has(w)));
   if (animWords.length >= 4) {
     const animMDS = computeAllMDS(emb, animWords);
     const animCoords = animMDS.coords[2];
@@ -1222,6 +1274,7 @@ function buildVisualizations() {
   // Occupation analogy table (keep as-is — HTML table, not a plot)
   const analogyOccupations = ['doctor','programmer','boss','scientist','nurse','teacher','homemaker','assistant'];
   const tableEl = document.getElementById('analogy-table');
+  noteMissing(tableEl, analogyOccupations.filter(w => !emb.has(w)), 'table');
   if (tableEl) {
     const rows = analogyOccupations
       .filter(w => emb.has(w) && steered.has(w))
@@ -1244,6 +1297,7 @@ function buildVisualizations() {
 
   // Profession ranking bar chart (keep as-is)
   const rankEl = document.getElementById('profession-ranking');
+  noteMissing(rankEl, PROFESSIONS.filter(w => !emb.has(w)), 'chart');
   const profs = PROFESSIONS.filter(w => emb.has(w) && steered.has(w));
   const ranked = profs.map(w => {
     const v1 = emb.vec(w), v2 = steered.vec(w);
@@ -1255,7 +1309,11 @@ function buildVisualizations() {
   rankEl.innerHTML = '';
   rankEl.style.textAlign = 'center';
   const maxShift = ranked[0]?.shift || 1;
-  const barColW = 22;
+  // Bar width fits the container (22px on desktop, narrower on phones).
+  const availW = rankEl.clientWidth || 600;
+  const barColW = Math.max(10, Math.min(22, Math.floor((availW - 20) / ranked.length)));
+  // Narrow bars: vertical labels, so neighbors don't overlap or run off the left edge.
+  const labelAngle = barColW >= 18 ? -45 : -90;
   const barMargin = { left: 10, right: 10, top: 5, bottom: 70 };
   const chartW = ranked.length * barColW + barMargin.left + barMargin.right;
   const chartH = 150;
@@ -1288,9 +1346,10 @@ function buildVisualizations() {
     .attr('text-anchor', 'end')
     .attr('font-size', '10px')
     .attr('fill', '#555')
+    .attr('dy', labelAngle === -90 ? '0.35em' : null)
     .attr('transform', (d, i) => {
       const x = i * barColW + (barColW - 3) / 2;
-      return `rotate(-45, ${x}, ${innerH + 6})`;
+      return `rotate(${labelAngle}, ${x}, ${innerH + 6})`;
     })
     .text(d => d.word);
 
@@ -1354,6 +1413,7 @@ function setupExplorer() {
     }
 
     if (allWords.length < 2) {
+      noteMissing(document.getElementById('plot-explorer'), []);
       status.innerHTML = `<span class="error">Need at least 2 words in vocabulary.</span>`;
       if (missing.length > 0) status.innerHTML += ` Not found: ${missing.join(', ')}`;
       return;

@@ -10,7 +10,7 @@ Uses GloVe embeddings, runs entirely in the browser.
 - `article/js/viz.js` — all visualization code: D3 plots (1D/2D/projected-3D), Three.js hero, steering animation
 - `article/css/style.css` — styles (mostly overridden by inline styles in index.html)
 - `blog.toml` — config for the `blog` dev server (no build step, serves article/ on port 8768)
-- `article/data/glove-{small,medium,large}.bin` — binary GloVe vectors (10K/50K/400K words)
+- `article/data/glove-{small,medium,large}.bin` — binary GloVe vectors (10K/50K/400K words). The article offers only 10K and 50K; the 400K file is local-only.
 - `article/export_vectors.py` — script to produce the binary files from raw GloVe
 - `article/test.mjs` — Puppeteer smoke tests
 - `TODO.md` — task tracking
@@ -51,7 +51,8 @@ The test suite loads the full 50K vocabulary and takes ~60s.
 GitHub Actions deploys `article/` to GitHub Pages on every push to `main`. No manual steps needed.
 
 - Site URL: `https://timvieira.github.io/steering-embeddings/`
-- `glove-small.bin` and `glove-medium.bin` are committed; `glove-large.bin` is gitignored (157M).
+- `glove-small.bin` and `glove-medium.bin` are committed; `glove-large.bin` is gitignored (157M), so the article has no 400K option.
+- `lsi.html` and `js/lsi.js` are removed from the deploy by a step in `.github/workflows/deploy.yml`; they still work under `blog dev`.
 - If `export_vectors.py` regenerates the bin files, commit the updated small/medium files.
 - CSS is loaded from `/blog/css/blog.css` (root-relative), which resolves on GitHub Pages since the blog is on the same domain. The `blog dev` server proxies `/blog/` to the blog repo locally.
 

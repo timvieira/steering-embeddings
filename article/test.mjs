@@ -548,6 +548,51 @@ async function testExplorer() {
     errorMsg.substring(0, 80));
 }
 
+async function testNo400K() {
+  const n = await page.evaluate(() => document.querySelectorAll('[data-size="large"]').length);
+  test('No 400K vocabulary button (file is not deployed)', n === 0, `${n} found`);
+}
+
+async function testPhoneLayout() {
+  // Fresh page at phone width: no sideways scroll, eigenvalue bars don't cover plot points,
+  // hero labels stay inside the canvas.
+  const p = await browser.newPage();
+  await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await p.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await p.waitForFunction(() => document.getElementById('loading-overlay')?.classList.contains('hidden'), { timeout: 90000 });
+  await new Promise(r => setTimeout(r, 2000));
+  const r = await p.evaluate(() => {
+    const overlaps = [];
+    for (const row of document.querySelectorAll('.figure-row')) {
+      const eig = row.querySelector('.eigen-margin');
+      if (!eig || !eig.firstElementChild) continue;
+      const er = eig.getBoundingClientRect();
+      const hit = [...row.querySelectorAll('.plot-container circle, .plot-container text')].some(el => {
+        const b = el.getBoundingClientRect();
+        return b.width > 0 && b.right > er.left && b.left < er.right && b.bottom > er.top && b.top < er.bottom;
+      });
+      if (hit) overlaps.push(row.querySelector('.plot-container')?.id);
+    }
+    return { vw: document.documentElement.clientWidth, sw: document.documentElement.scrollWidth, overlaps };
+  });
+  test('Phone: no sideways scroll', r.sw <= r.vw, `scrollWidth ${r.sw}, viewport ${r.vw}`);
+  test('Phone: eigenvalue bars do not cover plot points', r.overlaps.length === 0, r.overlaps.join(', '));
+  await p.close();
+}
+
+async function testMissingWordNotes() {
+  // Run last: switches the page to the 10K vocabulary.
+  const n50 = await page.evaluate(() => document.querySelectorAll('.missing-words').length);
+  test('No missing-word notes at 50K', n50 === 0, `${n50} notes`);
+  await page.click('#vocab-selector button[data-size="small"]');
+  await page.waitForFunction(() => document.getElementById('loading-overlay').classList.contains('hidden'), { timeout: 60000 });
+  await new Promise(r => setTimeout(r, 2000));
+  const notes = await page.evaluate(() =>
+    [...document.querySelectorAll('.missing-words')].map(n => `${n.dataset.for}: ${n.textContent}`));
+  test('10K: size plot says "miniature" is left out', notes.length === 1 &&
+    notes[0].startsWith('plot-size-pairs') && notes[0].includes('miniature'), notes.join(' | ').substring(0, 160));
+}
+
 // Run all tests
 console.log(`\nTesting: ${URL}\n`);
 const jsErrors = await setup();
@@ -575,6 +620,9 @@ await testFemineFirst();
 await testAcknowledgments();
 await testDefaultVocab();
 await testExplorer();
+await testNo400K();
+await testPhoneLayout();
+await testMissingWordNotes();
 
 await browser.close();
 

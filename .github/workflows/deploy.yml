@@ -23,6 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # lsi.html is an unfinished side page; keep it in the repo but off the live site.
+      - name: Leave unpublished pages out of the deploy
+        run: rm article/lsi.html article/js/lsi.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: article
