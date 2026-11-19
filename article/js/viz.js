@@ -32,6 +32,163 @@ function project3Dto2D(coords3D, angle = 0, tilt = 0.4) {
   });
 }
 
+// ── Projected 3D: one view for 2D and 3D ───────────────────────────────
+// 3D is drawn as project(blend(P2, P3, s) * k, angle, tilt): P2 is the 2D layout (lifted to
+// z = 0), P3 the 3D layout, both in the same units. Classical MDS nests (the 3D layout's first
+// two coordinates are the 2D layout), so s = 0, k = 1, angle = tilt = 0 draws exactly the 2D
+// plot. A dimension switch animates these four numbers instead of jumping between layouts:
+// 2D -> 3D adds depth, tilts, zooms out to fit the spinning cloud and ramps the spin up;
+// 3D -> 2D turns back the short way, flattens and zooms in, ending on the 2D layout.
+const SPIN_TILT = 0.4;     // tilt while spinning (radians)
+const SPIN_SPEED = 0.005;  // radians per frame
+const SWITCH_MS = 900;     // duration of a 2D <-> 3D switch
+
+function blendProject(P2, P3, { angle, tilt, k, s }) {
+  return project3Dto2D(P3.map((p, i) => [
+    k * ((1 - s) * P2[i][0] + s * p[0]),
+    k * ((1 - s) * P2[i][1] + s * p[1]),
+    k * s * p[2],
+  ]), angle, tilt);
+}
+
+// Zoom factor (at most 1) that keeps a cloud spinning about the vertical axis at SPIN_TILT
+// within half-widths hx, hy of the origin, with 8% room for labels.
+function spinFitZoom(P3, hx, hy) {
+  let rh = 0, rv = 0;
+  for (const [x, y, z] of P3) {
+    const r = Math.hypot(x, z);
+    rh = Math.max(rh, r);
+    rv = Math.max(rv, Math.abs(y) * Math.cos(SPIN_TILT) + r * Math.sin(SPIN_TILT));
+  }
+  return Math.min(1, hx / (1.08 * rh || 1), hy / (1.08 * rv || 1));
+}
+
+// Pan + zoom for 1D/2D plots (3D uses drag-to-orbit instead).
+function attachPanZoom(svg) {
+  const zoomG = svg.select('g.zoom-container');
+  const zoom = d3.zoom()
+    .scaleExtent([0.5, 5])
+    .filter((event) => {
+      if (event.type === 'wheel') return true;
+      if (event.type === 'mousedown' || event.type === 'pointerdown') {
+        const tag = event.target.tagName;
+        return tag !== 'circle' && tag !== 'text';
+      }
+      return true;
+    })
+    .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
+  svg.call(zoom);
+}
+
+// Animation state for one plot's 3D view: spin, drag-to-orbit, and the 2D <-> 3D switch.
+// draw(state) redraws the plot for { angle, tilt, k, s }.
+class OrbitView {
+  constructor(draw) {
+    this.draw = draw;
+    this.state = { angle: 0, tilt: 0, k: 1, s: 0 };
+    this.spinning = false;    // in 3D, or on the way there
+    this._anim = null;
+    this._raf = null;
+    this._dragging = false;
+    this._autoRotate = true;
+    this._resume = null;
+    this.svgNode = null;
+  }
+
+  // Drag-to-orbit on this svg: horizontal drag turns, vertical drag tilts.
+  attach(svgNode) {
+    if (!svgNode || this.svgNode === svgNode) return;
+    this.svgNode = svgNode;
+    let x0 = 0, y0 = 0, a0 = 0, t0 = 0;
+    svgNode.addEventListener('pointerdown', (e) => {
+      if (!this.spinning || this._anim) return;
+      if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+      this._dragging = true; this._autoRotate = false; clearTimeout(this._resume);
+      x0 = e.clientX; y0 = e.clientY; a0 = this.state.angle; t0 = this.state.tilt;
+      svgNode.style.cursor = 'grabbing';
+      svgNode.setPointerCapture(e.pointerId);
+    });
+    svgNode.addEventListener('pointermove', (e) => {
+      if (!this._dragging) return;
+      this.state.angle = a0 + (e.clientX - x0) * 0.01;
+      this.state.tilt = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, t0 + (e.clientY - y0) * 0.01));
+    });
+    // pointercancel: the browser took the gesture over (e.g. to scroll the page). Without
+    // it the plot would think the drag never ended and stop turning.
+    const end = () => {
+      if (!this._dragging) return;
+      this._dragging = false; svgNode.style.cursor = 'grab';
+      this._resume = setTimeout(() => { this._autoRotate = true; }, 3000);
+    };
+    svgNode.addEventListener('pointerup', end);
+    svgNode.addEventListener('pointercancel', end);
+  }
+
+  // Touch: a horizontal drag turns the plot; a vertical swipe still scrolls the page.
+  _touch3D(on) { if (this.svgNode) this.svgNode.style.touchAction = on ? 'pan-y pinch-zoom' : ''; }
+
+  // Animate from the current state into 3D.
+  to3D(k3) {
+    this.spinning = true; this._autoRotate = true; this._touch3D(true);
+    this._animate({ tilt: SPIN_TILT, k: k3, s: 1 });
+  }
+
+  // Jump straight to 3D (for a plot that is first drawn in 3D).
+  set3D(k3) {
+    this.spinning = true; this._autoRotate = true; this._touch3D(true);
+    Object.assign(this.state, { tilt: SPIN_TILT, k: k3, s: 1 });
+    this._run();
+  }
+
+  // Animate back to the 2D layout; onDone runs once the plot is exactly on it.
+  to2D(onDone) {
+    this.spinning = false; this._dragging = false; clearTimeout(this._resume);
+    const a = this.state.angle;
+    const wrapped = (((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    this._animate({ angle: a - wrapped, tilt: 0, k: 1, s: 0 }, () => {
+      this.reset();
+      if (onDone) onDone();
+    });
+  }
+
+  // Stop everything and return to the plain 2D state (no redraw).
+  reset() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = null; this._anim = null; this.spinning = false;
+    this._dragging = false; clearTimeout(this._resume);
+    this.state = { angle: 0, tilt: 0, k: 1, s: 0 };
+    this._touch3D(false);
+  }
+
+  _animate(to, onDone) {
+    this._anim = { from: { ...this.state }, to, t0: null, onDone };
+    this._run();
+  }
+
+  _run() {
+    if (this._raf) return;
+    const step = (now) => {
+      this._raf = null;
+      const st = this.state, an = this._anim;
+      let finished = false;
+      if (an) {
+        if (an.t0 === null) an.t0 = now;
+        const u = Math.min(1, (now - an.t0) / SWITCH_MS), e = d3.easeCubicInOut(u);
+        for (const key of Object.keys(an.to)) st[key] = an.from[key] + (an.to[key] - an.from[key]) * e;
+        finished = u >= 1;
+      }
+      if (this.spinning && this._autoRotate && !this._dragging) st.angle += SPIN_SPEED * st.s;
+      this.draw(st);
+      if (finished && this._anim === an) {
+        this._anim = null;
+        if (an.onDone) an.onDone();
+      }
+      if (!this._raf && (this.spinning || this._anim)) this._raf = requestAnimationFrame(step);
+    };
+    this._raf = requestAnimationFrame(step);
+  }
+}
+
 /**
  * Compute MDS for a set of words at dimensions 1, 2, and 3.
  * Returns { coords1, coords2, coords3, eigenvalues, varianceExplained }
@@ -244,20 +401,7 @@ function render2D(container, words, coords, arrows, options = {}) {
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Pan + zoom via d3.zoom — but NOT in 3D mode (orbit handles drag there)
-    if (!disableZoom) {
-      const zoom = d3.zoom()
-        .scaleExtent([0.5, 5])
-        .filter((event) => {
-          if (event.type === 'wheel') return true;
-          if (event.type === 'mousedown' || event.type === 'pointerdown') {
-            const tag = event.target.tagName;
-            return tag !== 'circle' && tag !== 'text';
-          }
-          return true;
-        })
-        .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
-      svg.call(zoom);
-    }
+    if (!disableZoom) attachPanZoom(svg);
     svg.style('cursor', 'grab');
     svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
     svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
@@ -702,9 +846,8 @@ class EmbeddingViz {
       }
     }
 
-    this._rotationAngle = 0;
-    this._tiltAngle = 0.4;  // initial tilt (same as project3Dto2D default)
-    this._rotationAnim = null;
+    this._view = new OrbitView(st => this._draw3D(st));
+    this._switchToken = 0;
 
     // Create eigen selector (clear any previous one)
     if (this.eigenEl) {
@@ -713,231 +856,118 @@ class EmbeddingViz {
         this.eigenEl,
         this.mdsData.eigenvalues,
         this.dims,
-        (newDims) => {
-          this._prevCoords = this._currentCoords2D;
-          this._prevWords = [...this.words];
-          const prevDims = this.dims;
-          this.dims = newDims;
-          this._stopRotation();
-
-          // When switching to 3D, find rotation angle that best matches current 2D layout
-          if (newDims === 3 && prevDims <= 2 && this._prevCoords) {
-            this._findBestRotation();
-          }
-
-          this.render(true);
-        }
+        (newDims) => this._switchDims(newDims)
       );
     }
 
     this.render();
   }
 
-  // Find rotation angle where projected 3D best matches current 2D layout
-  _findBestRotation() {
-    if (!this._prevCoords || !this.mdsData.coords[3]) return;
-    const raw3D = this.mdsData.coords[3];
-    const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-    const norm3D = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    const prev = this._prevCoords;
-    const n = Math.min(prev.length, norm3D.length);
-
-    // Normalize prev coords to [-1,1] for comparison
-    const prevAll = prev.flatMap(c => [Math.abs(c[0]), Math.abs(c[1])]);
-    const pm = Math.max(...prevAll) || 1;
-    const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
-
-    // Score: sum of squared distances after optimal uniform scaling.
-    function score(a, t) {
-      const p = project3Dto2D(norm3D, a, t);
-      let dot = 0, pp = 0;
-      for (let i = 0; i < n; i++) {
-        dot += p[i][0] * prevN[i][0] + p[i][1] * prevN[i][1];
-        pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
-      }
-      const s = pp > 0 ? dot / pp : 1;
-      let d = 0;
-      for (let i = 0; i < n; i++) {
-        d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] - prevN[i][1]) ** 2;
-      }
-      return d;
-    }
-
-    // Coarse search: 72 angles (5° steps) × full tilt range [-π/2, π/2]
-    // 72 angles covers X-flip (angle + π). Wide tilt range covers Y-flip.
-    let bestA = 0, bestT = 0.4, bestD = Infinity;
-    for (let ai = 0; ai < 72; ai++) {
-      const a = ai * Math.PI / 36;
-      for (let ti = -7; ti <= 7; ti++) {
-        const t = ti * (Math.PI / 14);  // ~±π/2
-        const d = score(a, t);
-        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
-      }
-    }
-
-    // Fine search: refine ±3° around best angle, ±0.05 around best tilt
-    const fineStep = Math.PI / 180;
-    for (let da = -3; da <= 3; da++) {
-      for (let dt = -3; dt <= 3; dt++) {
-        const a = bestA + da * fineStep;
-        const t = bestT + dt * 0.02;
-        const d = score(a, t);
-        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
-      }
-    }
-
-    this._rotationAngle = bestA;
-    this._tiltAngle = bestT;
+  _el() {
+    return typeof this.plotEl === 'string' ? document.getElementById(this.plotEl) : this.plotEl;
   }
 
-  // Get current 2D coordinates (projecting 3D if needed).
-  // For 3D, normalizes to bounding sphere so scale is stable during rotation.
+  // Layouts in one unit, the 2D layout's radius. Classical MDS nests, so the 1D layout is
+  // the 2D layout's x and the 3D layout's first two coordinates are the 2D layout: the views
+  // share one scale and switching between them only adds or removes coordinates.
+  _layouts() {
+    const raw2 = this.mdsData.coords[2], raw3 = this.mdsData.coords[3];
+    const c = Math.max(...raw2.map(([x, y]) => Math.hypot(x, y))) || 1;
+    return {
+      P1: this.mdsData.coords[1].map(([x]) => [x / c, 0]),
+      P2: raw2.map(([x, y]) => [x / c, y / c]),
+      P3: raw3.map(([x, y, z]) => [x / c, y / c, z / c]),
+    };
+  }
+
+  // Coordinates for render2D. In 3D the 2D layout is the base; _draw3D moves it.
   _getCoords2D() {
-    const raw = this.mdsData.coords[this.dims];
-    if (this.dims === 1) {
-      const maxAbs = Math.max(...raw.map(c => Math.abs(c[0]))) || 1;
-      return raw.map(c => [c[0] / maxAbs, 0]);
+    const { P1, P2 } = this._layouts();
+    return this.dims === 1 ? P1 : P2;
+  }
+
+  // Switch dimension, animating every step: 1D <-> 2D by render2D's transitions,
+  // 2D <-> 3D by the orbit view. 1D <-> 3D goes through 2D.
+  _switchDims(newDims) {
+    const prev = this.dims;
+    if (newDims === prev) return;
+    const token = ++this._switchToken;
+    const update = () => { if (this.eigenSelector) this.eigenSelector.update(newDims, this.mdsData.variance[newDims]); };
+    const to1Dor2D = (dims) => {
+      this._prevCoords = this._currentCoords2D;
+      this._prevWords = [...this.words];
+      this.dims = dims;
+      this.render(true);
+    };
+    if (newDims === 3) {
+      if (prev === 1) {
+        to1Dor2D(2);
+        this.dims = 3; update();
+        setTimeout(() => { if (token === this._switchToken) this._enter3D(); }, 650);
+      } else {
+        this.dims = 3; update();
+        this._enter3D();
+      }
+      return;
     }
-    if (this.dims === 2) {
-      // Always normalize to bounding circle — keeps scale consistent with 3D for smooth transitions
-      const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
-      return raw.map(([x, y]) => [x / maxR, y / maxR]);
+    if (prev === 3) {
+      this.dims = newDims; update();
+      this._leave3D(() => { if (token === this._switchToken && newDims === 1) to1Dor2D(1); });
+      return;
     }
-    // 3D: project and normalize to bounding sphere
-    const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-    const normalized = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    return project3Dto2D(normalized, this._rotationAngle, this._tiltAngle);
+    to1Dor2D(newDims);
+  }
+
+  _enter3D() {
+    const svg = d3.select(this._el()).select('svg.plot');
+    if (svg.empty()) return;
+    svg.on('.zoom', null);  // in 3D, drag orbits and the wheel scrolls the page
+    const zoomG = svg.select('g.zoom-container');
+    if (zoomG.attr('transform')) {
+      zoomG.transition().duration(SWITCH_MS).ease(d3.easeCubicInOut).attr('transform', 'translate(0,0) scale(1)');
+    }
+    svg.node().__zoom = d3.zoomIdentity;
+    this._view.attach(svg.node());
+    this._view.to3D(this._k3);
+  }
+
+  _leave3D(onDone) {
+    this._view.to2D(() => {
+      const svg = d3.select(this._el()).select('svg.plot');
+      if (!svg.empty()) attachPanZoom(svg);
+      this._currentCoords2D = this._P2;
+      onDone();
+    });
   }
 
   _stopRotation() {
-    if (this._rotationAnim) {
-      cancelAnimationFrame(this._rotationAnim);
-      this._rotationAnim = null;
-    }
+    this._view.reset();
   }
 
-  _startRotation() {
-    if (this.dims !== 3) return;
-    const self = this;
-    const el = typeof this.plotEl === 'string'
-      ? document.getElementById(this.plotEl) : this.plotEl;
-    const svg = d3.select(el).select('svg.plot');
-    const g = svg.select('g.main');
+  // Draw the 3D view for an orbit state.
+  _draw3D(st) {
+    const g = d3.select(this._el()).select('svg.plot g.main');
     if (g.empty()) return;
-
-    // Use same normalized coords and fixed domain as _getCoords2D and render()
-    const raw3D = this.mdsData.coords[3];
-    const maxR = Math.max(...raw3D.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-    const normalized = raw3D.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-
-    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
-    const plotW = getResponsiveWidth(el);
-    const innerWRaw = plotW - margin.left - margin.right;
-    // Adaptive height: match data aspect ratio (same logic as render())
-    const extX = this._dataExtentX || 1, extY = this._dataExtentY || 1;
-    const dataRatio = extY / (extX || 1);
-    const rawH = Math.round(innerWRaw * dataRatio) + margin.top + margin.bottom;
-    const minH = Math.round(plotW * 0.3);
-    const maxH = Math.round(plotW * 0.65);
-    const plotH = (this.equalAspect) ? Math.max(minH, Math.min(maxH, rawH)) : Math.round(plotW * 0.55);
-    const w = plotW - margin.left - margin.right;
-    const h = plotH - margin.top - margin.bottom;
-    // Use same domain as render() for consistency across dimension switches
-    const baseDom = this._baseDomain || [-1.08, 1.08];
-    let domX = baseDom, domY = baseDom;
-    if (this.equalAspect) {
-      const pxPerUnitX = w / (2 * extX || 1);
-      const pxPerUnitY = h / (2 * extY || 1);
-      if (pxPerUnitX < pxPerUnitY) {
-        const expandedExtY = extY * (pxPerUnitY / pxPerUnitX);
-        domX = [-extX, extX];
-        domY = [-expandedExtY, expandedExtY];
-      } else {
-        const expandedExtX = extX * (pxPerUnitX / pxPerUnitY);
-        domX = [-expandedExtX, expandedExtX];
-        domY = [-extY, extY];
-      }
-    }
-    const xScale = d3.scaleLinear().domain(domX).range([0, w]);
-    const yScale = d3.scaleLinear().domain(domY).range([h, 0]);
-
-    // Drag-to-orbit: horizontal drag controls rotation angle
-    let dragging = false;
-    let dragStartX = 0, dragStartY = 0;
-    let dragStartAngle = 0, dragStartTilt = 0;
-    let autoRotate = true;
-    let resumeTimeout = null;
-
-    const svgNode = svg.node();
-    svgNode.addEventListener('pointerdown', (e) => {
-      if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
-      dragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      dragStartAngle = self._rotationAngle;
-      dragStartTilt = self._tiltAngle;
-      autoRotate = false;
-      clearTimeout(resumeTimeout);
-      svgNode.style.cursor = 'grabbing';
-      svgNode.setPointerCapture(e.pointerId);
-    });
-
-    svgNode.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - dragStartX;
-      const dy = e.clientY - dragStartY;
-      self._rotationAngle = dragStartAngle + dx * 0.01;
-      self._tiltAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2,
-        dragStartTilt + dy * 0.01));
-    });
-
-    svgNode.addEventListener('pointerup', () => {
-      if (!dragging) return;
-      dragging = false;
-      svgNode.style.cursor = 'grab';
-      resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
-    });
-
-    function tick() {
-      if (autoRotate && !dragging) self._rotationAngle += 0.005;
-      const projected = project3Dto2D(normalized, self._rotationAngle, self._tiltAngle);
-      self._currentCoords2D = projected;
-
-      // Update positions directly (no transition — this is continuous rotation)
-      g.selectAll('circle.point')
-        .attr('cx', d => xScale(projected[d.i][0]))
-        .attr('cy', d => yScale(projected[d.i][1]));
-      g.selectAll('text.word-label')
-        .attr('transform', d => `translate(${xScale(projected[d.i][0])}, ${yScale(projected[d.i][1]) - 8}) rotate(0)`);
-      // Analogy query markers (×)
-      g.selectAll('text.query-marker')
-        .attr('x', d => xScale(projected[d.i][0]))
-        .attr('y', d => yScale(projected[d.i][1]));
-
-      // Update arrows
-      g.selectAll('line.arrow')
-        .attr('x1', d => xScale(projected[d.from][0]))
-        .attr('y1', d => yScale(projected[d.from][1]))
-        .attr('x2', d => xScale(projected[d.to][0]))
-        .attr('y2', d => yScale(projected[d.to][1]));
-
-      // Update neighbor links
-      g.selectAll('line.neighbor-link')
-        .attr('x1', d => xScale(projected[d.parent][0]))
-        .attr('y1', d => yScale(projected[d.parent][1]))
-        .attr('x2', d => xScale(projected[d.child][0]))
-        .attr('y2', d => yScale(projected[d.child][1]));
-
-      // Update cross-group lines
-      g.selectAll('line.cross-group')
-        .attr('x1', d => xScale(projected[d[0]][0]))
-        .attr('y1', d => yScale(projected[d[0]][1]))
-        .attr('x2', d => xScale(projected[d[1]][0]))
-        .attr('y2', d => yScale(projected[d[1]][1]));
-
-      self._rotationAnim = requestAnimationFrame(tick);
-    }
-    self._rotationAnim = requestAnimationFrame(tick);
+    const x = this._xScale, y = this._yScale;
+    const p = blendProject(this._P2, this._P3, st);
+    this._currentCoords2D = p;
+    g.selectAll('circle.point')
+      .attr('cx', d => x(p[d.i][0]))
+      .attr('cy', d => y(p[d.i][1]));
+    g.selectAll('text.word-label')
+      .attr('transform', d => `translate(${x(p[d.i][0])}, ${y(p[d.i][1]) - 8}) rotate(0)`);
+    g.selectAll('text.query-marker')
+      .attr('x', d => x(p[d.i][0]))
+      .attr('y', d => y(p[d.i][1]));
+    g.selectAll('line.arrow')
+      .attr('x1', d => x(p[d.from][0])).attr('y1', d => y(p[d.from][1]))
+      .attr('x2', d => x(p[d.to][0])).attr('y2', d => y(p[d.to][1]));
+    g.selectAll('line.neighbor-link')
+      .attr('x1', d => x(p[d.parent][0])).attr('y1', d => y(p[d.parent][1]))
+      .attr('x2', d => x(p[d.child][0])).attr('y2', d => y(p[d.child][1]));
+    g.selectAll('line.cross-group')
+      .attr('x1', d => x(p[d[0]][0])).attr('y1', d => y(p[d[0]][1]))
+      .attr('x2', d => x(p[d[1]][0])).attr('y2', d => y(p[d[1]][1]));
   }
 
   // Click-to-expand is disabled. The infrastructure (neighborWords, neighborLinks,
@@ -995,34 +1025,13 @@ class EmbeddingViz {
       el.innerHTML = '';
     }
 
-    // Compute stable X/Y extents across all dimensions for smooth transitions.
+    // Extents of the 2D layout (the 1D layout is its x; 3D zooms out to fit, see _k3).
+    const { P2, P3 } = this._layouts();
     const pad = 0.08;
     let maxAbsX = 0, maxAbsY = 0;
-    for (const dim of [1, 2, 3]) {
-      const raw = this.mdsData.coords[dim];
-      if (!raw) continue;
-      if (dim === 1) {
-        const maxAbs = Math.max(...raw.map(c => Math.abs(c[0]))) || 1;
-        if (maxAbs > maxAbsX) maxAbsX = maxAbs;
-        // 1D has no Y spread
-      } else if (dim === 2) {
-        const maxR = Math.max(...raw.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
-        for (const [x, y] of raw) {
-          const ax = Math.abs(x / maxR), ay = Math.abs(y / maxR);
-          if (ax > maxAbsX) maxAbsX = ax;
-          if (ay > maxAbsY) maxAbsY = ay;
-        }
-      } else {
-        // 3D: check projected coords at current rotation angle
-        const maxR = Math.max(...raw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-        const norm = raw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-        const proj = project3Dto2D(norm, this._rotationAngle, this._tiltAngle);
-        for (const [x, y] of proj) {
-          const ax = Math.abs(x), ay = Math.abs(y);
-          if (ax > maxAbsX) maxAbsX = ax;
-          if (ay > maxAbsY) maxAbsY = ay;
-        }
-      }
+    for (const [x, y] of P2) {
+      maxAbsX = Math.max(maxAbsX, Math.abs(x));
+      maxAbsY = Math.max(maxAbsY, Math.abs(y));
     }
     const extentX = maxAbsX * (1 + pad);
     const extentY = maxAbsY * (1 + pad);
@@ -1071,6 +1080,15 @@ class EmbeddingViz {
       fixedDomainY = baseDomain;
     }
 
+    // Scales as render2D builds them for a 2D plot; the 3D view draws with these too.
+    if (this.dims !== 1) {
+      this._P2 = P2;
+      this._P3 = P3;
+      this._xScale = d3.scaleLinear().domain(fixedDomainX).range([0, innerW]);
+      this._yScale = d3.scaleLinear().domain(fixedDomainY).range([plotHeight - margin.top - margin.bottom, 0]);
+      this._k3 = spinFitZoom(P3, Math.min(-fixedDomainX[0], fixedDomainX[1]), Math.min(-fixedDomainY[0], fixedDomainY[1]));
+    }
+
     const opts = {
       highlights: this.highlights,
       crossGroupLines: this.crossGroupLines,
@@ -1092,10 +1110,10 @@ class EmbeddingViz {
 
     if (this.eigenSelector) this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
 
-    // Start rotation for 3D
+    // Drawn directly in 3D (not switched into): start spinning right away.
     if (this.dims === 3) {
-      // Wait for transition to finish before starting rotation
-      setTimeout(() => this._startRotation(), animate ? 700 : 0);
+      this._view.attach(d3.select(el).select('svg.plot').node());
+      this._view.set3D(this._k3);
     }
   }
 }
@@ -1326,10 +1344,8 @@ class SteeringViz {
     // Assign coords to wordData at each dimension level
     this._assignCoords();
 
-    // Rotation state for 3D
-    this._rotationAngle = 0;
-    this._tiltAngle = 0.4;
-    this._rotationAnim = null;
+    // 3D view (see OrbitView)
+    this._view = new OrbitView(st => this._draw3D(st));
     this._prevCoords = null;
 
     // Create eigen selector
@@ -1339,16 +1355,7 @@ class SteeringViz {
         this.eigenEl,
         this.mdsData.eigenvalues,
         this.dims,
-        (newDims) => {
-          this._prevCoords = this._currentProjected;
-          const prevDims = this.dims;
-          this.dims = newDims;
-          this._stopRotation();
-          if (newDims === 3 && prevDims <= 2 && this._prevCoords) {
-            this._findBestRotation();
-          }
-          this.render(true);
-        }
+        (newDims) => this._switchDims(newDims)
       );
     }
 
@@ -1369,212 +1376,96 @@ class SteeringViz {
     }
   }
 
-  /** Get projected 2D coords for current dim, for both orig and steered sets.
-   *  Returns { orig: [[x,y],...], steered: [[x,y],...] }
-   */
-  _getProjected() {
-    const n = this.n;
-    const dim = this.dims;
-    const origRaw = this.wordData.map(d => d._coords[dim].orig);
-    const steeredRaw = this.wordData.map(d => d._coords[dim].steered);
-
-    if (dim === 1) {
-      const all = [...origRaw, ...steeredRaw].map(c => Math.abs(c[0]));
-      const maxAbs = Math.max(...all) || 1;
-      return {
-        orig: origRaw.map(c => [c[0] / maxAbs, 0]),
-        steered: steeredRaw.map(c => [c[0] / maxAbs, 0]),
-      };
-    }
-    if (dim === 2) {
-      const all = [...origRaw, ...steeredRaw];
-      const maxR = Math.max(...all.map(([x, y]) => Math.sqrt(x*x + y*y))) || 1;
-      return {
-        orig: origRaw.map(([x, y]) => [x / maxR, y / maxR]),
-        steered: steeredRaw.map(([x, y]) => [x / maxR, y / maxR]),
-      };
-    }
-    // 3D: normalize to bounding sphere then project
-    const all = [...origRaw, ...steeredRaw];
-    const maxR = Math.max(...all.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-    const origNorm = origRaw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    const steeredNorm = steeredRaw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
+  // Layouts of all 2n points (steered 0..n-1, original n..2n-1) in one unit, the 2D
+  // layout's radius, so 1D, 2D and 3D share a scale (classical MDS nests; see OrbitView).
+  _layouts() {
+    const raw2 = this.mdsData.coords[2];
+    const c = Math.max(...raw2.map(([x, y]) => Math.hypot(x, y))) || 1;
     return {
-      orig: project3Dto2D(origNorm, this._rotationAngle, this._tiltAngle),
-      steered: project3Dto2D(steeredNorm, this._rotationAngle, this._tiltAngle),
+      P1: this.mdsData.coords[1].map(([x]) => [x / c, 0]),
+      P2: raw2.map(([x, y]) => [x / c, y / c]),
+      P3: this.mdsData.coords[3].map(([x, y, z]) => [x / c, y / c, z / c]),
     };
   }
 
-  _findBestRotation() {
-    if (!this._prevCoords || !this.mdsData.coords[3]) return;
-    // Use all points (orig + steered) in the current steered state for matching
-    const raw3D = this.mdsData.coords[3];
+  /** 2D coords for the current dim, for both orig and steered sets. In 3D this is the
+   *  2D layout, which _draw3D then moves. Returns { orig: [[x,y],...], steered: [[x,y],...] }
+   */
+  _getProjected() {
     const n = this.n;
-    // Use the set of points currently visible (steered or orig depending on state)
-    const pointsRaw = this.steered
-      ? raw3D.slice(0, n)   // steered positions
-      : raw3D.slice(n);     // orig positions
-    const maxR = Math.max(...[...raw3D.slice(0, n), ...raw3D.slice(n)]
-      .map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-    const norm3D = pointsRaw.map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    const prev = this._prevCoords;
-    const nn = Math.min(prev.length, norm3D.length);
-
-    const prevAll = prev.flatMap(c => [Math.abs(c[0]), Math.abs(c[1])]);
-    const pm = Math.max(...prevAll) || 1;
-    const prevN = prev.map(c => [c[0] / pm, c[1] / pm]);
-
-    function score(a, t) {
-      const p = project3Dto2D(norm3D, a, t);
-      let dot = 0, pp = 0;
-      for (let i = 0; i < nn; i++) {
-        dot += p[i][0] * prevN[i][0] + p[i][1] * prevN[i][1];
-        pp += p[i][0] * p[i][0] + p[i][1] * p[i][1];
-      }
-      const s = pp > 0 ? dot / pp : 1;
-      let d = 0;
-      for (let i = 0; i < nn; i++) {
-        d += (s * p[i][0] - prevN[i][0]) ** 2 + (s * p[i][1] - prevN[i][1]) ** 2;
-      }
-      return d;
-    }
-
-    let bestA = 0, bestT = 0.4, bestD = Infinity;
-    for (let ai = 0; ai < 72; ai++) {
-      const a = ai * Math.PI / 36;
-      for (let ti = -7; ti <= 7; ti++) {
-        const t = ti * (Math.PI / 14);
-        const d = score(a, t);
-        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
-      }
-    }
-    const fineStep = Math.PI / 180;
-    for (let da = -3; da <= 3; da++) {
-      for (let dt = -3; dt <= 3; dt++) {
-        const a = bestA + da * fineStep;
-        const t = bestT + dt * 0.02;
-        const d = score(a, t);
-        if (d < bestD) { bestD = d; bestA = a; bestT = t; }
-      }
-    }
-    this._rotationAngle = bestA;
-    this._tiltAngle = bestT;
+    const { P1, P2 } = this._layouts();
+    const P = this.dims === 1 ? P1 : P2;
+    return { orig: P.slice(n, 2 * n), steered: P.slice(0, n) };
   }
 
   _stopRotation() {
-    if (this._rotationAnim) {
-      cancelAnimationFrame(this._rotationAnim);
-      this._rotationAnim = null;
-    }
+    this._view.reset();
   }
 
-  _startRotation() {
-    if (this.dims !== 3) return;
-    const self = this;
-    const el = this.plotEl;
-    const svg = d3.select(el).select('svg.plot');
-    const g = svg.select('g.main');
+  // Switch dimension. 2D <-> 3D animates (OrbitView); 1D <-> 2D redraws.
+  _switchDims(newDims) {
+    const prev = this.dims;
+    if (newDims === prev) return;
+    const token = this._switchToken = (this._switchToken || 0) + 1;
+    const update = () => { if (this.eigenSelector) this.eigenSelector.update(newDims, this.mdsData.variance[newDims]); };
+    if (newDims === 3) {
+      if (prev === 1) { this.dims = 2; this.render(); }
+      this.dims = 3; update();
+      const svg = d3.select(this.plotEl).select('svg.plot');
+      svg.on('.zoom', null);  // in 3D, drag orbits and the wheel scrolls the page
+      const zoomG = svg.select('g.zoom-container');
+      if (zoomG.attr('transform')) {
+        zoomG.transition().duration(SWITCH_MS).ease(d3.easeCubicInOut).attr('transform', 'translate(0,0) scale(1)');
+      }
+      svg.node().__zoom = d3.zoomIdentity;
+      this._view.attach(svg.node());
+      this._view.to3D(this._k3);
+      return;
+    }
+    if (prev === 3) {
+      this.dims = newDims; update();
+      this._view.to2D(() => {
+        if (token !== this._switchToken) return;
+        if (newDims === 1) { this.render(); return; }
+        attachPanZoom(d3.select(this.plotEl).select('svg.plot'));
+        this._currentProjected = this._getProjected()[this.steered ? 'steered' : 'orig'];
+      });
+      return;
+    }
+    this.dims = newDims;
+    this.render();
+  }
+
+  // Draw the 3D view for an orbit state.
+  _draw3D(st) {
+    const g = d3.select(this.plotEl).select('svg.plot g.main');
     if (g.empty()) return;
-
-    const raw3D = this.mdsData.coords[3];
-    const n = this.n;
-    const allRaw = [...raw3D.slice(0, n), ...raw3D.slice(n)];
-    const maxR = Math.max(...allRaw.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-    const origNorm = raw3D.slice(n, 2*n).map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-    const steeredNorm = raw3D.slice(0, n).map(([x, y, z]) => [x / maxR, y / maxR, z / maxR]);
-
-    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
-    const plotW = getResponsiveWidth(el);
-    const plotH = Math.round(plotW * 0.55);
-    const w = plotW - margin.left - margin.right;
-    const h = plotH - margin.top - margin.bottom;
-    const baseDom = [-1.08, 1.08];
-    let domX = baseDom, domY = baseDom;
-    const baseSpan = baseDom[1] - baseDom[0];
-    const mid = (baseDom[0] + baseDom[1]) / 2;
-    if (w > h) {
-      const s = baseSpan * (w / h);
-      domX = [mid - s / 2, mid + s / 2];
-    } else {
-      const s = baseSpan * (h / w);
-      domY = [mid - s / 2, mid + s / 2];
-    }
-    const xScale = d3.scaleLinear().domain(domX).range([0, w]);
-    const yScale = d3.scaleLinear().domain(domY).range([h, 0]);
-
-    let dragging = false;
-    let dragStartX = 0, dragStartY = 0;
-    let dragStartAngle = 0, dragStartTilt = 0;
-    let autoRotate = true;
-    let resumeTimeout = null;
-
-    const svgNode = svg.node();
-    svgNode.addEventListener('pointerdown', (e) => {
-      if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
-      dragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      dragStartAngle = self._rotationAngle;
-      dragStartTilt = self._tiltAngle;
-      autoRotate = false;
-      clearTimeout(resumeTimeout);
-      svgNode.style.cursor = 'grabbing';
-      svgNode.setPointerCapture(e.pointerId);
-    });
-    svgNode.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - dragStartX;
-      const dy = e.clientY - dragStartY;
-      self._rotationAngle = dragStartAngle + dx * 0.01;
-      self._tiltAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2,
-        dragStartTilt + dy * 0.01));
-    });
-    svgNode.addEventListener('pointerup', () => {
-      if (!dragging) return;
-      dragging = false;
-      svgNode.style.cursor = 'grab';
-      resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
-    });
-
-    const wordData = this.wordData;
-    const arrows = this.arrows;
+    const n = this.n, x = this._xScale, y = this._yScale;
+    const p = blendProject(this._P2, this._P3, st);
+    const projSteered = p.slice(0, n), projOrig = p.slice(n, 2 * n);
     const steered = this.steered;
-
-    function tick() {
-      if (autoRotate && !dragging) self._rotationAngle += 0.005;
-      const projOrig = project3Dto2D(origNorm, self._rotationAngle, self._tiltAngle);
-      const projSteered = project3Dto2D(steeredNorm, self._rotationAngle, self._tiltAngle);
-      const activeProj = steered ? projSteered : projOrig;
-      self._currentProjected = activeProj;
-
-      g.selectAll('circle.word')
-        .attr('cx', (d, i) => xScale(activeProj[i][0]))
-        .attr('cy', (d, i) => yScale(activeProj[i][1]));
-      g.selectAll('text.word-label')
-        .attr('x', (d, i) => xScale(activeProj[i][0]))
-        .attr('y', (d, i) => yScale(activeProj[i][1]) - 8);
-      g.selectAll('circle.ghost')
-        .attr('cx', (d, i) => xScale(projOrig[i][0]))
-        .attr('cy', (d, i) => yScale(projOrig[i][1]));
-      g.selectAll('line.trail')
-        .attr('x1', (d, i) => xScale(projOrig[i][0]))
-        .attr('y1', (d, i) => yScale(projOrig[i][1]))
-        .attr('x2', (d, i) => xScale(steered ? projSteered[i][0] : projOrig[i][0]))
-        .attr('y2', (d, i) => yScale(steered ? projSteered[i][1] : projOrig[i][1]));
-      g.selectAll('line.ghost-arrow')
-        .attr('x1', d => xScale(projOrig[d.from][0]))
-        .attr('y1', d => yScale(projOrig[d.from][1]))
-        .attr('x2', d => xScale(projOrig[d.to][0]))
-        .attr('y2', d => yScale(projOrig[d.to][1]));
-      g.selectAll('line.active-arrow')
-        .attr('x1', d => xScale(activeProj[d.from][0]))
-        .attr('y1', d => yScale(activeProj[d.from][1]))
-        .attr('x2', d => xScale(activeProj[d.to][0]))
-        .attr('y2', d => yScale(activeProj[d.to][1]));
-
-      self._rotationAnim = requestAnimationFrame(tick);
-    }
-    self._rotationAnim = requestAnimationFrame(tick);
+    const active = steered ? projSteered : projOrig;
+    this._currentProjected = active;
+    g.selectAll('circle.word')
+      .attr('cx', (d, i) => x(active[i][0]))
+      .attr('cy', (d, i) => y(active[i][1]));
+    g.selectAll('text.word-label')
+      .attr('x', (d, i) => x(active[i][0]))
+      .attr('y', (d, i) => y(active[i][1]) - 8);
+    g.selectAll('circle.ghost')
+      .attr('cx', (d, i) => x(projOrig[i][0]))
+      .attr('cy', (d, i) => y(projOrig[i][1]));
+    g.selectAll('line.trail')
+      .attr('x1', (d, i) => x(projOrig[i][0]))
+      .attr('y1', (d, i) => y(projOrig[i][1]))
+      .attr('x2', (d, i) => x(active[i][0]))
+      .attr('y2', (d, i) => y(active[i][1]));
+    g.selectAll('line.ghost-arrow')
+      .attr('x1', d => x(projOrig[d.from][0])).attr('y1', d => y(projOrig[d.from][1]))
+      .attr('x2', d => x(projOrig[d.to][0])).attr('y2', d => y(projOrig[d.to][1]));
+    g.selectAll('line.active-arrow')
+      .attr('x1', d => x(active[d.from][0])).attr('y1', d => y(active[d.from][1]))
+      .attr('x2', d => x(active[d.to][0])).attr('y2', d => y(active[d.to][1]));
   }
 
   render(animate = false) {
@@ -1630,6 +1521,13 @@ class SteeringViz {
 
     const xScale = d3.scaleLinear().domain(fixedDomainX).range([0, w]);
     const yScale = d3.scaleLinear().domain(fixedDomainY).range([h, 0]);
+    if (this.dims !== 1) {
+      // The 3D view draws with these scales too.
+      const { P2, P3 } = this._layouts();
+      this._P2 = P2; this._P3 = P3;
+      this._xScale = xScale; this._yScale = yScale;
+      this._k3 = spinFitZoom(P3, Math.min(-fixedDomainX[0], fixedDomainX[1]), Math.min(-fixedDomainY[0], fixedDomainY[1]));
+    }
 
     const groupNames = [...new Set(this.wordData.map(d => d.group))];
     const groupPalette = ['#4a6a8a', '#5e8c61', '#8a6d94', '#b05c5c', '#6a9e9e', '#8b7355'];
@@ -1654,12 +1552,7 @@ class SteeringViz {
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Pan+zoom only in 1D/2D
-    if (this.dims < 3) {
-      const zoom = d3.zoom()
-        .scaleExtent([0.5, 5])
-        .on('zoom', (event) => { zoomG.attr('transform', event.transform); });
-      svg.call(zoom);
-    }
+    if (this.dims < 3) attachPanZoom(svg);
     svg.style('cursor', 'grab');
     svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
     svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
@@ -1801,9 +1694,10 @@ class SteeringViz {
       this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
     }
 
-    // Start 3D rotation
+    // Drawn directly in 3D (not switched into): start spinning right away.
     if (this.dims === 3) {
-      setTimeout(() => this._startRotation(), animate ? 700 : 0);
+      this._view.attach(svg.node());
+      this._view.set3D(this._k3);
     }
   }
 }
@@ -2405,6 +2299,8 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
       let dragStartAngle = 0, dragStartTilt = 0;
       let autoRotate = true, resumeTimeout = null;
       const svgNode = svg.node();
+      // Touch: a horizontal drag rotates; a vertical swipe still scrolls the page.
+      svgNode.style.touchAction = 'pan-y pinch-zoom';
 
       svgNode.addEventListener('pointerdown', (e) => {
         if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
@@ -2420,11 +2316,14 @@ function renderSubspaceAnimation(container, wordData, options = {}) {
         tiltAngle = Math.max(-Math.PI/2, Math.min(Math.PI/2,
           dragStartTilt + (e.clientY - dragStartY) * 0.01));
       });
-      svgNode.addEventListener('pointerup', () => {
+      // pointercancel: the browser took over the gesture (e.g. to scroll the page).
+      const endDrag = () => {
         if (!dragging) return;
         dragging = false; svgNode.style.cursor = 'grab';
         resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
-      });
+      };
+      svgNode.addEventListener('pointerup', endDrag);
+      svgNode.addEventListener('pointercancel', endDrag);
 
       // Smooth blend targets for step transitions
       let targetBlend = 0, currentBlend = 0;       // 0=orig, 1=steered

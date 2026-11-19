@@ -53,7 +53,7 @@ GitHub Actions deploys `article/` to GitHub Pages on every push to `main`. No ma
 - Site URL: `https://timvieira.github.io/steering-embeddings/`
 - `glove-small.bin` and `glove-medium.bin` are committed; `glove-large.bin` is gitignored (157M), so the article has no 400K option.
 - `lsi.html` and `js/lsi.js` are removed from the deploy by a step in `.github/workflows/deploy.yml`; they still work under `blog dev`.
-- If `export_vectors.py` regenerates the bin files, commit the updated small/medium files.
+- If `export_vectors.py` regenerates the bin files, commit the updated small/medium files and update `bytes` in `SIZES` (`index.html`); a test checks them.
 - CSS is loaded from `/blog/css/blog.css` (root-relative), which resolves on GitHub Pages since the blog is on the same domain. The `blog dev` server proxies `/blog/` to the blog repo locally.
 
 ## Workflow rules

@@ -273,6 +273,51 @@ scripts were in a session scratchpad, not the repo.
   stopping the old plots' rotation loops. A switch from 50K to 10K was checked
   in a headless browser: it shows one hero canvas and one SVG per plot, with
   no errors.
+- [x] **3D plots got stuck on phones** (timv, 2026-11-19: "glitchy/clunky/
+  getting stuck"). The SVG had no `touch-action`, so the browser took a drag
+  over for page scrolling and sent `pointercancel` after 2 moves; the code
+  only handled `pointerup`, so the plot thought the drag never ended and
+  stopped rotating. Fixed: 3D plots set `touch-action: pan-y pinch-zoom`
+  (horizontal drag turns, vertical swipe scrolls the page) and treat
+  `pointercancel` like `pointerup`. Checked with emulated touch on all three
+  3D implementations: all 15 moves arrive, the drag turns the plot, auto-spin
+  resumes after 3 s, a vertical swipe scrolls 135 px.
+- [ ] Seen while fixing the above, not changed: in 2D, `d3.zoom` takes
+  one-finger swipes over a plot for panning, so on a phone the page doesn't
+  scroll when the finger lands on a plot. On desktop the mouse wheel over a 2D
+  plot zooms the plot instead of scrolling the page. timv said desktop feels
+  fine; phone 2D not discussed.
+- [x] **Loading screen: thin vertical lines and "110%".** The lines came from
+  blog.css (`body>div>div { border-right }`, its sidebar layout) matching the
+  overlay's blocks; the overlay now sets `border: none`. The 110%: GitHub
+  Pages gzips the .bin files, so Content-Length (18.6 MB) is the compressed
+  size while the stream yields 20.45 MB. `SIZES` now carries each file's
+  uncompressed `bytes`; `loadEmbeddings` uses it (and ignores Content-Length
+  when the response is compressed) and throws if the file size differs. A
+  test checks `bytes` against the files.
+- [x] **2D <-> 3D switch wasn't seamless** (timv: "the hope was that the
+  spinning would be seamless"; and 3D -> 2D should animate, not jump).
+  Measured before (largest dot move in one frame): EmbeddingViz plots 2 px /
+  8 px but via a different "best-matching" view; SteeringViz 166 px / 194 px;
+  subspace animation 83 px / 145 px. New `OrbitView` in `viz.js`: 2D and 3D
+  share one scale and canvas; 3D is drawn as project(blend(P2, P3, s) * k,
+  angle, tilt), and since classical MDS nests (the 3D layout's first two
+  coordinates are the 2D layout), s = 0, k = 1, angle = tilt = 0 is exactly
+  the 2D plot. 2D -> 3D animates depth, tilt and zoom over 900 ms while the
+  spin ramps up; 3D -> 2D turns back the short way and flattens. Now
+  EmbeddingViz and SteeringViz peak at 5–13 px per frame mid-animation and
+  return to the 2D layout with 0 px error. 1D <-> 3D goes through 2D. In 3D
+  the wheel scrolls the page (pan/zoom is reattached on return to 2D, which
+  the old code didn't do). Test: `testSeamlessDimSwitch`.
+  - [ ] Still open: the subspace animation (`renderSubspaceAnimation`) still
+    rebuilds its scene on a switch (83 px / 145 px jumps). It computes its
+    direction, steered points and perpendicular axis (2D) or plane (3D)
+    separately per dimension, so it needs those blended too.
+  - [ ] SteeringViz 1D <-> 2D still redraws without animation.
+- [ ] timv saw arrowheads "glitching" (2026-11-19). Not reproduced in
+  headless Chrome stills; which plot, device and browser? Candidates: arrows
+  shorter than the 9 px head (feminine→masculine is 6 px in 2D), or WebKit not
+  repainting SVG markers when lines move.
 
 ### Smaller items
 

@@ -548,6 +548,50 @@ async function testExplorer() {
     errorMsg.substring(0, 80));
 }
 
+async function testVocabSizes() {
+  // SIZES[*].bytes in index.html must match the data files (the progress bar uses them).
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new globalThis.URL('./index.html', import.meta.url), 'utf8');
+  for (const name of ['small', 'medium']) {
+    const m = html.match(new RegExp(`data/glove-${name}\\.bin',\\s*label: '[^']*', bytes: (\\d+)`));
+    const actual = fs.statSync(new globalThis.URL(`./data/glove-${name}.bin`, import.meta.url)).size;
+    test(`SIZES.${name}.bytes matches glove-${name}.bin`, m && +m[1] === actual, `${m?.[1]} vs ${actual}`);
+  }
+}
+
+async function testSeamlessDimSwitch() {
+  // 2D -> 3D -> 2D on an EmbeddingViz and a SteeringViz plot: no dot moves more than 50px in one
+  // frame (the old switch jumped 83-194px; a smooth switch peaks near 10-20px, more when the
+  // frame rate drops), and the plot ends exactly where 2D started.
+  for (const id of ['plot-gender-pairs', 'plot-gendered-steer']) {
+    await page.evaluate(id => document.getElementById(id).scrollIntoView({ block: 'center' }), id);
+    const r = await page.evaluate(async (id) => {
+      const eig = id.replace('plot-', 'eigen-');
+      const pos = () => [...document.querySelectorAll(`#${id} svg.plot circle`)].map(c =>
+        [+c.getAttribute('cx'), +c.getAttribute('cy')]);
+      const click = col => document.querySelectorAll(`#${eig} g.eigen-col`)[col]
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const start = pos();
+      let worst = 0, prev = start, going = true;
+      const loop = () => {
+        const p = pos();
+        if (p.length === prev.length) for (let i = 0; i < p.length; i++)
+          worst = Math.max(worst, Math.hypot(p[i][0] - prev[i][0], p[i][1] - prev[i][1]));
+        prev = p; if (going) requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+      click(2); await new Promise(r => setTimeout(r, 2500));
+      click(1); await new Promise(r => setTimeout(r, 1500));
+      going = false;
+      const end = pos();
+      const back = Math.max(...start.map((q, i) => Math.hypot(q[0] - end[i][0], q[1] - end[i][1])));
+      return { worst, back };
+    }, id);
+    test(`${id}: 2D<->3D has no jump`, r.worst < 50, `largest per-frame move ${r.worst.toFixed(1)}px`);
+    test(`${id}: 3D->2D lands on the 2D layout`, r.back < 0.5, `max offset ${r.back.toFixed(2)}px`);
+  }
+}
+
 async function testNo400K() {
   const n = await page.evaluate(() => document.querySelectorAll('[data-size="large"]').length);
   test('No 400K vocabulary button (file is not deployed)', n === 0, `${n} found`);
@@ -620,7 +664,9 @@ await testFemineFirst();
 await testAcknowledgments();
 await testDefaultVocab();
 await testExplorer();
+await testSeamlessDimSwitch();
 await testNo400K();
+await testVocabSizes();
 await testPhoneLayout();
 await testMissingWordNotes();
 

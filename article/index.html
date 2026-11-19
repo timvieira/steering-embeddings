@@ -70,6 +70,8 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   .progress-overlay.hidden { opacity: 0; pointer-events: none; }
+  /* blog.css borders body>div and body>div>div (its sidebar layout); not wanted here */
+  .progress-overlay, .progress-overlay > div { border: none; }
   .progress-bar { width: min(300px, 80vw); height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 12px; }
   .progress-bar .fill { height: 100%; background: #5778a4; width: 0%; transition: width 0.1s; }
   #loading-text { font-size: 14px; color: #999; margin-top: 8px; }
@@ -458,8 +460,10 @@ const { Embeddings, mds, loadEmbeddings, sortedSVD } = await import(`./js/embedd
 const { EmbeddingViz, SteeringViz, computeAllMDS, renderHero3D, renderSubspaceAnimation } = await import(`./js/viz.js?v=${Date.now()}`);
 
 const SIZES = {
-  small:  { url: 'data/glove-small.bin',  label: '10K words' },
-  medium: { url: 'data/glove-medium.bin', label: '50K words' },
+  // bytes: uncompressed file size, for the progress bar. The server may gzip the file,
+  // and then Content-Length is the compressed size. test.mjs checks these against the files.
+  small:  { url: 'data/glove-small.bin',  label: '10K words', bytes: 4098030 },
+  medium: { url: 'data/glove-medium.bin', label: '50K words', bytes: 20451710 },
 };
 
 let vocabLabel = SIZES.medium.label;  // shown in missing-word notes
@@ -503,7 +507,7 @@ async function init(size = 'medium') {
     emb = await loadEmbeddings(SIZES[size].url, (pct) => {
       fill.style.width = `${(pct * 100).toFixed(0)}%`;
       text.textContent = `${(pct * 100).toFixed(0)}%`;
-    });
+    }, SIZES[size].bytes);
   } catch (err) {
     fill.style.width = '100%';
     fill.style.background = '#d9534f';

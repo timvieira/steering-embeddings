@@ -251,14 +251,20 @@ function mds(distMatrix, n, dimensions = 2) {
 
 /**
  * Load embeddings from a binary file with a progress callback.
+ * totalBytes: the file's uncompressed size, for progress. If omitted, Content-Length
+ * is used, but only when the response isn't compressed: for a gzipped response it is
+ * the compressed size, while the stream yields uncompressed bytes (progress read 110%).
+ * Throws if the file's size differs from totalBytes.
  * Returns a Promise<Embeddings>.
  */
-async function loadEmbeddings(url, onProgress) {
+async function loadEmbeddings(url, onProgress, totalBytes) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to load ${url}: ${response.status}`);
 
+  const encoding = response.headers.get('content-encoding');
   const contentLength = response.headers.get('content-length');
-  const total = contentLength ? parseInt(contentLength) : 0;
+  const total = totalBytes
+    || (contentLength && (!encoding || encoding === 'identity') ? parseInt(contentLength) : 0);
   const reader = response.body.getReader();
 
   const chunks = [];
@@ -270,6 +276,10 @@ async function loadEmbeddings(url, onProgress) {
     chunks.push(value);
     received += value.length;
     if (onProgress && total) onProgress(received / total);
+  }
+
+  if (totalBytes && received !== totalBytes) {
+    throw new Error(`${url} is ${received} bytes, expected ${totalBytes}; update SIZES in index.html`);
   }
 
   // Concatenate chunks
