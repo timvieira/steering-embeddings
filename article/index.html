@@ -36,6 +36,8 @@
 
   /* === Visualization layout === */
   svg.plot { user-select: none; -webkit-user-select: none; overflow: hidden; }
+  /* Moving labels: no snapping to whole pixels, which makes slowly moving text wobble */
+  svg.plot text { text-rendering: geometricPrecision; }
   .katex svg { overflow: hidden; }
 
   .figure-row { position: relative; margin: 0; }

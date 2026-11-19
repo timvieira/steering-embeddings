@@ -442,7 +442,7 @@ async function testQueryMarker3D() {
     const lab = g && [...g.querySelectorAll('text.word-label')].find(t => t.textContent === 'query');
     const t = lab?.getAttribute('transform')?.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
     if (!m || !t) return null;
-    return { mx: +m.getAttribute('x'), my: +m.getAttribute('y'), lx: +t[1], ly: +t[2] + 8 };
+    return { mx: +m.getAttribute('x'), my: +m.getAttribute('y'), lx: +t[1], ly: +t[2] };  // label transform starts at its point
   });
   const s1 = await sample();
   await new Promise(r => setTimeout(r, 1000));
@@ -560,19 +560,20 @@ async function testVocabSizes() {
 }
 
 async function testSeamlessDimSwitch() {
-  // 2D -> 3D -> 2D on an EmbeddingViz and a SteeringViz plot: no dot moves more than 50px in one
-  // frame (the old switch jumped 83-194px; a smooth switch peaks near 10-20px, more when the
-  // frame rate drops), and the plot ends exactly where 2D started.
+  // Walk 2->1->3->2->3->1->2 (every ordered pair of 1D, 2D, 3D) on an EmbeddingViz and a
+  // SteeringViz plot. No dot moves more than 50px in one frame (the old switches jumped
+  // 83-194px; a smooth switch peaks near 10-35px, more when frames are slow), and each
+  // return to 1D or 2D lands exactly where that view was before.
   for (const id of ['plot-gender-pairs', 'plot-gendered-steer']) {
     await page.evaluate(id => document.getElementById(id).scrollIntoView({ block: 'center' }), id);
     const r = await page.evaluate(async (id) => {
       const eig = id.replace('plot-', 'eigen-');
       const pos = () => [...document.querySelectorAll(`#${id} svg.plot circle`)].map(c =>
         [+c.getAttribute('cx'), +c.getAttribute('cy')]);
-      const click = col => document.querySelectorAll(`#${eig} g.eigen-col`)[col]
+      const click = dims => document.querySelectorAll(`#${eig} g.eigen-col`)[dims - 1]
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      const start = pos();
-      let worst = 0, prev = start, going = true;
+      const seen = { 2: pos() };
+      let worst = 0, back = 0, prev = pos(), going = true;
       const loop = () => {
         const p = pos();
         if (p.length === prev.length) for (let i = 0; i < p.length; i++)
@@ -580,15 +581,31 @@ async function testSeamlessDimSwitch() {
         prev = p; if (going) requestAnimationFrame(loop);
       };
       requestAnimationFrame(loop);
-      click(2); await new Promise(r => setTimeout(r, 2500));
-      click(1); await new Promise(r => setTimeout(r, 1500));
+      // 1D/2D are still once a switch ends: wait until the dots stop moving (up to 4s).
+      const settle = async () => {
+        let a = pos();
+        for (let k = 0; k < 40; k++) {
+          await new Promise(r => setTimeout(r, 100));
+          const b = pos();
+          if (b.every((q, i) => q[0] === a[i][0] && q[1] === a[i][1])) return b;
+          a = b;
+        }
+        return a;
+      };
+      for (const d of [1, 3, 2, 3, 1, 2]) {
+        click(d);
+        await new Promise(r => setTimeout(r, d === 3 ? 1300 : 600));
+        if (d !== 3) {
+          const p = await settle();
+          if (seen[d]) back = Math.max(back, ...seen[d].map((q, i) => Math.hypot(q[0] - p[i][0], q[1] - p[i][1])));
+          seen[d] = p;
+        }
+      }
       going = false;
-      const end = pos();
-      const back = Math.max(...start.map((q, i) => Math.hypot(q[0] - end[i][0], q[1] - end[i][1])));
       return { worst, back };
     }, id);
-    test(`${id}: 2D<->3D has no jump`, r.worst < 50, `largest per-frame move ${r.worst.toFixed(1)}px`);
-    test(`${id}: 3D->2D lands on the 2D layout`, r.back < 0.5, `max offset ${r.back.toFixed(2)}px`);
+    test(`${id}: 1D/2D/3D switches have no jump`, r.worst < 50, `largest per-frame move ${r.worst.toFixed(1)}px`);
+    test(`${id}: switching back lands on the same layout`, r.back < 0.5, `max offset ${r.back.toFixed(2)}px`);
   }
 }
 

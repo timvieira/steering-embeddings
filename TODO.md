@@ -309,15 +309,44 @@ scripts were in a session scratchpad, not the repo.
   return to the 2D layout with 0 px error. 1D <-> 3D goes through 2D. In 3D
   the wheel scrolls the page (pan/zoom is reattached on return to 2D, which
   the old code didn't do). Test: `testSeamlessDimSwitch`.
-  - [ ] Still open: the subspace animation (`renderSubspaceAnimation`) still
-    rebuilds its scene on a switch (83 px / 145 px jumps). It computes its
+  - [ ] Still open: the subspace animation (`renderSubspaceAnimation`, 2D/3D
+    only; its 1D is disabled) still rebuilds its scene on a switch (83 px /
+    145 px jumps). It computes its
     direction, steered points and perpendicular axis (2D) or plane (3D)
     separately per dimension, so it needs those blended too.
-  - [ ] SteeringViz 1D <-> 2D still redraws without animation.
-- [ ] timv saw arrowheads "glitching" (2026-11-19). Not reproduced in
-  headless Chrome stills; which plot, device and browser? Candidates: arrows
-  shorter than the 9 px head (feminine→masculine is 6 px in 2D), or WebKit not
-  repainting SVG markers when lines move.
+  - [x] SteeringViz 1D <-> 2D redrew without animation. Fixed by the item
+    below.
+- [x] **All of 1D, 2D, 3D should switch seamlessly** (timv: "all of {1D, 2D,
+  3D} × {1D, 2D, 3D} should have seamless transitions"). Before, 1D <-> 2D
+  in EmbeddingViz animated but kept the 2D canvas height (the 1D strip sat
+  at the top of an empty canvas) and swapped label anchors mid-way;
+  SteeringViz redrew. Now `DimView` (replaces `OrbitView`) holds one state
+  { w1, w2, w3, angle, tilt, k, H }: points at project(k (w1 P1 + w2 P2 +
+  w3 P3), angle, tilt) on a canvas H tall, with P1, P2, P3 the 1D/2D/3D
+  layouts as zero-padded 3-vectors in one unit (MDS nests, so each view is
+  a setting of these numbers). Every switch animates the state over 900 ms;
+  the canvas height animates too; 1D labels turn from vertical to upright.
+  EmbeddingViz and SteeringViz now build their SVG once and position
+  everything in one `_draw(state)` (EmbeddingViz no longer uses `render2D`).
+  Probe over all six ordered pairs on 4 plots: every return to 1D/2D lands
+  0 px from where that view was, and at 60 fps the largest per-frame move is
+  about 13–35 px mid-animation. Test: `testSeamlessDimSwitch` walks
+  2→1→3→2→3→1→2 on both plot types.
+- [x] **Arrowheads glitching** (timv, 2026-11-19; not reproduced in headless
+  Chrome stills or screencast). EmbeddingViz arrowheads are now paths drawn
+  with their line each frame (`arrowHeadPath`) instead of SVG markers: same
+  triangle, but they shrink on lines shorter than twice the head (in 2D the
+  6 px feminine→masculine arrow had a 9 px head; as a spinning arrow passes
+  through zero length a marker can flip) and work the same in every
+  browser. The subspace animation still uses markers.
+- [x] **Animation "a little jittery"** (timv, 2026-11-19). Changes: the spin
+  advances by elapsed time instead of a fixed angle per frame (uneven frames
+  made the speed uneven); `_draw` sets the canvas height only when it
+  changes (it was set every frame) and reuses cached selections;
+  `svg.plot text` uses `text-rendering: geometricPrecision` so moving labels
+  don't snap to whole pixels. Headless trace of the first 2D -> 1D: steady
+  16.7 ms frames, height eases 465 -> 200 px in steps of at most 13 px.
+  Not confirmed on timv's machine yet.
 
 ### Smaller items
 

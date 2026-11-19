@@ -32,23 +32,32 @@ function project3Dto2D(coords3D, angle = 0, tilt = 0.4) {
   });
 }
 
-// ── Projected 3D: one view for 2D and 3D ───────────────────────────────
-// 3D is drawn as project(blend(P2, P3, s) * k, angle, tilt): P2 is the 2D layout (lifted to
-// z = 0), P3 the 3D layout, both in the same units. Classical MDS nests (the 3D layout's first
-// two coordinates are the 2D layout), so s = 0, k = 1, angle = tilt = 0 draws exactly the 2D
-// plot. A dimension switch animates these four numbers instead of jumping between layouts:
-// 2D -> 3D adds depth, tilts, zooms out to fit the spinning cloud and ramps the spin up;
-// 3D -> 2D turns back the short way, flattens and zooms in, ending on the 2D layout.
+// ── One view for 1D, 2D and 3D ─────────────────────────────────────────
+// A plot's state is { w1, w2, w3, angle, tilt, k, H }: points are drawn at
+// project(k * (w1*P1 + w2*P2 + w3*P3), angle, tilt) on a canvas H pixels tall, where P1, P2, P3
+// are the 1D, 2D and 3D layouts as 3-vectors (zero-padded) in one unit. Classical MDS nests:
+// the 1D layout is the 2D layout's x, and the 2D layout is the 3D layout's first two
+// coordinates. So every view is a setting of these numbers, and switching dimension animates
+// them: 1D -> 2D lets y in and turns the labels upright, 2D -> 3D adds depth, tilts, zooms out
+// to fit the spinning cloud and ramps up the spin, and the reverse turns back the short way
+// and flattens. Every switch ends exactly on the target layout.
 const SPIN_TILT = 0.4;     // tilt while spinning (radians)
 const SPIN_SPEED = 0.005;  // radians per frame
-const SWITCH_MS = 900;     // duration of a 2D <-> 3D switch
+const SWITCH_MS = 900;     // duration of a dimension switch
 
-function blendProject(P2, P3, { angle, tilt, k, s }) {
-  return project3Dto2D(P3.map((p, i) => [
-    k * ((1 - s) * P2[i][0] + s * p[0]),
-    k * ((1 - s) * P2[i][1] + s * p[1]),
-    k * s * p[2],
-  ]), angle, tilt);
+function viewProject(L, st) {
+  const { w1, w2, w3, k } = st;
+  return project3Dto2D(L.P3.map((p3, i) => {
+    const p1 = L.P1[i], p2 = L.P2[i];
+    return [0, 1, 2].map(j => k * (w1 * p1[j] + w2 * p2[j] + w3 * p3[j]));
+  }), st.angle, st.tilt);
+}
+
+// The state that shows `dims`, for canvas geometry g = { H1, H2, k3 }.
+function viewTarget(dims, g) {
+  if (dims === 1) return { w1: 1, w2: 0, w3: 0, tilt: 0, k: 1, H: g.H1 };
+  if (dims === 2) return { w1: 0, w2: 1, w3: 0, tilt: 0, k: 1, H: g.H2 };
+  return { w1: 0, w2: 0, w3: 1, tilt: SPIN_TILT, k: g.k3, H: g.H2 };
 }
 
 // Zoom factor (at most 1) that keeps a cloud spinning about the vertical axis at SPIN_TILT
@@ -61,6 +70,22 @@ function spinFitZoom(P3, hx, hy) {
     rv = Math.max(rv, Math.abs(y) * Math.cos(SPIN_TILT) + r * Math.sin(SPIN_TILT));
   }
   return Math.min(1, hx / (1.08 * rh || 1), hy / (1.08 * rv || 1));
+}
+
+// Arrowhead for a line from (x1, y1) to (x2, y2) with stroke width sw: the triangle the SVG
+// marker used to draw (6*sw long and wide, tip 1.2*sw past the end), drawn as a path so it
+// moves with its line in every browser. It shrinks on lines shorter than twice its length
+// (so a short arrow isn't all head, and the head can't flip around as a spinning arrow
+// passes through zero length) and is omitted under 1px.
+function arrowHeadPath(x1, y1, x2, y2, sw) {
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  if (len < 1) return '';
+  const ux = dx / len, uy = dy / len;
+  const f = Math.min(1, len / (12 * sw));
+  const hl = 6 * sw * f, hw = 3 * sw * f;
+  const tx = x2 + ux * 1.2 * sw * f, ty = y2 + uy * 1.2 * sw * f;
+  const bx = tx - ux * hl, by = ty - uy * hl;
+  return `M${tx},${ty}L${bx - uy * hw},${by + ux * hw}L${bx + uy * hw},${by - ux * hw}Z`;
 }
 
 // Pan + zoom for 1D/2D plots (3D uses drag-to-orbit instead).
@@ -80,13 +105,23 @@ function attachPanZoom(svg) {
   svg.call(zoom);
 }
 
-// Animation state for one plot's 3D view: spin, drag-to-orbit, and the 2D <-> 3D switch.
-// draw(state) redraws the plot for { angle, tilt, k, s }.
-class OrbitView {
+// In 3D, drag orbits and the wheel scrolls the page: remove pan/zoom and ease out any pan.
+function detachPanZoom(svg) {
+  svg.on('.zoom', null);
+  const zoomG = svg.select('g.zoom-container');
+  if (zoomG.attr('transform')) {
+    zoomG.transition().duration(SWITCH_MS).ease(d3.easeCubicInOut).attr('transform', 'translate(0,0) scale(1)');
+  }
+  if (svg.node()) svg.node().__zoom = d3.zoomIdentity;
+}
+
+// Animation state for one plot: dimension switches, the 3D spin, and drag-to-orbit.
+// draw(state) redraws the plot for a state.
+class DimView {
   constructor(draw) {
     this.draw = draw;
-    this.state = { angle: 0, tilt: 0, k: 1, s: 0 };
-    this.spinning = false;    // in 3D, or on the way there
+    this.state = null;
+    this.spinning = false;    // showing 3D, or on the way there
     this._anim = null;
     this._raf = null;
     this._dragging = false;
@@ -95,7 +130,7 @@ class OrbitView {
     this.svgNode = null;
   }
 
-  // Drag-to-orbit on this svg: horizontal drag turns, vertical drag tilts.
+  // Drag-to-orbit on this svg (in 3D): horizontal drag turns, vertical drag tilts.
   attach(svgNode) {
     if (!svgNode || this.svgNode === svgNode) return;
     this.svgNode = svgNode;
@@ -122,53 +157,54 @@ class OrbitView {
     };
     svgNode.addEventListener('pointerup', end);
     svgNode.addEventListener('pointercancel', end);
+    this._touch3D(this.spinning);
   }
 
-  // Touch: a horizontal drag turns the plot; a vertical swipe still scrolls the page.
+  // Touch in 3D: a horizontal drag turns the plot; a vertical swipe still scrolls the page.
   _touch3D(on) { if (this.svgNode) this.svgNode.style.touchAction = on ? 'pan-y pinch-zoom' : ''; }
 
-  // Animate from the current state into 3D.
-  to3D(k3) {
-    this.spinning = true; this._autoRotate = true; this._touch3D(true);
-    this._animate({ tilt: SPIN_TILT, k: k3, s: 1 });
+  // Show `dims` now, without animating.
+  set(dims, g) {
+    this.stop();
+    this.state = { angle: 0, ...viewTarget(dims, g) };
+    this.spinning = dims === 3; this._autoRotate = true; this._touch3D(this.spinning);
+    this.draw(this.state);
+    if (this.spinning) this._run();
   }
 
-  // Jump straight to 3D (for a plot that is first drawn in 3D).
-  set3D(k3) {
-    this.spinning = true; this._autoRotate = true; this._touch3D(true);
-    Object.assign(this.state, { tilt: SPIN_TILT, k: k3, s: 1 });
-    this._run();
-  }
-
-  // Animate back to the 2D layout; onDone runs once the plot is exactly on it.
-  to2D(onDone) {
-    this.spinning = false; this._dragging = false; clearTimeout(this._resume);
-    const a = this.state.angle;
-    const wrapped = (((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-    this._animate({ angle: a - wrapped, tilt: 0, k: 1, s: 0 }, () => {
-      this.reset();
+  // Animate to `dims`; onDone runs once the plot is exactly there (not if interrupted).
+  go(dims, g, onDone) {
+    const to = viewTarget(dims, g);
+    if (dims !== 3) {
+      // Turn back to the nearest whole turn, so 1D/2D are seen face-on.
+      const a = this.state.angle;
+      to.angle = a - ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI);
+    }
+    this.spinning = dims === 3; this._dragging = false; this._autoRotate = true;
+    clearTimeout(this._resume); this._touch3D(this.spinning);
+    this._anim = { from: { ...this.state }, to, t0: null, onDone: () => {
+      if (dims !== 3) this.state.angle = 0;
       if (onDone) onDone();
-    });
-  }
-
-  // Stop everything and return to the plain 2D state (no redraw).
-  reset() {
-    if (this._raf) cancelAnimationFrame(this._raf);
-    this._raf = null; this._anim = null; this.spinning = false;
-    this._dragging = false; clearTimeout(this._resume);
-    this.state = { angle: 0, tilt: 0, k: 1, s: 0 };
-    this._touch3D(false);
-  }
-
-  _animate(to, onDone) {
-    this._anim = { from: { ...this.state }, to, t0: null, onDone };
+    } };
     this._run();
+  }
+
+  // Redraw the current state (e.g. after label widths change).
+  redraw() { if (this.state) this.draw(this.state); }
+
+  stop() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = null; this._anim = null; this._tPrev = undefined;
   }
 
   _run() {
     if (this._raf) return;
     const step = (now) => {
       this._raf = null;
+      // Spin by elapsed time, not per frame, so uneven frames don't change its speed
+      // (capped, so a stalled or background tab doesn't jump).
+      const frames = this._tPrev === undefined ? 1 : Math.min(3, (now - this._tPrev) / (1000 / 60));
+      this._tPrev = now;
       const st = this.state, an = this._anim;
       let finished = false;
       if (an) {
@@ -177,13 +213,14 @@ class OrbitView {
         for (const key of Object.keys(an.to)) st[key] = an.from[key] + (an.to[key] - an.from[key]) * e;
         finished = u >= 1;
       }
-      if (this.spinning && this._autoRotate && !this._dragging) st.angle += SPIN_SPEED * st.s;
+      if (this.spinning && this._autoRotate && !this._dragging) st.angle += SPIN_SPEED * st.w3 * frames;
       this.draw(st);
       if (finished && this._anim === an) {
         this._anim = null;
-        if (an.onDone) an.onDone();
+        an.onDone();
       }
       if (!this._raf && (this.spinning || this._anim)) this._raf = requestAnimationFrame(step);
+      else if (!this._raf) this._tPrev = undefined;
     };
     this._raf = requestAnimationFrame(step);
   }
@@ -846,7 +883,7 @@ class EmbeddingViz {
       }
     }
 
-    this._view = new OrbitView(st => this._draw3D(st));
+    this._view = new DimView(st => this._draw(st));
     this._switchToken = 0;
 
     // Create eigen selector (clear any previous one)
@@ -867,107 +904,169 @@ class EmbeddingViz {
     return typeof this.plotEl === 'string' ? document.getElementById(this.plotEl) : this.plotEl;
   }
 
-  // Layouts in one unit, the 2D layout's radius. Classical MDS nests, so the 1D layout is
-  // the 2D layout's x and the 3D layout's first two coordinates are the 2D layout: the views
-  // share one scale and switching between them only adds or removes coordinates.
+  // The 1D, 2D and 3D layouts as 3-vectors in one unit, the 2D layout's radius (see DimView).
   _layouts() {
-    const raw2 = this.mdsData.coords[2], raw3 = this.mdsData.coords[3];
+    const raw2 = this.mdsData.coords[2];
     const c = Math.max(...raw2.map(([x, y]) => Math.hypot(x, y))) || 1;
     return {
-      P1: this.mdsData.coords[1].map(([x]) => [x / c, 0]),
-      P2: raw2.map(([x, y]) => [x / c, y / c]),
-      P3: raw3.map(([x, y, z]) => [x / c, y / c, z / c]),
+      P1: this.mdsData.coords[1].map(([x]) => [x / c, 0, 0]),
+      P2: raw2.map(([x, y]) => [x / c, y / c, 0]),
+      P3: this.mdsData.coords[3].map(([x, y, z]) => [x / c, y / c, z / c]),
     };
   }
 
-  // Coordinates for render2D. In 3D the 2D layout is the base; _draw3D moves it.
-  _getCoords2D() {
-    const { P1, P2 } = this._layouts();
-    return this.dims === 1 ? P1 : P2;
+  // Canvas geometry shared by all views: one scale (px pixels per unit on both axes),
+  // canvas heights for 1D (H1) and 2D/3D (H2), and the 3D zoom-out k3.
+  _geometry(el) {
+    const L = this._L;
+    const plotW = getResponsiveWidth(el);
+    const innerW = plotW - 20;  // 10px side margins
+    const pad = 0.08;
+    let ax = 0, ay = 0;
+    for (const [x, y] of L.P2) { ax = Math.max(ax, Math.abs(x)); ay = Math.max(ay, Math.abs(y)); }
+    for (const [x] of L.P1) ax = Math.max(ax, Math.abs(x));
+    const ex = (ax || 1) * (1 + pad), ey = (ay || 1) * (1 + pad);
+    // 2D canvas fits the data's aspect ratio, within 0.3-0.65 of the width
+    const H2 = Math.max(Math.round(plotW * 0.3), Math.min(Math.round(plotW * 0.65), Math.round(innerW * ey / ex)));
+    const H1 = Math.min(160, Math.round(plotW * 0.25));
+    const px = Math.min(innerW / (2 * ex), H2 / (2 * ey));
+    const k3 = spinFitZoom(L.P3, innerW / (2 * px), H2 / (2 * px));
+    return { plotW, innerW, H1, H2, px, k3 };
   }
 
-  // Switch dimension, animating every step: 1D <-> 2D by render2D's transitions,
-  // 2D <-> 3D by the orbit view. 1D <-> 3D goes through 2D.
+  // Build the SVG once; _draw positions everything for a view state.
+  _build() {
+    const el = this._el();
+    const G = this._geom;
+    const n = this.words.length;
+    const highlightSet = new Set(this.highlights);
+    const hidden = this.hiddenPoints, query = this.queryPoints, nb = this.neighborWords;
+    d3.select(el).selectAll('svg.plot').remove();
+    const svg = d3.select(el).append('svg')
+      .attr('class', 'plot').attr('width', G.plotW).attr('height', G.H2)
+      .style('cursor', 'grab');
+    svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
+    svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
+    const g = svg.append('g').attr('class', 'zoom-container')
+      .append('g').attr('class', 'main').attr('transform', 'translate(10,0)');
+
+    g.selectAll('line.neighbor-link')
+      .data(this.neighborLinks.filter(l => l.child < n && l.parent < n)).enter().append('line')
+      .attr('class', 'neighbor-link')
+      .attr('stroke', '#ccc').attr('stroke-width', 1).attr('stroke-dasharray', '3,2');
+    g.selectAll('line.cross-group')
+      .data(this.crossGroupLines.filter(([i, j]) => i < n && j < n)).enter().append('line')
+      .attr('class', 'cross-group')
+      .attr('stroke', COLORS.crossGroup).attr('stroke-width', 1).attr('stroke-dasharray', '4,3');
+
+    const arrowData = this.arrows.filter(a => a.from < n && a.to < n);
+    const arrowColor = d => d.color === 'red' ? COLORS.highlight : COLORS.arrow;
+    g.selectAll('line.arrow').data(arrowData).enter().append('line')
+      .attr('class', 'arrow')
+      .attr('stroke-width', d => d.thick ? 2 : 1.5)
+      .attr('stroke', arrowColor)
+      .attr('opacity', d => d.thick ? 0.45 : 1);
+    g.selectAll('path.arrow-head').data(arrowData).enter().append('path')
+      .attr('class', 'arrow-head')
+      .attr('fill', arrowColor)
+      .attr('opacity', d => d.thick ? 0.45 : 1);
+
+    const pointData = this.words.map((word, i) => ({ i, word }));
+    g.selectAll('circle.point').data(pointData).enter().append('circle')
+      .attr('class', 'point')
+      .attr('r', d => (hidden.has(d.i) || query.has(d.i)) ? 0 : highlightSet.has(d.i) ? 5 : 3.5)
+      .attr('fill', d => highlightSet.has(d.i) ? COLORS.highlight : nb.has(d.word) ? '#999' : COLORS.point)
+      .style('cursor', 'pointer');
+
+    g.selectAll('text.query-marker').data(pointData.filter(d => query.has(d.i))).enter().append('text')
+      .attr('class', 'query-marker')
+      .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+      .attr('font-size', '16px').attr('font-weight', 'bold')
+      .attr('fill', COLORS.highlight).attr('opacity', 0.8)
+      .style('cursor', 'pointer')
+      .text('×');
+
+    const special = d => hidden.has(d.i) || query.has(d.i);
+    g.selectAll('text.word-label').data(pointData).enter().append('text')
+      .attr('class', 'word-label')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', d => special(d) ? '13px' : nb.has(d.word) ? '10px' : '11px')
+      .attr('font-style', d => special(d) ? 'italic' : 'normal')
+      .attr('fill', d => special(d) ? COLORS.highlight : nb.has(d.word) ? '#666' : '#333')
+      .attr('opacity', d => special(d) ? 0.7 : 1)
+      .text(d => query.has(d.i) ? d.word.replace(/^​/, '') : d.word);
+
+    // 1D labels stand vertically, alternating above and below the line along x.
+    this._sel = {
+      svg, circles: g.selectAll('circle.point'), qmarks: g.selectAll('text.query-marker'),
+      labels: g.selectAll('text.word-label'), arrows: g.selectAll('line.arrow'),
+      heads: g.selectAll('path.arrow-head'), nlinks: g.selectAll('line.neighbor-link'),
+      cross: g.selectAll('line.cross-group'), H: null,
+    };
+    this._labelSide = new Array(n);
+    pointData.slice().sort((a, b) => this._L.P1[a.i][0] - this._L.P1[b.i][0])
+      .forEach((d, k) => { this._labelSide[d.i] = k % 2 === 0 ? -1 : 1; });
+    this._measureLabels();
+    return svg;
+  }
+
+  // Label widths, for placing the vertical 1D labels (re-measured once web fonts load).
+  _measureLabels() {
+    const lens = new Array(this.words.length).fill(0);
+    d3.select(this._el()).selectAll('svg.plot text.word-label')
+      .each(function(d) { lens[d.i] = this.getComputedTextLength(); });
+    this._labelLen = lens;
+  }
+
+  // Draw the plot for a view state (any blend of 1D, 2D and 3D).
+  _draw(st) {
+    const S = this._sel;
+    if (!S) return;
+    const G = this._geom;
+    // Only touch the height when it changes: setting it relayouts the page below.
+    if (S.H !== st.H) { S.svg.attr('height', st.H); S.H = st.H; }
+    const p = viewProject(this._L, st);
+    this._currentCoords2D = p;
+    const X = i => G.innerW / 2 + p[i][0] * G.px;
+    const Y = i => st.H / 2 - p[i][1] * G.px;
+
+    S.circles.attr('cx', d => X(d.i)).attr('cy', d => Y(d.i));
+    S.qmarks.attr('x', d => X(d.i)).attr('y', d => Y(d.i));
+    // Labels: upright 8px above the point in 2D/3D; in 1D turned vertical, starting 6px
+    // above or below the line. Blends in between turn them smoothly.
+    const up = 1 - st.w1, side = this._labelSide, len = this._labelLen;
+    S.labels.attr('transform', d =>
+      `translate(${X(d.i)},${Y(d.i)}) rotate(${(1 - up) * 90 * side[d.i]}) ` +
+      `translate(${(1 - up) * (6 + len[d.i] / 2)},${-8 * up})`);
+    S.arrows
+      .attr('x1', d => X(d.from)).attr('y1', d => Y(d.from))
+      .attr('x2', d => X(d.to)).attr('y2', d => Y(d.to));
+    S.heads
+      .attr('d', d => arrowHeadPath(X(d.from), Y(d.from), X(d.to), Y(d.to), d.thick ? 2 : 1.5));
+    S.nlinks
+      .attr('x1', d => X(d.parent)).attr('y1', d => Y(d.parent))
+      .attr('x2', d => X(d.child)).attr('y2', d => Y(d.child));
+    S.cross
+      .attr('x1', d => X(d[0])).attr('y1', d => Y(d[0]))
+      .attr('x2', d => X(d[1])).attr('y2', d => Y(d[1]));
+  }
+
+  // Switch dimension; every pair of 1D, 2D, 3D animates (see DimView).
   _switchDims(newDims) {
-    const prev = this.dims;
-    if (newDims === prev) return;
+    if (newDims === this.dims) return;
     const token = ++this._switchToken;
-    const update = () => { if (this.eigenSelector) this.eigenSelector.update(newDims, this.mdsData.variance[newDims]); };
-    const to1Dor2D = (dims) => {
-      this._prevCoords = this._currentCoords2D;
-      this._prevWords = [...this.words];
-      this.dims = dims;
-      this.render(true);
-    };
-    if (newDims === 3) {
-      if (prev === 1) {
-        to1Dor2D(2);
-        this.dims = 3; update();
-        setTimeout(() => { if (token === this._switchToken) this._enter3D(); }, 650);
-      } else {
-        this.dims = 3; update();
-        this._enter3D();
-      }
-      return;
-    }
-    if (prev === 3) {
-      this.dims = newDims; update();
-      this._leave3D(() => { if (token === this._switchToken && newDims === 1) to1Dor2D(1); });
-      return;
-    }
-    to1Dor2D(newDims);
-  }
-
-  _enter3D() {
     const svg = d3.select(this._el()).select('svg.plot');
-    if (svg.empty()) return;
-    svg.on('.zoom', null);  // in 3D, drag orbits and the wheel scrolls the page
-    const zoomG = svg.select('g.zoom-container');
-    if (zoomG.attr('transform')) {
-      zoomG.transition().duration(SWITCH_MS).ease(d3.easeCubicInOut).attr('transform', 'translate(0,0) scale(1)');
-    }
-    svg.node().__zoom = d3.zoomIdentity;
-    this._view.attach(svg.node());
-    this._view.to3D(this._k3);
-  }
-
-  _leave3D(onDone) {
-    this._view.to2D(() => {
-      const svg = d3.select(this._el()).select('svg.plot');
-      if (!svg.empty()) attachPanZoom(svg);
-      this._currentCoords2D = this._P2;
-      onDone();
+    if (newDims === 3) detachPanZoom(svg);
+    this.dims = newDims;
+    if (this.eigenSelector) this.eigenSelector.update(newDims, this.mdsData.variance[newDims]);
+    this._measureLabels();
+    this._view.go(newDims, this._geom, () => {
+      if (token === this._switchToken && newDims !== 3) attachPanZoom(svg);
     });
   }
 
   _stopRotation() {
-    this._view.reset();
-  }
-
-  // Draw the 3D view for an orbit state.
-  _draw3D(st) {
-    const g = d3.select(this._el()).select('svg.plot g.main');
-    if (g.empty()) return;
-    const x = this._xScale, y = this._yScale;
-    const p = blendProject(this._P2, this._P3, st);
-    this._currentCoords2D = p;
-    g.selectAll('circle.point')
-      .attr('cx', d => x(p[d.i][0]))
-      .attr('cy', d => y(p[d.i][1]));
-    g.selectAll('text.word-label')
-      .attr('transform', d => `translate(${x(p[d.i][0])}, ${y(p[d.i][1]) - 8}) rotate(0)`);
-    g.selectAll('text.query-marker')
-      .attr('x', d => x(p[d.i][0]))
-      .attr('y', d => y(p[d.i][1]));
-    g.selectAll('line.arrow')
-      .attr('x1', d => x(p[d.from][0])).attr('y1', d => y(p[d.from][1]))
-      .attr('x2', d => x(p[d.to][0])).attr('y2', d => y(p[d.to][1]));
-    g.selectAll('line.neighbor-link')
-      .attr('x1', d => x(p[d.parent][0])).attr('y1', d => y(p[d.parent][1]))
-      .attr('x2', d => x(p[d.child][0])).attr('y2', d => y(p[d.child][1]));
-    g.selectAll('line.cross-group')
-      .attr('x1', d => x(p[d[0]][0])).attr('y1', d => y(p[d[0]][1]))
-      .attr('x2', d => x(p[d[1]][0])).attr('y2', d => y(p[d[1]][1]));
+    this._view.stop();
   }
 
   // Click-to-expand is disabled. The infrastructure (neighborWords, neighborLinks,
@@ -1012,108 +1111,21 @@ class EmbeddingViz {
     */
   }
 
-  render(animate = false) {
-    this._stopRotation();
-    const coords2D = this._getCoords2D();
-    this._currentCoords2D = coords2D;
-
-    const el = typeof this.plotEl === 'string'
-      ? document.getElementById(this.plotEl) : this.plotEl;
-
-    // For animated updates, keep the SVG; otherwise rebuild
-    if (!animate) {
-      el.innerHTML = '';
-    }
-
-    // Extents of the 2D layout (the 1D layout is its x; 3D zooms out to fit, see _k3).
-    const { P2, P3 } = this._layouts();
-    const pad = 0.08;
-    let maxAbsX = 0, maxAbsY = 0;
-    for (const [x, y] of P2) {
-      maxAbsX = Math.max(maxAbsX, Math.abs(x));
-      maxAbsY = Math.max(maxAbsY, Math.abs(y));
-    }
-    const extentX = maxAbsX * (1 + pad);
-    const extentY = maxAbsY * (1 + pad);
-    // For 3D rotation stability, use the larger extent for both axes
-    const maxExtent = Math.max(extentX, extentY);
-    const baseDomain = [-maxExtent, maxExtent];
-    this._baseDomain = baseDomain;
-    this._dataExtentX = extentX;
-    this._dataExtentY = extentY;
-
-    const plotWidth = getResponsiveWidth(el);
-    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
-    const innerW = plotWidth - margin.left - margin.right;
-
-    let plotHeight, fixedDomainX, fixedDomainY;
-    if (this.dims === 1) {
-      plotHeight = Math.min(160, Math.round(plotWidth * 0.25));
-      fixedDomainX = baseDomain;
-      fixedDomainY = baseDomain;
-    } else if (this.equalAspect) {
-      // Fit canvas height to data aspect ratio (equal scaling)
-      const dataRatio = extentY / (extentX || 1);  // height / width of data
-      // Canvas height = width * dataRatio, clamped to reasonable range
-      const rawH = Math.round(innerW * dataRatio) + margin.top + margin.bottom;
-      const minH = Math.round(plotWidth * 0.3);
-      const maxH = Math.round(plotWidth * 0.65);
-      plotHeight = Math.max(minH, Math.min(maxH, rawH));
-      const innerH = plotHeight - margin.top - margin.bottom;
-      // Set domains so 1 data-unit = same pixels on both axes
-      const pxPerUnitX = innerW / (2 * extentX || 1);
-      const pxPerUnitY = innerH / (2 * extentY || 1);
-      if (pxPerUnitX < pxPerUnitY) {
-        // X is tighter — expand Y domain to fill height
-        const expandedExtentY = extentY * (pxPerUnitY / pxPerUnitX);
-        fixedDomainX = [-extentX, extentX];
-        fixedDomainY = [-expandedExtentY, expandedExtentY];
-      } else {
-        // Y is tighter — expand X domain to fill width
-        const expandedExtentX = extentX * (pxPerUnitX / pxPerUnitY);
-        fixedDomainX = [-expandedExtentX, expandedExtentX];
-        fixedDomainY = [-extentY, extentY];
-      }
-    } else {
-      plotHeight = Math.round(plotWidth * 0.55);
-      fixedDomainX = baseDomain;
-      fixedDomainY = baseDomain;
-    }
-
-    // Scales as render2D builds them for a 2D plot; the 3D view draws with these too.
-    if (this.dims !== 1) {
-      this._P2 = P2;
-      this._P3 = P3;
-      this._xScale = d3.scaleLinear().domain(fixedDomainX).range([0, innerW]);
-      this._yScale = d3.scaleLinear().domain(fixedDomainY).range([plotHeight - margin.top - margin.bottom, 0]);
-      this._k3 = spinFitZoom(P3, Math.min(-fixedDomainX[0], fixedDomainX[1]), Math.min(-fixedDomainY[0], fixedDomainY[1]));
-    }
-
-    const opts = {
-      highlights: this.highlights,
-      crossGroupLines: this.crossGroupLines,
-      neighborWords: this.neighborWords,
-      neighborLinks: this.neighborLinks,
-      animate,
-      prevCoords: this._prevCoords,
-      prevWords: this._prevWords,
-      onClick: this._makeOnClick(),
-      fixedDomainX, fixedDomainY,
-      disableZoom: this.dims === 3,
-      hiddenPoints: this.hiddenPoints,
-      queryPoints: this.queryPoints,
-      width: plotWidth,
-      height: plotHeight,
-    };
-
-    render2D(el, this.words, coords2D, this.arrows, opts);
-
+  // Build and draw the plot in its current dimension (no animation).
+  render() {
+    this._view.stop();
+    const el = this._el();
+    this._L = this._layouts();
+    this._geom = this._geometry(el);
+    const svg = this._build();
+    this._view.attach(svg.node());
+    this._view.set(this.dims, this._geom);
+    if (this.dims !== 3) attachPanZoom(svg);
     if (this.eigenSelector) this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
-
-    // Drawn directly in 3D (not switched into): start spinning right away.
-    if (this.dims === 3) {
-      this._view.attach(d3.select(el).select('svg.plot').node());
-      this._view.set3D(this._k3);
+    // Vertical 1D labels are placed by width; re-measure once web fonts have loaded.
+    if (document.fonts && !this._fontsHooked) {
+      this._fontsHooked = true;
+      document.fonts.ready.then(() => { this._measureLabels(); this._view.redraw(); });
     }
   }
 }
@@ -1344,9 +1356,9 @@ class SteeringViz {
     // Assign coords to wordData at each dimension level
     this._assignCoords();
 
-    // 3D view (see OrbitView)
-    this._view = new OrbitView(st => this._draw3D(st));
-    this._prevCoords = null;
+    this._view = new DimView(st => this._draw(st));
+    this._switchToken = 0;
+    this._steerT = this.steered ? 1 : 0;  // 0 = original positions, 1 = steered
 
     // Create eigen selector
     if (this.eigenEl) {
@@ -1376,332 +1388,180 @@ class SteeringViz {
     }
   }
 
-  // Layouts of all 2n points (steered 0..n-1, original n..2n-1) in one unit, the 2D
-  // layout's radius, so 1D, 2D and 3D share a scale (classical MDS nests; see OrbitView).
+  // The 1D, 2D and 3D layouts of all 2n points (steered 0..n-1, original n..2n-1) as
+  // 3-vectors in one unit, the 2D layout's radius (see DimView).
   _layouts() {
     const raw2 = this.mdsData.coords[2];
     const c = Math.max(...raw2.map(([x, y]) => Math.hypot(x, y))) || 1;
     return {
-      P1: this.mdsData.coords[1].map(([x]) => [x / c, 0]),
-      P2: raw2.map(([x, y]) => [x / c, y / c]),
+      P1: this.mdsData.coords[1].map(([x]) => [x / c, 0, 0]),
+      P2: raw2.map(([x, y]) => [x / c, y / c, 0]),
       P3: this.mdsData.coords[3].map(([x, y, z]) => [x / c, y / c, z / c]),
     };
   }
 
-  /** 2D coords for the current dim, for both orig and steered sets. In 3D this is the
-   *  2D layout, which _draw3D then moves. Returns { orig: [[x,y],...], steered: [[x,y],...] }
-   */
-  _getProjected() {
-    const n = this.n;
-    const { P1, P2 } = this._layouts();
-    const P = this.dims === 1 ? P1 : P2;
-    return { orig: P.slice(n, 2 * n), steered: P.slice(0, n) };
+  // Canvas geometry shared by all views: one scale fitted to the 2D layout's extent
+  // (8% padding, equal aspect), its center, canvas heights for 1D and 2D/3D, and the
+  // 3D zoom-out k3.
+  _geometry() {
+    const L = this._L;
+    const plotW = getResponsiveWidth(this.plotEl);
+    const innerW = plotW - 20;  // 10px side margins
+    const xs = [...L.P2.map(p => p[0]), ...L.P1.map(p => p[0])], ys = L.P2.map(p => p[1]);
+    const pad = 0.08;
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const spanX = ((xMax - xMin) || 0.1) * (1 + 2 * pad), spanY = ((yMax - yMin) || 0.1) * (1 + 2 * pad);
+    const H2 = Math.max(Math.round(plotW * 0.3), Math.min(Math.round(plotW * 0.65), Math.round(innerW * spanY / spanX)));
+    const H1 = Math.min(200, Math.round(plotW * 0.35));
+    const px = Math.min(innerW / spanX, H2 / spanY);
+    const xmid = (xMin + xMax) / 2, ymid = (yMin + yMax) / 2;
+    const k3 = spinFitZoom(L.P3, innerW / (2 * px) - Math.abs(xmid), H2 / (2 * px) - Math.abs(ymid));
+    return { plotW, innerW, H1, H2, px, xmid, ymid, k3 };
   }
 
-  _stopRotation() {
-    this._view.reset();
-  }
-
-  // Switch dimension. 2D <-> 3D animates (OrbitView); 1D <-> 2D redraws.
-  _switchDims(newDims) {
-    const prev = this.dims;
-    if (newDims === prev) return;
-    const token = this._switchToken = (this._switchToken || 0) + 1;
-    const update = () => { if (this.eigenSelector) this.eigenSelector.update(newDims, this.mdsData.variance[newDims]); };
-    if (newDims === 3) {
-      if (prev === 1) { this.dims = 2; this.render(); }
-      this.dims = 3; update();
-      const svg = d3.select(this.plotEl).select('svg.plot');
-      svg.on('.zoom', null);  // in 3D, drag orbits and the wheel scrolls the page
-      const zoomG = svg.select('g.zoom-container');
-      if (zoomG.attr('transform')) {
-        zoomG.transition().duration(SWITCH_MS).ease(d3.easeCubicInOut).attr('transform', 'translate(0,0) scale(1)');
-      }
-      svg.node().__zoom = d3.zoomIdentity;
-      this._view.attach(svg.node());
-      this._view.to3D(this._k3);
-      return;
-    }
-    if (prev === 3) {
-      this.dims = newDims; update();
-      this._view.to2D(() => {
-        if (token !== this._switchToken) return;
-        if (newDims === 1) { this.render(); return; }
-        attachPanZoom(d3.select(this.plotEl).select('svg.plot'));
-        this._currentProjected = this._getProjected()[this.steered ? 'steered' : 'orig'];
-      });
-      return;
-    }
-    this.dims = newDims;
-    this.render();
-  }
-
-  // Draw the 3D view for an orbit state.
-  _draw3D(st) {
-    const g = d3.select(this.plotEl).select('svg.plot g.main');
-    if (g.empty()) return;
-    const n = this.n, x = this._xScale, y = this._yScale;
-    const p = blendProject(this._P2, this._P3, st);
-    const projSteered = p.slice(0, n), projOrig = p.slice(n, 2 * n);
-    const steered = this.steered;
-    const active = steered ? projSteered : projOrig;
-    this._currentProjected = active;
-    g.selectAll('circle.word')
-      .attr('cx', (d, i) => x(active[i][0]))
-      .attr('cy', (d, i) => y(active[i][1]));
-    g.selectAll('text.word-label')
-      .attr('x', (d, i) => x(active[i][0]))
-      .attr('y', (d, i) => y(active[i][1]) - 8);
-    g.selectAll('circle.ghost')
-      .attr('cx', (d, i) => x(projOrig[i][0]))
-      .attr('cy', (d, i) => y(projOrig[i][1]));
-    g.selectAll('line.trail')
-      .attr('x1', (d, i) => x(projOrig[i][0]))
-      .attr('y1', (d, i) => y(projOrig[i][1]))
-      .attr('x2', (d, i) => x(active[i][0]))
-      .attr('y2', (d, i) => y(active[i][1]));
-    g.selectAll('line.ghost-arrow')
-      .attr('x1', d => x(projOrig[d.from][0])).attr('y1', d => y(projOrig[d.from][1]))
-      .attr('x2', d => x(projOrig[d.to][0])).attr('y2', d => y(projOrig[d.to][1]));
-    g.selectAll('line.active-arrow')
-      .attr('x1', d => x(active[d.from][0])).attr('y1', d => y(active[d.from][1]))
-      .attr('x2', d => x(active[d.to][0])).attr('y2', d => y(active[d.to][1]));
-  }
-
-  render(animate = false) {
-    this._stopRotation();
+  // Build the SVG and the Steer/Reset controls once; _draw positions everything.
+  _build() {
     const el = this.plotEl;
-    const projected = this._getProjected();
-    // Current visible coords: if steered, use steered; else orig
-    const activeCoords = this.steered ? projected.steered : projected.orig;
-    this._currentProjected = activeCoords;
-
-    const defaultW = getResponsiveWidth(el);
-    const plotWidth = defaultW;
-    const margin = { top: 0, right: 10, bottom: 0, left: 10 };
-    const innerW = plotWidth - margin.left - margin.right;
-
-    // Compute domain from data extent (both orig and steered) with padding
-    const allCoords = [...projected.orig, ...projected.steered];
-    const axs = allCoords.map(c => c[0]), ays = allCoords.map(c => c[1]);
-    const aPad = 0.08;
-    const axMin = Math.min(...axs), axMax = Math.max(...axs);
-    const ayMin = Math.min(...ays), ayMax = Math.max(...ays);
-    const axSpan = (axMax - axMin) || 0.1, aySpan = (ayMax - ayMin) || 0.1;
-    let fixedDomainX = [axMin - axSpan * aPad, axMax + axSpan * aPad];
-    let fixedDomainY = [ayMin - aySpan * aPad, ayMax + aySpan * aPad];
-
-    // Adaptive height based on data aspect ratio
-    let plotHeight;
-    if (this.dims === 1) {
-      plotHeight = Math.min(200, Math.round(plotWidth * 0.35));
-    } else {
-      const dataRatio = (aySpan * (1 + 2 * aPad)) / (axSpan * (1 + 2 * aPad));
-      const rawH = Math.round(innerW * dataRatio) + margin.top + margin.bottom;
-      const minH = Math.round(plotWidth * 0.3);
-      const maxH = Math.round(plotWidth * 0.65);
-      plotHeight = Math.max(minH, Math.min(maxH, rawH));
-    }
-    const w = plotWidth - margin.left - margin.right;
-    const h = plotHeight - margin.top - margin.bottom;
-
-    if (this.dims >= 2) {
-      const spanX = fixedDomainX[1] - fixedDomainX[0];
-      const spanY = fixedDomainY[1] - fixedDomainY[0];
-      const midX = (fixedDomainX[0] + fixedDomainX[1]) / 2;
-      const midY = (fixedDomainY[0] + fixedDomainY[1]) / 2;
-      const targetSpanX = spanY * (w / h);
-      const targetSpanY = spanX * (h / w);
-      if (targetSpanX > spanX) {
-        fixedDomainX = [midX - targetSpanX / 2, midX + targetSpanX / 2];
-      } else {
-        fixedDomainY = [midY - targetSpanY / 2, midY + targetSpanY / 2];
-      }
-    }
-
-    const xScale = d3.scaleLinear().domain(fixedDomainX).range([0, w]);
-    const yScale = d3.scaleLinear().domain(fixedDomainY).range([h, 0]);
-    if (this.dims !== 1) {
-      // The 3D view draws with these scales too.
-      const { P2, P3 } = this._layouts();
-      this._P2 = P2; this._P3 = P3;
-      this._xScale = xScale; this._yScale = yScale;
-      this._k3 = spinFitZoom(P3, Math.min(-fixedDomainX[0], fixedDomainX[1]), Math.min(-fixedDomainY[0], fixedDomainY[1]));
-    }
-
-    const groupNames = [...new Set(this.wordData.map(d => d.group))];
+    const G = this._geom;
+    const wordData = this.wordData, arrows = this.arrows;
+    const groupNames = [...new Set(wordData.map(d => d.group))];
     const groupPalette = ['#4a6a8a', '#5e8c61', '#8a6d94', '#b05c5c', '#6a9e9e', '#8b7355'];
     const groupColor = {};
     groupNames.forEach((g, i) => { groupColor[g] = groupPalette[i % groupPalette.length]; });
 
-    const dur = animate ? 600 : 0;
-    const wordData = this.wordData;
-    const arrows = this.arrows;
-    const n = this.n;
-
-    // Rebuild SVG
     d3.select(el).selectAll('svg.plot').remove();
     d3.select(el).selectAll('.steer-controls').remove();
-
     const svg = d3.select(el).append('svg')
-      .attr('class', 'plot').attr('width', plotWidth).attr('height', plotHeight);
-
-    const zoomG = svg.append('g').attr('class', 'zoom-container');
-    const g = zoomG.append('g')
-      .attr('class', 'main')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    // Pan+zoom only in 1D/2D
-    if (this.dims < 3) attachPanZoom(svg);
-    svg.style('cursor', 'grab');
+      .attr('class', 'plot').attr('width', G.plotW).attr('height', G.H2)
+      .style('cursor', 'grab');
     svg.on('mousedown.cursor', () => svg.style('cursor', 'grabbing'));
     svg.on('mouseup.cursor', () => svg.style('cursor', 'grab'));
+    const g = svg.append('g').attr('class', 'zoom-container')
+      .append('g').attr('class', 'main').attr('transform', 'translate(10,0)');
 
-    // Trails
-    const trails = g.selectAll('line.trail').data(wordData).enter().append('line')
+    const on = this.steered;
+    g.selectAll('line.trail').data(wordData).enter().append('line')
       .attr('class', 'trail')
-      .attr('x1', (d, i) => xScale(projected.orig[i][0]))
-      .attr('y1', (d, i) => yScale(projected.orig[i][1]))
-      .attr('x2', (d, i) => xScale(this.steered ? projected.steered[i][0] : projected.orig[i][0]))
-      .attr('y2', (d, i) => yScale(this.steered ? projected.steered[i][1] : projected.orig[i][1]))
       .attr('stroke', d => groupColor[d.group]).attr('stroke-width', 1.5)
-      .attr('opacity', this.steered ? 0.4 : 0);
-
-    // Ghost dots
+      .attr('opacity', on ? 0.4 : 0);
     g.selectAll('circle.ghost').data(wordData).enter().append('circle')
       .attr('class', 'ghost')
-      .attr('cx', (d, i) => xScale(projected.orig[i][0]))
-      .attr('cy', (d, i) => yScale(projected.orig[i][1]))
       .attr('r', 3).attr('fill', d => groupColor[d.group])
-      .attr('opacity', this.steered ? 0.3 : 0);
-
-    // Ghost arrows
-    const ghostArrows = g.selectAll('line.ghost-arrow').data(arrows).enter().append('line')
+      .attr('opacity', on ? 0.3 : 0);
+    g.selectAll('line.ghost-arrow').data(arrows).enter().append('line')
       .attr('class', 'ghost-arrow')
-      .attr('x1', d => xScale(projected.orig[d.from][0]))
-      .attr('y1', d => yScale(projected.orig[d.from][1]))
-      .attr('x2', d => xScale(projected.orig[d.to][0]))
-      .attr('y2', d => yScale(projected.orig[d.to][1]))
       .attr('stroke', '#ccc').attr('stroke-width', 1).attr('stroke-dasharray', '4,3')
-      .attr('opacity', this.steered ? 0.3 : 0);
-
-    // Active arrows
-    const activeArrows = g.selectAll('line.active-arrow').data(arrows).enter().append('line')
+      .attr('opacity', on ? 0.3 : 0);
+    g.selectAll('line.active-arrow').data(arrows).enter().append('line')
       .attr('class', 'active-arrow')
-      .attr('x1', d => xScale(activeCoords[d.from][0]))
-      .attr('y1', d => yScale(activeCoords[d.from][1]))
-      .attr('x2', d => xScale(activeCoords[d.to][0]))
-      .attr('y2', d => yScale(activeCoords[d.to][1]))
       .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-
-    // Word dots
-    const dots = g.selectAll('circle.word').data(wordData).enter().append('circle')
+    g.selectAll('circle.word').data(wordData).enter().append('circle')
       .attr('class', 'word')
-      .attr('cx', (d, i) => xScale(activeCoords[i][0]))
-      .attr('cy', (d, i) => yScale(activeCoords[i][1]))
       .attr('r', 4).attr('fill', d => groupColor[d.group]);
-
-    // Labels
-    const labels = g.selectAll('text.word-label').data(wordData).enter().append('text')
+    g.selectAll('text.word-label').data(wordData).enter().append('text')
       .attr('class', 'word-label')
-      .attr('x', (d, i) => xScale(activeCoords[i][0]))
-      .attr('y', (d, i) => yScale(activeCoords[i][1]) - 8)
       .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
       .text(d => d.word);
+    this._sel = {
+      svg, dots: g.selectAll('circle.word'), labels: g.selectAll('text.word-label'),
+      ghosts: g.selectAll('circle.ghost'), trails: g.selectAll('line.trail'),
+      ghostArrows: g.selectAll('line.ghost-arrow'), arrows: g.selectAll('line.active-arrow'), H: null,
+    };
 
-    // Steer/Reset controls (hidden when startSteered — the plot is already in its final state)
+    // Steer/Reset controls (hidden when startSteered: the plot is already in its final state)
     const controls = d3.select(el).append('div').attr('class', 'steer-controls')
-      .style('margin-top', '8px').style('display', this.startSteered ? 'none' : 'flex').style('gap', '8px').style('align-items', 'center');
-
+      .style('margin-top', '8px').style('display', this.startSteered ? 'none' : 'flex')
+      .style('gap', '8px').style('align-items', 'center');
     const toggleBtn = controls.append('button')
-      .style('background', this.steered ? '#ddd' : COLORS.point)
-      .style('color', this.steered ? '#333' : 'white')
-      .style('border', 'none')
-      .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
-      .style('cursor', 'pointer').text(this.steered ? 'Reset' : '▶ Steer');
-
-    const statusText = controls.append('span')
-      .style('font-size', '12px').style('color', '#999')
-      .text(this.steered ? 'Steered embeddings' : 'Original embeddings');
-
-    const self = this;
+      .style('border', 'none').style('border-radius', '4px').style('padding', '5px 14px')
+      .style('font-size', '13px').style('cursor', 'pointer');
+    const statusText = controls.append('span').style('font-size', '12px').style('color', '#999');
+    const showButton = () => {
+      toggleBtn.text(this.steered ? 'Reset' : '▶ Steer')
+        .style('background', this.steered ? '#ddd' : COLORS.point)
+        .style('color', this.steered ? '#333' : 'white');
+    };
+    showButton();
+    statusText.text(this.steered ? 'Steered embeddings' : 'Original embeddings');
     toggleBtn.on('click', () => {
-      if (!self.steered) {
-        self.steered = true;
-        toggleBtn.text('Reset').style('background', '#ddd').style('color', '#333');
-        statusText.text('Steering...');
-
-        if (self.dims === 3) {
-          // In 3D, the rotation loop handles position updates; just toggle state
-          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
-          ghostArrows.transition().duration(300).attr('opacity', 0.3);
-          // trails and dots will update on next rotation tick
-          setTimeout(() => statusText.text('Steered embeddings'), 300);
-        } else {
-          const proj = self._getProjected();
-          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0.3);
-          ghostArrows.transition().duration(300).attr('opacity', 0.3);
-          trails.transition().duration(1500).ease(d3.easeCubicInOut)
-            .attr('x2', (d, i) => xScale(proj.steered[i][0]))
-            .attr('y2', (d, i) => yScale(proj.steered[i][1]))
-            .attr('opacity', 0.4);
-          dots.transition().duration(1500).ease(d3.easeCubicInOut)
-            .attr('cx', (d, i) => xScale(proj.steered[i][0]))
-            .attr('cy', (d, i) => yScale(proj.steered[i][1]));
-          labels.transition().duration(1500).ease(d3.easeCubicInOut)
-            .attr('x', (d, i) => xScale(proj.steered[i][0]))
-            .attr('y', (d, i) => yScale(proj.steered[i][1]) - 8);
-          activeArrows.transition().duration(1500).ease(d3.easeCubicInOut)
-            .attr('x1', d => xScale(proj.steered[d.from][0]))
-            .attr('y1', d => yScale(proj.steered[d.from][1]))
-            .attr('x2', d => xScale(proj.steered[d.to][0]))
-            .attr('y2', d => yScale(proj.steered[d.to][1]));
-          setTimeout(() => statusText.text('Steered embeddings'), 1500);
+      this.steered = !this.steered;
+      showButton();
+      const dur = this.steered ? 1500 : 800;
+      statusText.text(this.steered ? 'Steering...' : 'Original embeddings');
+      g.selectAll('circle.ghost, line.ghost-arrow').transition().duration(300).attr('opacity', this.steered ? 0.3 : 0);
+      g.selectAll('line.trail').transition().duration(dur).attr('opacity', this.steered ? 0.4 : 0);
+      // Move the words by animating the blend between original and steered positions.
+      const from = this._steerT, to = this.steered ? 1 : 0;
+      if (this._steerTimer) this._steerTimer.stop();
+      this._steerTimer = d3.timer((elapsed) => {
+        const u = Math.min(1, elapsed / dur);
+        this._steerT = from + (to - from) * d3.easeCubicInOut(u);
+        if (!this._view.spinning) this._view.redraw();
+        if (u >= 1) {
+          this._steerTimer.stop();
+          if (this.steered) statusText.text('Steered embeddings');
         }
-      } else {
-        self.steered = false;
-        toggleBtn.text('▶ Steer').style('background', COLORS.point).style('color', 'white');
-        statusText.text('Original embeddings');
-
-        if (self.dims === 3) {
-          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
-          ghostArrows.transition().duration(300).attr('opacity', 0);
-        } else {
-          const proj = self._getProjected();
-          g.selectAll('circle.ghost').transition().duration(300).attr('opacity', 0);
-          ghostArrows.transition().duration(300).attr('opacity', 0);
-          trails.transition().duration(800).ease(d3.easeCubicInOut)
-            .attr('x2', (d, i) => xScale(proj.orig[i][0]))
-            .attr('y2', (d, i) => yScale(proj.orig[i][1]))
-            .attr('opacity', 0);
-          dots.transition().duration(800).ease(d3.easeCubicInOut)
-            .attr('cx', (d, i) => xScale(proj.orig[i][0]))
-            .attr('cy', (d, i) => yScale(proj.orig[i][1]));
-          labels.transition().duration(800).ease(d3.easeCubicInOut)
-            .attr('x', (d, i) => xScale(proj.orig[i][0]))
-            .attr('y', (d, i) => yScale(proj.orig[i][1]) - 8);
-          activeArrows.transition().duration(800).ease(d3.easeCubicInOut)
-            .attr('x1', d => xScale(proj.orig[d.from][0]))
-            .attr('y1', d => yScale(proj.orig[d.from][1]))
-            .attr('x2', d => xScale(proj.orig[d.to][0]))
-            .attr('y2', d => yScale(proj.orig[d.to][1]));
-        }
-      }
+      });
     });
+    return svg;
+  }
 
-    // Update eigen selector
-    if (this.eigenSelector) {
-      this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
-    }
+  // Draw the plot for a view state (any blend of 1D, 2D and 3D).
+  _draw(st) {
+    const S = this._sel;
+    if (!S) return;
+    const G = this._geom, n = this.n, t = this._steerT;
+    // Only touch the height when it changes: setting it relayouts the page below.
+    if (S.H !== st.H) { S.svg.attr('height', st.H); S.H = st.H; }
+    const p = viewProject(this._L, st);
+    const orig = i => p[n + i];
+    const act = i => [p[n + i][0] + t * (p[i][0] - p[n + i][0]), p[n + i][1] + t * (p[i][1] - p[n + i][1])];
+    // The 2D layout's center sits at the canvas center; in 1D the line is centered vertically.
+    const X = q => G.innerW / 2 + (q[0] - G.xmid) * G.px;
+    const Y = q => st.H / 2 - (q[1] - G.ymid * (1 - st.w1)) * G.px;
+    S.dots.attr('cx', (d, i) => X(act(i))).attr('cy', (d, i) => Y(act(i)));
+    S.labels.attr('x', (d, i) => X(act(i))).attr('y', (d, i) => Y(act(i)) - 8);
+    S.ghosts.attr('cx', (d, i) => X(orig(i))).attr('cy', (d, i) => Y(orig(i)));
+    S.trails
+      .attr('x1', (d, i) => X(orig(i))).attr('y1', (d, i) => Y(orig(i)))
+      .attr('x2', (d, i) => X(act(i))).attr('y2', (d, i) => Y(act(i)));
+    S.ghostArrows
+      .attr('x1', d => X(orig(d.from))).attr('y1', d => Y(orig(d.from)))
+      .attr('x2', d => X(orig(d.to))).attr('y2', d => Y(orig(d.to)));
+    S.arrows
+      .attr('x1', d => X(act(d.from))).attr('y1', d => Y(act(d.from)))
+      .attr('x2', d => X(act(d.to))).attr('y2', d => Y(act(d.to)));
+  }
 
-    // Drawn directly in 3D (not switched into): start spinning right away.
-    if (this.dims === 3) {
-      this._view.attach(svg.node());
-      this._view.set3D(this._k3);
-    }
+  // Switch dimension; every pair of 1D, 2D, 3D animates (see DimView).
+  _switchDims(newDims) {
+    if (newDims === this.dims) return;
+    const token = ++this._switchToken;
+    const svg = d3.select(this.plotEl).select('svg.plot');
+    if (newDims === 3) detachPanZoom(svg);
+    this.dims = newDims;
+    if (this.eigenSelector) this.eigenSelector.update(newDims, this.mdsData.variance[newDims]);
+    this._view.go(newDims, this._geom, () => {
+      if (token === this._switchToken && newDims !== 3) attachPanZoom(svg);
+    });
+  }
+
+  _stopRotation() {
+    this._view.stop();
+  }
+
+  // Build and draw the plot in its current dimension (no animation).
+  render() {
+    this._view.stop();
+    this._L = this._layouts();
+    this._geom = this._geometry();
+    const svg = this._build();
+    this._view.attach(svg.node());
+    this._view.set(this.dims, this._geom);
+    if (this.dims !== 3) attachPanZoom(svg);
+    if (this.eigenSelector) this.eigenSelector.update(this.dims, this.mdsData.variance[this.dims]);
   }
 }
-
 
 /**
  * 2D animated steering visualization (legacy stateless version).
