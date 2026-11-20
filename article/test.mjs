@@ -430,7 +430,9 @@ async function testPanZoomDoesNotBreakOtherPlots() {
 }
 
 async function testQueryMarker3D() {
-  // In 3D the plot auto-rotates; the analogy query marker (×) must move with its label.
+  // In 3D the plot auto-rotates (while on screen); the analogy query marker (×) must move
+  // with its label.
+  await page.evaluate(() => document.getElementById('plot-analogy-king').scrollIntoView({ block: 'center' }));
   await page.evaluate(() => {
     const bars = document.querySelectorAll('#eigen-analogy-king svg g.eigen-col');
     if (bars.length >= 3) bars[2].dispatchEvent(new Event('click'));
@@ -609,6 +611,106 @@ async function testSeamlessDimSwitch() {
   }
 }
 
+async function testSubspaceAnimation() {
+  // The step-by-step subspace animation: at every step, 2D -> 3D -> 2D lands back on the same
+  // picture, no visible element moves more than 50px in one frame (the old 2D<->3D switch
+  // rebuilt the scene at a different scale), and the drawn direction is the top eigenvector
+  // of the pair differences, as the step-3 caption says.
+  await page.evaluate(() => document.getElementById('plot-subspace-anim').scrollIntoView({ block: 'center' }));
+  const r = await page.evaluate(async () => {
+    const root = document.querySelector('#plot-subspace-anim svg.plot');
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const vis = el => { let o = 1; for (let e = el; e && e !== root; e = e.parentNode) o *= +(e.getAttribute('opacity') ?? 1); return o; };
+    const snap = () => {
+      const pos = [], seen = [];
+      const push = (el, ...xy) => { const v = vis(el) > 0.02; for (let i = 0; i < xy.length; i += 2) { pos.push(xy[i], xy[i + 1]); seen.push(v); } };
+      for (const c of root.querySelectorAll('circle')) push(c, +c.getAttribute('cx'), +c.getAttribute('cy'));
+      for (const t of root.querySelectorAll('text')) push(t, +t.getAttribute('x'), +t.getAttribute('y'));
+      for (const l of root.querySelectorAll('line')) push(l, +l.getAttribute('x1'), +l.getAttribute('y1'), +l.getAttribute('x2'), +l.getAttribute('y2'));
+      return { pos, seen };
+    };
+    let prev = snap(), worst = 0, going = true;
+    const loop = () => {
+      const s = snap();
+      for (let i = 0; i + 1 < s.pos.length; i += 2) {
+        if (!s.seen[i] && !prev.seen[i]) continue;
+        worst = Math.max(worst, Math.hypot(s.pos[i] - prev.pos[i], s.pos[i + 1] - prev.pos[i + 1]));
+      }
+      prev = s; if (going) requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+    const click = d => document.querySelectorAll('#eigen-subspace-anim g.eigen-col')[d - 1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const next = () => document.querySelector('#plot-subspace-anim .anim-controls button').click();
+    const settle = async () => { let a = JSON.stringify(snap().pos); for (let k = 0; k < 40; k++) { await sleep(100); const b = JSON.stringify(snap().pos); if (a === b) return JSON.parse(b); a = b; } return null; };
+    let back = 0, unsettled = 0, cosine = null;
+    for (let s = 0; s < 5; s++) {
+      const A = await settle();
+      if (s === 2) {
+        // Differences d_i (the moved pair arrows) and the direction arrow, in screen space
+        // (a uniform scale and a y flip of the layout, so eigenvectors carry over).
+        const d = [...root.querySelectorAll('g.trans-arrows line')].map(l => [l.x2.baseVal.value - l.x1.baseVal.value, l.y2.baseVal.value - l.y1.baseVal.value]);
+        const a = d.reduce((t, v) => t + v[0] * v[0], 0), b = d.reduce((t, v) => t + v[0] * v[1], 0), c = d.reduce((t, v) => t + v[1] * v[1], 0);
+        const lam = (a + c) / 2 + Math.hypot((a - c) / 2, b);
+        const ev = Math.abs(b) > 1e-12 ? [b, lam - a] : (a >= c ? [1, 0] : [0, 1]);
+        const dl = root.querySelector('g.dir-arrow line');
+        const dv = [dl.x2.baseVal.value - dl.x1.baseVal.value, dl.y2.baseVal.value - dl.y1.baseVal.value];
+        cosine = Math.abs(ev[0] * dv[0] + ev[1] * dv[1]) / Math.hypot(...ev) / Math.hypot(...dv);
+      }
+      click(3); await sleep(1400);
+      click(2); const B = await settle();
+      if (!A || !B) unsettled++;
+      else for (let i = 0; i < A.length; i++) back = Math.max(back, Math.abs(A[i] - B[i]));
+      next(); await sleep(1500);
+    }
+    going = false;
+    return { worst, back, unsettled, cosine };
+  });
+  test('Subspace animation: 2D/3D switches have no jump', r.worst < 50, `largest per-frame move ${r.worst.toFixed(1)}px`);
+  test('Subspace animation: 3D -> 2D lands on the same picture at every step', r.back < 0.5 && r.unsettled === 0,
+    `max offset ${r.back.toFixed(2)}px, ${r.unsettled} unsettled`);
+  test('Subspace animation: direction is the top eigenvector of the differences', r.cosine !== null && r.cosine > 0.99999,
+    `|cos| = ${r.cosine}`);
+}
+
+async function testOffscreenPause() {
+  // A 3D plot stops spinning while scrolled off screen and resumes when back.
+  const id = 'plot-gender-pairs';
+  const pos = () => page.evaluate(id => [...document.querySelectorAll(`#${id} svg.plot circle`)].map(c => c.getAttribute('cx')).join(), id);
+  const click = d => page.evaluate((id, d) => document.querySelectorAll(`#${id.replace('plot-', 'eigen-')} g.eigen-col`)[d - 1]
+    .dispatchEvent(new MouseEvent('click', { bubbles: true })), id, d);
+  await page.evaluate(id => document.getElementById(id).scrollIntoView({ block: 'center' }), id);
+  await click(3); await new Promise(r => setTimeout(r, 1500));
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await new Promise(r => setTimeout(r, 300));
+  const a = await pos(); await new Promise(r => setTimeout(r, 500)); const b = await pos();
+  await page.evaluate(id => document.getElementById(id).scrollIntoView({ block: 'center' }), id);
+  await new Promise(r => setTimeout(r, 300));
+  const c = await pos(); await new Promise(r => setTimeout(r, 500)); const d = await pos();
+  await click(2); await new Promise(r => setTimeout(r, 2000));
+  test('3D plot pauses its spin off screen', a === b);
+  test('3D plot resumes spinning on screen', c !== d);
+}
+
+async function testSpinRightAfterLoad() {
+  // Fresh page: switch a plot to 3D as soon as loading ends, while the page is still busy.
+  // It must keep spinning. (The on-screen check once read a stale "off screen" update that
+  // arrived in the same batch as the current one, and the plot stopped after the switch.)
+  const p = await browser.newPage();
+  await p.setViewport({ width: 1400, height: 900 });
+  await p.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await p.waitForFunction(() => document.getElementById('loading-overlay').classList.contains('hidden'), { timeout: 90000 });
+  const id = 'plot-gender-pairs';
+  await p.evaluate(id => document.getElementById(id).scrollIntoView({ block: 'center' }), id);
+  await new Promise(r => setTimeout(r, 300));
+  await p.evaluate(id => document.querySelectorAll(`#${id.replace('plot-', 'eigen-')} g.eigen-col`)[2]
+    .dispatchEvent(new MouseEvent('click', { bubbles: true })), id);
+  await new Promise(r => setTimeout(r, 1500));
+  const pos = () => p.evaluate(id => [...document.querySelectorAll(`#${id} svg.plot circle`)].map(c => c.getAttribute('cx')).join(), id);
+  const a = await pos(); await new Promise(r => setTimeout(r, 400)); const b = await pos();
+  await p.close();
+  test('3D plot spins when switched right after loading', a !== b);
+}
+
 async function testNo400K() {
   const n = await page.evaluate(() => document.querySelectorAll('[data-size="large"]').length);
   test('No 400K vocabulary button (file is not deployed)', n === 0, `${n} found`);
@@ -682,6 +784,9 @@ await testAcknowledgments();
 await testDefaultVocab();
 await testExplorer();
 await testSeamlessDimSwitch();
+await testSubspaceAnimation();
+await testOffscreenPause();
+await testSpinRightAfterLoad();
 await testNo400K();
 await testVocabSizes();
 await testPhoneLayout();

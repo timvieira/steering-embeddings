@@ -273,6 +273,11 @@ scripts were in a session scratchpad, not the repo.
   stopping the old plots' rotation loops. A switch from 50K to 10K was checked
   in a headless browser: it shows one hero canvas and one SVG per plot, with
   no errors.
+  Update (2026-11-19): the loops now stop. Plots and the hero pause while off
+  screen, and a removed canvas or SVG counts as off screen. Measured: with
+  three plots left in 3D, then a switch to 10K, a quiet spot in the article
+  runs 0 animation frames per second. Still open: the old hero's WebGL
+  context is never disposed and the old plot objects are not released.
 - [x] **3D plots got stuck on phones** (timv, 2026-11-19: "glitchy/clunky/
   getting stuck"). The SVG had no `touch-action`, so the browser took a drag
   over for page scrolling and sent `pointercancel` after 2 moves; the code
@@ -309,11 +314,20 @@ scripts were in a session scratchpad, not the repo.
   return to the 2D layout with 0 px error. 1D <-> 3D goes through 2D. In 3D
   the wheel scrolls the page (pan/zoom is reattached on return to 2D, which
   the old code didn't do). Test: `testSeamlessDimSwitch`.
-  - [ ] Still open: the subspace animation (`renderSubspaceAnimation`, 2D/3D
-    only; its 1D is disabled) still rebuilds its scene on a switch (83 px /
-    145 px jumps). It computes its
-    direction, steered points and perpendicular axis (2D) or plane (3D)
-    separately per dimension, so it needs those blended too.
+  - [x] The subspace animation (`renderSubspaceAnimation`, 2D/3D only; its
+    1D is disabled) rebuilt its scene on a switch (83 px / 145 px jumps).
+    Done 2026-11-19: rewritten as `SubspaceAnimation` on `DimView`. The
+    layout is (x, y, w3 z), and `subspaceScene` recomputes the direction,
+    steered points, perpendicular line and plane from it every frame. The
+    line lies in the plane: it fades out as the plane fades in. Each step's
+    quantities (opacities, how far arrows and words have moved) ease over
+    time, so a click or a switch mid-step continues from where things are.
+    Probe and test: at every step, 2D -> 3D -> 2D lands 0 px off; the largest
+    per-frame move of a visible element is about 8 px. Arrows are drawn
+    paths (no SVG markers). The step text moved out of the SVG into a div
+    below it, sized to the longest step so the page doesn't shift between
+    steps (on narrow phones the old 36 px box could cut off a third line).
+    Test: `testSubspaceAnimation`.
   - [x] SteeringViz 1D <-> 2D redrew without animation. Fixed by the item
     below.
 - [x] **All of 1D, 2D, 3D should switch seamlessly** (timv: "all of {1D, 2D,
@@ -339,6 +353,10 @@ scripts were in a session scratchpad, not the repo.
   6 px feminine→masculine arrow had a 9 px head; as a spinning arrow passes
   through zero length a marker can flip) and work the same in every
   browser. The subspace animation still uses markers.
+  Update (2026-11-19): the subspace animation draws its heads the same way
+  now. And at 4x zoom the line showed through its own semi-transparent head
+  as a darker stripe; each arrow is now an opaque line and head in a group
+  that carries the transparency.
 - [x] **Animation "a little jittery"** (timv, 2026-11-19). Changes: the spin
   advances by elapsed time instead of a fixed angle per frame (uneven frames
   made the speed uneven); `_draw` sets the canvas height only when it
@@ -347,6 +365,44 @@ scripts were in a session scratchpad, not the repo.
   don't snap to whole pixels. Headless trace of the first 2D -> 1D: steady
   16.7 ms frames, height eases 465 -> 200 px in steps of at most 13 px.
   Not confirmed on timv's machine yet.
+  Update (2026-11-19), more changes:
+  - Switches used d3's cubic in-out easing, whose peak speed is 3x the
+    average, so the middle of a long move skipped 13–36 px per frame. All
+    animated moves now use smoothstep (peak 1.5x). A turn back from 3D to
+    face-on starts at the current spin speed instead of stopping dead
+    first, and a large turn takes up to 1.5x longer. Peak per-frame moves
+    on gender-pairs: 13 -> 7 px (2D -> 3D), 16 -> 7 (3D -> 2D), 19 -> 10
+    (-> 1D).
+  - Plots spinning off screen, and the hero, kept drawing every frame and
+    competed with the plot being watched. They now pause off screen. First
+    version read the observer's oldest entry instead of the latest, and a
+    plot switched to 3D right after loading stopped spinning after the
+    switch. Caught in a probe, not by the suite (it waits 60 s, by which
+    time entries arrive one at a time). Fixed, with
+    `testSpinRightAfterLoad` (fails on the bug, passes on the fix) and
+    `testOffscreenPause`.
+  - The hero's OrbitControls (three r128) turns and damps by a fixed amount
+    per frame: twice as fast on 120 Hz screens, uneven when frames are.
+    Both are now scaled by the frame's duration.
+  - After a drag, the SVG plots' spin restarted at full speed 3 s after
+    release; it now eases in over about a second (the hero already did,
+    through damping).
+- [x] **The subspace animation's direction didn't match its caption**
+  (2026-11-19). The step-3 text says "The top eigenvector of C", but the code
+  used the normalized sum of the pair differences: 0.7° apart in the 2D
+  layout. It now takes the top eigenvector of the 3x3 scatter (oriented
+  along the sum). Test: `testSubspaceAnimation` checks the drawn direction
+  against the eigenvector of the drawn differences.
+- [x] **Subspace animation step 5 ended differently in 2D and 3D**
+  (2026-11-19). 2D faded out the dashed components and the perpendicular
+  line; 3D kept them and the plane. To switch seamlessly the two had to agree:
+  both now keep them, so the final picture shows w, its component along the
+  direction, and where it landed. Easy to change if timv prefers the old 2D
+  ending.
+- [x] **Dimension selector** (2026-11-19): it found the clicked bar with
+  `indexOf(eigenvalue)`, which picks the wrong bar when two eigenvalues are
+  equal; it now uses the bar's position. In the subspace animation, clicking
+  the disabled 1D bar left the selector showing 1D while the plot stayed 2D.
 
 ### Smaller items
 

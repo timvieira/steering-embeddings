@@ -2,7 +2,7 @@
  * Embedding visualizations using D3 for all rendering (1D, 2D, projected 3D).
  * Three.js is only used for the hero visualization.
  */
-import { mds } from './embeddings.js';
+import { mds, sortedSVD } from './embeddings.js';
 
 const COLORS = {
   point: '#4a6a8a',
@@ -42,8 +42,11 @@ function project3Dto2D(coords3D, angle = 0, tilt = 0.4) {
 // to fit the spinning cloud and ramps up the spin, and the reverse turns back the short way
 // and flattens. Every switch ends exactly on the target layout.
 const SPIN_TILT = 0.4;     // tilt while spinning (radians)
-const SPIN_SPEED = 0.005;  // radians per frame
-const SWITCH_MS = 900;     // duration of a dimension switch
+const SPIN_SPEED = 0.005;  // radians per 1/60 s
+const SWITCH_MS = 900;     // duration of a dimension switch (up to 1.5x for a big turn back)
+// Easing for every animated move: smoothstep, whose peak speed is 1.5x the average (d3's
+// cubic in-out peaks at 3x, which makes long moves skip visibly from frame to frame).
+const smooth = u => u * u * (3 - 2 * u);
 
 function viewProject(L, st) {
   const { w1, w2, w3, k } = st;
@@ -110,7 +113,7 @@ function detachPanZoom(svg) {
   svg.on('.zoom', null);
   const zoomG = svg.select('g.zoom-container');
   if (zoomG.attr('transform')) {
-    zoomG.transition().duration(SWITCH_MS).ease(d3.easeCubicInOut).attr('transform', 'translate(0,0) scale(1)');
+    zoomG.transition().duration(SWITCH_MS).ease(smooth).attr('transform', 'translate(0,0) scale(1)');
   }
   if (svg.node()) svg.node().__zoom = d3.zoomIdentity;
 }
@@ -127,13 +130,24 @@ class DimView {
     this._dragging = false;
     this._autoRotate = true;
     this._resume = null;
+    this._visible = true;
+    this._gain = 1;           // spin speed, as a fraction of SPIN_SPEED
     this.svgNode = null;
   }
 
-  // Drag-to-orbit on this svg (in 3D): horizontal drag turns, vertical drag tilts.
+  // Drag-to-orbit on this svg (in 3D): horizontal drag turns, vertical drag tilts. The spin
+  // pauses while the plot is off screen (switches still finish), so plots left spinning
+  // don't take frames from the one being watched.
   attach(svgNode) {
     if (!svgNode || this.svgNode === svgNode) return;
     this.svgNode = svgNode;
+    if (this._io) this._io.disconnect();  // the plot was rebuilt: stop watching the old svg
+    // Entries arrive oldest first, several at once when the page is busy: the last is current.
+    this._io = new IntersectionObserver((es) => {
+      this._visible = es[es.length - 1].isIntersecting;
+      if (this._visible && this.spinning) this._run();
+    }, { rootMargin: '100px' });
+    this._io.observe(svgNode);
     let x0 = 0, y0 = 0, a0 = 0, t0 = 0;
     svgNode.addEventListener('pointerdown', (e) => {
       if (!this.spinning || this._anim) return;
@@ -167,7 +181,7 @@ class DimView {
   set(dims, g) {
     this.stop();
     this.state = { angle: 0, ...viewTarget(dims, g) };
-    this.spinning = dims === 3; this._autoRotate = true; this._touch3D(this.spinning);
+    this.spinning = dims === 3; this._autoRotate = true; this._gain = 1; this._touch3D(this.spinning);
     this.draw(this.state);
     if (this.spinning) this._run();
   }
@@ -175,14 +189,20 @@ class DimView {
   // Animate to `dims`; onDone runs once the plot is exactly there (not if interrupted).
   go(dims, g, onDone) {
     const to = viewTarget(dims, g);
+    let dur = SWITCH_MS, v0 = 0;
     if (dims !== 3) {
-      // Turn back to the nearest whole turn, so 1D/2D are seen face-on.
+      // Turn back to a whole turn, so 1D/2D are seen face-on: the one nearest to where the
+      // plot's current turning carries it, starting at that turning speed (so a spinning plot
+      // doesn't stop dead first). A bigger turn takes longer, up to 1.5x, so it doesn't whip
+      // around. The starting speed is capped at 4 rad/s: a faster drag-flick would overshoot.
       const a = this.state.angle;
-      to.angle = a - ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI);
+      v0 = Math.max(-0.004, Math.min(0.004, this._omega || 0));  // rad/ms
+      to.angle = 2 * Math.PI * Math.round((a + v0 * SWITCH_MS / 3) / (2 * Math.PI));
+      dur = SWITCH_MS * (1 + 0.5 * Math.min(1, Math.abs(to.angle - a) / Math.PI));
     }
     this.spinning = dims === 3; this._dragging = false; this._autoRotate = true;
     clearTimeout(this._resume); this._touch3D(this.spinning);
-    this._anim = { from: { ...this.state }, to, t0: null, onDone: () => {
+    this._anim = { from: { ...this.state }, to, dur, v0, t0: null, onDone: () => {
       if (dims !== 3) this.state.angle = 0;
       if (onDone) onDone();
     } };
@@ -192,9 +212,12 @@ class DimView {
   // Redraw the current state (e.g. after label widths change).
   redraw() { if (this.state) this.draw(this.state); }
 
+  // Whether a frame is scheduled (spinning or switching): it will redraw on its own.
+  get running() { return this._raf !== null; }
+
   stop() {
     if (this._raf) cancelAnimationFrame(this._raf);
-    this._raf = null; this._anim = null; this._tPrev = undefined;
+    this._raf = null; this._anim = null; this._tPrev = undefined; this._aPrev = undefined; this._omega = 0;
   }
 
   _run() {
@@ -203,24 +226,33 @@ class DimView {
       this._raf = null;
       // Spin by elapsed time, not per frame, so uneven frames don't change its speed
       // (capped, so a stalled or background tab doesn't jump).
-      const frames = this._tPrev === undefined ? 1 : Math.min(3, (now - this._tPrev) / (1000 / 60));
+      const dt = this._tPrev === undefined ? 0 : now - this._tPrev;
+      const frames = dt === 0 ? 1 : Math.min(3, dt / (1000 / 60));
       this._tPrev = now;
-      const st = this.state, an = this._anim;
+      const st = this.state, an = this._anim, a0 = this._aPrev;
       let finished = false;
       if (an) {
+        // Smoothstep, plus the starting turn speed v0 fading out (cubic Hermite, end speed 0).
         if (an.t0 === null) an.t0 = now;
-        const u = Math.min(1, (now - an.t0) / SWITCH_MS), e = d3.easeCubicInOut(u);
+        const u = Math.min(1, (now - an.t0) / an.dur), e = smooth(u);
         for (const key of Object.keys(an.to)) st[key] = an.from[key] + (an.to[key] - an.from[key]) * e;
+        if (an.v0) st.angle += an.v0 * an.dur * u * (1 - u) * (1 - u);
         finished = u >= 1;
       }
-      if (this.spinning && this._autoRotate && !this._dragging) st.angle += SPIN_SPEED * st.w3 * frames;
+      // After a drag the spin eases back in over about a second instead of starting at full speed.
+      const turning = this._autoRotate && !this._dragging;
+      this._gain = !turning ? 0 : this._gain + (1 - this._gain) * (1 - Math.exp(-dt / 400));
+      if (this.spinning && turning) st.angle += SPIN_SPEED * st.w3 * frames * this._gain;
+      // How fast the plot is turning (rad/ms), drags included, for the next switch to start from.
+      this._omega = dt > 0 && a0 !== undefined ? (st.angle - a0) / dt : 0;
+      this._aPrev = st.angle;
       this.draw(st);
       if (finished && this._anim === an) {
         this._anim = null;
         an.onDone();
       }
-      if (!this._raf && (this.spinning || this._anim)) this._raf = requestAnimationFrame(step);
-      else if (!this._raf) this._tPrev = undefined;
+      if (!this._raf && ((this.spinning && this._visible) || this._anim)) this._raf = requestAnimationFrame(step);
+      else if (!this._raf) { this._tPrev = undefined; this._aPrev = undefined; this._omega = 0; }
     };
     this._raf = requestAnimationFrame(step);
   }
@@ -325,9 +357,8 @@ function createEigenSelector(container, eigenvalues, activeDims, onChange) {
     .text((d, i) => `${i + 1}d`);
 
   // Click handler on the whole group
-  groups.on('click', function(event, d) {
-    const idx = topEig.indexOf(d);
-    const newDims = idx + 1;
+  groups.on('click', function() {
+    const newDims = groups.nodes().indexOf(this) + 1;  // by position: two eigenvalues can be equal
     bars.attr('fill', (d, i) => i < newDims ? '#aac4de' : '#e8e8e8');
     onChange(newDims);
   });
@@ -959,17 +990,19 @@ class EmbeddingViz {
       .attr('class', 'cross-group')
       .attr('stroke', COLORS.crossGroup).attr('stroke-width', 1).attr('stroke-dasharray', '4,3');
 
+    // Each arrow is an opaque line and head in a group that carries the transparency, so the
+    // line doesn't show darker where it runs under its head. Plain arrows are COLORS.arrow
+    // (COLORS.point at 0.45); thick ones are fainter still.
     const arrowData = this.arrows.filter(a => a.from < n && a.to < n);
-    const arrowColor = d => d.color === 'red' ? COLORS.highlight : COLORS.arrow;
-    g.selectAll('line.arrow').data(arrowData).enter().append('line')
+    const arrowColor = d => d.color === 'red' ? COLORS.highlight : COLORS.point;
+    const arrowG = g.selectAll('g.arrow').data(arrowData).enter().append('g')
       .attr('class', 'arrow')
+      .attr('opacity', d => (d.color === 'red' ? 1 : 0.45) * (d.thick ? 0.45 : 1));
+    arrowG.append('line').attr('class', 'arrow')
       .attr('stroke-width', d => d.thick ? 2 : 1.5)
-      .attr('stroke', arrowColor)
-      .attr('opacity', d => d.thick ? 0.45 : 1);
-    g.selectAll('path.arrow-head').data(arrowData).enter().append('path')
-      .attr('class', 'arrow-head')
-      .attr('fill', arrowColor)
-      .attr('opacity', d => d.thick ? 0.45 : 1);
+      .attr('stroke', arrowColor);
+    arrowG.append('path').attr('class', 'arrow-head')
+      .attr('fill', arrowColor);
 
     const pointData = this.words.map((word, i) => ({ i, word }));
     g.selectAll('circle.point').data(pointData).enter().append('circle')
@@ -1281,16 +1314,30 @@ function renderHero3D(container, wordData, options = {}) {
   camera.position.set(2 * f, 1.3 * f, 2 * f);
   camera.lookAt(0, 0, 0);
 
-  let animId = null;
-  function animate() {
+  // Render only while the canvas is on screen. OrbitControls (r128) turns and damps by a
+  // fixed amount per frame, which spins twice as fast on a 120Hz screen and unevenly when
+  // frames are uneven; scale both by the frame's duration (capped at 3 frames, so a stall
+  // doesn't jump).
+  let animId = null, tPrev = null;
+  function animate(t) {
     animId = requestAnimationFrame(animate);
+    const k = tPrev === null || t === undefined ? 1 : Math.min(3, (t - tPrev) / (1000 / 60));
+    tPrev = t === undefined ? null : t;
+    controls.autoRotateSpeed = 0.8 * k;
+    controls.dampingFactor = 1 - Math.pow(1 - 0.05, k);
     controls.update();
     renderer.render(scene, camera);
   }
   animate();
+  const io = new IntersectionObserver((es) => {
+    const e = es[es.length - 1];  // entries arrive oldest first: the last is current
+    if (e.isIntersecting && animId === null) animate();
+    else if (!e.isIntersecting && animId !== null) { cancelAnimationFrame(animId); animId = null; tPrev = null; }
+  }, { rootMargin: '100px' });
+  io.observe(renderer.domElement);
 
   return { scene, camera, renderer, controls, el,
-    destroy() { cancelAnimationFrame(animId); renderer.dispose(); clearTimeout(pauseTimeout); }
+    destroy() { io.disconnect(); cancelAnimationFrame(animId); renderer.dispose(); clearTimeout(pauseTimeout); }
   };
 }
 
@@ -1495,8 +1542,8 @@ class SteeringViz {
       if (this._steerTimer) this._steerTimer.stop();
       this._steerTimer = d3.timer((elapsed) => {
         const u = Math.min(1, elapsed / dur);
-        this._steerT = from + (to - from) * d3.easeCubicInOut(u);
-        if (!this._view.spinning) this._view.redraw();
+        this._steerT = from + (to - from) * smooth(u);
+        if (!this._view.running) this._view.redraw();
         if (u >= 1) {
           this._steerTimer.stop();
           if (this.steered) statusText.text('Steered embeddings');
@@ -1714,579 +1761,332 @@ function renderSteering2D(container, wordData, options = {}) {
   });
 }
 
+// ── Subspace animation ─────────────────────────────────────────────────
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul3 = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const lerp2 = (a, b, t) => [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+
+// Everything the subspace animation draws, for word positions Q (3-vectors) and pairs
+// { from, to }: the pair differences moved to the centroid, the direction (top eigenvector
+// of sum_i d_i d_i^T, pointing along sum_i d_i), each word with its component along the
+// direction removed, and what is perpendicular to the direction: a line along u (in the
+// xy-plane) and the plane spanned by u and v. Throws where the direction's orientation or
+// the perpendicular line is undefined.
+function subspaceScene(Q, pairs) {
+  const c = [0, 1, 2].map(j => d3.mean(Q, q => q[j]));
+  const diffs = pairs.map(p => sub3(Q[p.to], Q[p.from]));
+  const C = [0, 1, 2].map(a => [0, 1, 2].map(b => d3.sum(diffs, d => d[a] * d[b])));
+  const { u: U } = sortedSVD(C);
+  let dir = [U[0][0], U[1][0], U[2][0]];
+  const along = dot3(dir, diffs.reduce(add3, [0, 0, 0]));
+  if (along === 0) throw new Error('subspace animation: the pair differences sum to a vector perpendicular to the direction, so it has no orientation');
+  if (along < 0) dir = mul3(dir, -1);
+  const comp = Q.map(q => dot3(sub3(q, c), dir));
+  const steered = Q.map((q, i) => sub3(q, mul3(dir, comp[i])));
+  const h = Math.hypot(dir[0], dir[1]);
+  if (h < 1e-9) throw new Error('subspace animation: the direction is vertical, so the perpendicular line is undefined');
+  const u = [-dir[1] / h, dir[0] / h, 0];
+  const v = [dir[1] * u[2] - dir[2] * u[1], dir[2] * u[0] - dir[0] * u[2], dir[0] * u[1] - dir[1] * u[0]];
+  // The line and plane reach 20% past the furthest steered word.
+  const eu = 1.2 * d3.max(steered, s => Math.abs(dot3(sub3(s, c), u)));
+  const ev = 1.2 * d3.max(steered, s => Math.abs(dot3(sub3(s, c), v)));
+  return {
+    Q, c, steered,
+    dirStart: add3(c, mul3(dir, d3.min(comp))), dirEnd: add3(c, mul3(dir, d3.max(comp))),
+    diffEnds: diffs.map(d => add3(c, d)),
+    axis: [sub3(c, mul3(u, eu)), add3(c, mul3(u, eu))],
+    plane: [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([a, b]) => add3(c, add3(mul3(u, a * eu), mul3(v, b * ev)))),
+  };
+}
+
 /**
- * Animated subspace identification walkthrough.
- * Steps: Pairs → Differences → Direction → Projection → Steer.
+ * Step-by-step walkthrough of finding a direction from word pairs and projecting it out:
+ *   0  arrows from each pair's first word to its second;
+ *   1  the differences d_i moved to start at the centroid;
+ *   2  the direction (top eigenvector of sum_i d_i d_i^T);
+ *   3  each word's component along it (dashed), and what is perpendicular to it
+ *      (a line in 2D, a plane in 3D);
+ *   4  each word moved by minus that component, onto the line or plane.
+ * It runs on the 2D or 3D MDS layout itself, not in 100 dimensions (the article says so).
  *
- * wordData: array of { word, coord: [x,y] }
- * options.pairs: array of { from, to } indices into wordData
- * options.directionLabel: label for the direction arrow
+ * 2D and 3D are one scene (see DimView): the layout is w2*P2 + w3*P3, i.e. (x, y, w3*z),
+ * and subspaceScene recomputes the direction, projections, line and plane from it every
+ * frame, so switching dimension at any step, even mid-step, moves everything continuously.
+ * The perpendicular line lies in the plane: it fades out as the plane fades in. Every step's
+ * quantities (opacities, how far the arrows and words have moved) are eased over time, so a
+ * click mid-step continues from where things are. 1D is disabled: projecting out the only
+ * axis would put every word on one point.
+ *
+ * wordData: [{ word }]; options.pairs: [{ from, to }] indices into wordData;
+ * options.mdsData: computeAllMDS output for these words; options.eigenContainer: element
+ * (or id) for the dimension selector.
  */
-function renderSubspaceAnimation(container, wordData, options = {}) {
-  const el = typeof container === 'string' ? document.getElementById(container) : container;
-  if (!el) return;
-  const defaultW = getResponsiveWidth(el);
-  const { pairs = [], directionLabel = 'direction' } = options;
-  const { mdsData = null, eigenContainer = null } = options;
-  const margin = { top: 0, right: 10, bottom: 30, left: 10 };
-  // Adaptive height: compute from initial data extent
-  const coords = wordData.map(d => d.coord);
-  const xs = coords.map(c => c[0]), ys = coords.map(c => c[1]);
-  const xSpan = (Math.max(...xs) - Math.min(...xs)) || 0.2;
-  const ySpan = (Math.max(...ys) - Math.min(...ys)) || 0.2;
-  const dataRatio = ySpan / xSpan;
-  const innerWRaw = defaultW - margin.left - margin.right;
-  const rawH = Math.round(innerWRaw * dataRatio) + margin.top + margin.bottom;
-  const minH = Math.round(defaultW * 0.35);
-  const maxH = Math.round(defaultW * 0.65);
-  const width = defaultW;
-  const height = Math.max(minH, Math.min(maxH, rawH));
-  const w = width - margin.left - margin.right;
-  const h = height - margin.top - margin.bottom;
-
-  // Mutable state shared across rebuilds
-  let dims = 2;
-  let rotationAngle = 0, tiltAngle = 0.4;
-  let rotationAnim = null;
-
-  function stopRotation() {
-    if (rotationAnim) { cancelAnimationFrame(rotationAnim); rotationAnim = null; }
-  }
-
-  // Compute direction + steered coords in the given dimensionality
-  function computeDerived(ndims, rawCoords) {
-    for (let i = 0; i < wordData.length; i++) {
-      wordData[i].coord = rawCoords[i].slice(0, ndims);
+class SubspaceAnimation {
+  constructor(el, wordData, { pairs = [], directionLabel = 'direction', mdsData, eigenContainer = null }) {
+    if (!mdsData) throw new Error('subspace animation: mdsData is required');
+    this.el = el;
+    this.words = wordData.map(d => d.word);
+    this.pairs = pairs;
+    this.directionLabel = directionLabel;
+    this.mdsData = mdsData;
+    this.dims = 2;
+    this.step = 0;
+    // Both layouts in the unit of the 2D layout's radius.
+    const raw2 = mdsData.coords[2];
+    const r = d3.max(raw2, ([x, y]) => Math.hypot(x, y)) || 1;
+    this._P2 = raw2.map(([x, y]) => [x / r, y / r, 0]);
+    this._P3 = mdsData.coords[3].map(([x, y, z]) => [x / r, y / r, z / r]);
+    // Eased step quantities, all 0..1 (see _goTo).
+    this._tw = {};
+    for (const k of ['pairA', 'transA', 'transT', 'dirA', 'perpA', 'projT', 'projA', 'ghostA', 'steerT']) {
+      this._tw[k] = { from: 0, to: 0, t0: 0, delay: 0, dur: 1 };
     }
-    const centroid = [];
-    for (let k = 0; k < ndims; k++) centroid.push(d3.mean(wordData, d => d.coord[k]));
+    this._tw.pairA.to = this._tw.pairA.from = 1;
+    this._raf = null;
+    this._view = new DimView(st => this._draw(st));
 
-    const dd = new Array(ndims).fill(0);
-    for (const p of pairs) {
-      for (let k = 0; k < ndims; k++) dd[k] += wordData[p.to].coord[k] - wordData[p.from].coord[k];
-    }
-    const dLen = Math.sqrt(dd.reduce((s, v) => s + v * v, 0)) || 1;
-    const dirVec = dd.map(v => v / dLen);
-
-    for (const d of wordData) {
-      const v = d.coord.map((c, k) => c - centroid[k]);
-      const proj = v.reduce((s, vi, k) => s + vi * dirVec[k], 0);
-      d.steeredCoord = d.coord.map((c, k) => c - proj * dirVec[k]);
-    }
-    return { centroid, dirVec };
-  }
-
-  // Build the full scene; called on init and when switching dims.
-  function buildScene() {
-    stopRotation();
-    d3.select(el).selectAll('svg.plot').remove();
-    d3.select(el).selectAll('.anim-controls').remove();
-
-    const rawCoords = mdsData ? mdsData.coords[dims] : wordData.map(d => d.coord);
-    const { centroid, dirVec } = computeDerived(dims, rawCoords);
-
-    // Direction arrow spans the point cloud along dirVec
-    const maxPairLen = Math.max(...pairs.map(p => {
-      const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
-      return Math.sqrt(diff.reduce((s, v) => s + v * v, 0));
-    })) || 1;
-    // Project all word coords onto dirVec relative to centroid
-    const projections = wordData.map(d =>
-      d.coord.reduce((s, v, k) => s + (v - centroid[k]) * dirVec[k], 0)
-    );
-    const dirArrowMin = Math.min(...projections);
-    const dirArrowMax = Math.max(...projections);
-
-    // --- Scales ---
-    let xScale, yScale;
-    let norm3D = null, normSteered3D = null, normCentroid3D = null;
-    let normDirStart3D = null, normDirEnd3D = null, normDiffEnds3D = null, normPlaneCorners = null;
-
-    if (dims === 3) {
-      // Collect every 3D point that will be drawn, normalize together
-      const allPts = [];
-      for (const d of wordData) { allPts.push(d.coord); allPts.push(d.steeredCoord); }
-      allPts.push(centroid);
-      allPts.push(centroid.map((c, k) => c + dirVec[k] * dirArrowMin));
-      allPts.push(centroid.map((c, k) => c + dirVec[k] * dirArrowMax));
-      for (const p of pairs) {
-        const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
-        allPts.push(centroid.map((c, k) => c + diff[k]));
-      }
-      const maxR = Math.max(...allPts.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z))) || 1;
-      const nf = pt => pt.map(v => v / maxR);
-      norm3D = wordData.map(d => nf(d.coord));
-      normSteered3D = wordData.map(d => nf(d.steeredCoord));
-      normCentroid3D = nf(centroid);
-      normDirStart3D = nf(centroid.map((c, k) => c + dirVec[k] * dirArrowMin));
-      normDirEnd3D = nf(centroid.map((c, k) => c + dirVec[k] * dirArrowMax));
-      normDiffEnds3D = pairs.map(p => {
-        const diff = wordData[p.to].coord.map((v, k) => v - wordData[p.from].coord[k]);
-        return nf(centroid.map((c, k) => c + diff[k]));
-      });
-
-      // Perpendicular plane: find two orthogonal vectors to dirVec, build quad corners
-      const d = dirVec;
-      // Pick a vector not parallel to d to cross with
-      const seed = Math.abs(d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-      const u = [ // cross(d, seed)
-        d[1]*seed[2] - d[2]*seed[1],
-        d[2]*seed[0] - d[0]*seed[2],
-        d[0]*seed[1] - d[1]*seed[0],
-      ];
-      const uLen = Math.sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]) || 1;
-      u[0] /= uLen; u[1] /= uLen; u[2] /= uLen;
-      const v = [ // cross(d, u)
-        d[1]*u[2] - d[2]*u[1],
-        d[2]*u[0] - d[0]*u[2],
-        d[0]*u[1] - d[1]*u[0],
-      ];
-      // Plane extent: large enough to visually contain the projected points
-      const planeExtent = maxPairLen * 1.5;
-      const planeCorners3D = [
-        centroid.map((c, k) => c + (u[k] + v[k]) * planeExtent),
-        centroid.map((c, k) => c + (-u[k] + v[k]) * planeExtent),
-        centroid.map((c, k) => c + (-u[k] - v[k]) * planeExtent),
-        centroid.map((c, k) => c + (u[k] - v[k]) * planeExtent),
-      ];
-      normPlaneCorners = planeCorners3D.map(pt => nf(pt));
-
-      const baseDom = [-1.15, 1.15];
-      let domX = baseDom, domY = baseDom;
-      const baseSpan = baseDom[1] - baseDom[0];
-      const mid = (baseDom[0] + baseDom[1]) / 2;
-      if (w > h) { const s = baseSpan * (w / h); domX = [mid - s/2, mid + s/2]; }
-      else { const s = baseSpan * (h / w); domY = [mid - s/2, mid + s/2]; }
-      xScale = d3.scaleLinear().domain(domX).range([0, w]);
-      yScale = d3.scaleLinear().domain(domY).range([h, 0]);
-    } else {
-      // 2D: data-driven domain with equal scaling
-      const allX = wordData.flatMap(d => [d.coord[0], d.steeredCoord[0]]);
-      const allY = wordData.flatMap(d => [d.coord[1], d.steeredCoord[1]]);
-      allX.push(centroid[0] + dirVec[0] * dirArrowMin);
-      allY.push(centroid[1] + dirVec[1] * dirArrowMin);
-      allX.push(centroid[0] + dirVec[0] * dirArrowMax);
-      allY.push(centroid[1] + dirVec[1] * dirArrowMax);
-      for (const p of pairs) {
-        allX.push(centroid[0] + wordData[p.to].coord[0] - wordData[p.from].coord[0]);
-        allY.push(centroid[1] + wordData[p.to].coord[1] - wordData[p.from].coord[1]);
-      }
-      const pad = 0.12;
-      const xMin = Math.min(...allX), xMax = Math.max(...allX);
-      const yMin = Math.min(...allY), yMax = Math.max(...allY);
-      const xSpan = (xMax - xMin) || 0.2, ySpan = (yMax - yMin) || 0.2;
-      const dataW = xSpan + 2 * xSpan * pad, dataH = ySpan + 2 * ySpan * pad;
-      const aspect = w / h;
-      let domW = dataW, domH = dataH;
-      if (dataW / dataH > aspect) domH = domW / aspect;
-      else domW = domH * aspect;
-      const cxDom = (xMin + xMax) / 2, cyDom = (yMin + yMax) / 2;
-      xScale = d3.scaleLinear().domain([cxDom - domW/2, cxDom + domW/2]).range([0, w]);
-      yScale = d3.scaleLinear().domain([cyDom - domH/2, cyDom + domH/2]).range([h, 0]);
-    }
-
-    // --- Projection helpers (3D only) ---
-    function getProjected() {
-      const result = {
-        words: project3Dto2D(norm3D, rotationAngle, tiltAngle),
-        steered: project3Dto2D(normSteered3D, rotationAngle, tiltAngle),
-        centroid: project3Dto2D([normCentroid3D], rotationAngle, tiltAngle)[0],
-        dirStart: project3Dto2D([normDirStart3D], rotationAngle, tiltAngle)[0],
-        dirEnd: project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0],
-        diffs: project3Dto2D(normDiffEnds3D, rotationAngle, tiltAngle),
-      };
-      if (normPlaneCorners) {
-        result.planeCorners = project3Dto2D(normPlaneCorners, rotationAngle, tiltAngle);
-      }
-      return result;
-    }
-
-    function wordXY(d, i) {
-      if (dims === 2) return [xScale(d.coord[0]), yScale(d.coord[1])];
-      const p = project3Dto2D([norm3D[i]], rotationAngle, tiltAngle)[0];
-      return [xScale(p[0]), yScale(p[1])];
-    }
-
-    // --- SVG setup ---
-    const svg = d3.select(el).append('svg')
-      .attr('class', 'plot').attr('width', width).attr('height', height);
-    if (dims === 3) svg.style('cursor', 'grab');
-    const cid = el.id || 'anim';
-    const defs = svg.append('defs');
-    for (const [suffix, color] of [['', COLORS.arrow], ['-dir', COLORS.direction]]) {
-      defs.append('marker')
-        .attr('id', `arrow${suffix}-${cid}`)
-        .attr('viewBox', '0 0 10 10')
-        .attr('refX', 8).attr('refY', 5)
-        .attr('markerWidth', 6).attr('markerHeight', 6)
-        .attr('orient', 'auto')
-        .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 Z').attr('fill', color);
-    }
-
-    const mainG = svg.append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    // --- Create all SVG elements ---
-    const pairArrows = mainG.selectAll('line.pair-arrow').data(pairs).enter().append('line')
-      .attr('class', 'pair-arrow')
-      .attr('x1', d => wordXY(wordData[d.from], d.from)[0])
-      .attr('y1', d => wordXY(wordData[d.from], d.from)[1])
-      .attr('x2', d => wordXY(wordData[d.to], d.to)[0])
-      .attr('y2', d => wordXY(wordData[d.to], d.to)[1])
-      .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
-      .attr('marker-end', `url(#arrow-${cid})`);
-
-    const transArrows = mainG.selectAll('line.trans-arrow').data(pairs).enter().append('line')
-      .attr('class', 'trans-arrow')
-      .attr('x1', d => wordXY(wordData[d.from], d.from)[0])
-      .attr('y1', d => wordXY(wordData[d.from], d.from)[1])
-      .attr('x2', d => wordXY(wordData[d.to], d.to)[0])
-      .attr('y2', d => wordXY(wordData[d.to], d.to)[1])
-      .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5)
-      .attr('marker-end', `url(#arrow-${cid})`)
-      .attr('opacity', 0);
-
-    // Direction arrow (spans point cloud)
-    const dsXY = dims === 2 ? [xScale(centroid[0] + dirVec[0] * dirArrowMin), yScale(centroid[1] + dirVec[1] * dirArrowMin)]
-      : (() => { const p = project3Dto2D([normDirStart3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
-    const deXY = dims === 2
-      ? [xScale(centroid[0] + dirVec[0] * dirArrowMax), yScale(centroid[1] + dirVec[1] * dirArrowMax)]
-      : (() => { const p = project3Dto2D([normDirEnd3D], rotationAngle, tiltAngle)[0]; return [xScale(p[0]), yScale(p[1])]; })();
-    const dirArrow = mainG.append('line')
-      .attr('x1', dsXY[0]).attr('y1', dsXY[1]).attr('x2', deXY[0]).attr('y2', deXY[1])
-      .attr('stroke', COLORS.direction).attr('stroke-width', 2.5)
-      .attr('stroke-dasharray', '8,4')
-      .attr('marker-end', `url(#arrow-dir-${cid})`)
-      .attr('opacity', 0);
-
-    const dirLabelEl = mainG.append('text')
-      .attr('x', deXY[0]).attr('y', deXY[1] - 10)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
-      .attr('fill', COLORS.direction).text(directionLabel)
-      .attr('opacity', 0);
-
-    // Perpendicular axis (2D only; in 3D the perpendicular complement is a plane)
-    let perpAxis;
-    if (dims === 2) {
-      const perpExtent = Math.max(...wordData.map(d => {
-        const vx = d.steeredCoord[0] - centroid[0], vy = d.steeredCoord[1] - centroid[1];
-        return Math.abs(vx * (-dirVec[1]) + vy * dirVec[0]);
-      })) * 1.2 || 1;
-      perpAxis = mainG.append('line').attr('class', 'perp-axis')
-        .attr('x1', xScale(centroid[0] - (-dirVec[1]) * perpExtent))
-        .attr('y1', yScale(centroid[1] - dirVec[0] * perpExtent))
-        .attr('x2', xScale(centroid[0] + (-dirVec[1]) * perpExtent))
-        .attr('y2', yScale(centroid[1] + dirVec[0] * perpExtent))
-        .attr('stroke', '#999').attr('stroke-width', 1).attr('stroke-dasharray', '6,4')
-        .attr('opacity', 0);
-    } else {
-      perpAxis = mainG.append('line').attr('class', 'perp-axis').attr('opacity', 0);
-    }
-
-    // Perpendicular plane (3D only) — rendered as a semi-transparent quad
-    let perpPlane = null;
-    if (dims === 3) {
-      perpPlane = mainG.insert('polygon', ':first-child').attr('class', 'perp-plane')
-        .attr('fill', '#999').attr('fill-opacity', 0.08)
-        .attr('stroke', '#999').attr('stroke-width', 0.5).attr('stroke-dasharray', '4,3')
-        .attr('opacity', 0);
-    }
-
-    const projLines = mainG.selectAll('line.proj-line').data(wordData).enter().append('line')
-      .attr('class', 'proj-line')
-      .attr('x1', (d, i) => wordXY(d, i)[0]).attr('y1', (d, i) => wordXY(d, i)[1])
-      .attr('x2', (d, i) => wordXY(d, i)[0]).attr('y2', (d, i) => wordXY(d, i)[1])
-      .attr('stroke', COLORS.direction).attr('stroke-width', 1).attr('stroke-dasharray', '3,2')
-      .attr('opacity', 0);
-
-    const ghosts = mainG.selectAll('circle.ghost').data(wordData).enter().append('circle')
-      .attr('class', 'ghost')
-      .attr('cx', (d, i) => wordXY(d, i)[0]).attr('cy', (d, i) => wordXY(d, i)[1])
-      .attr('r', 3).attr('fill', COLORS.point).attr('opacity', 0);
-
-    const dots = mainG.selectAll('circle.word-dot').data(wordData).enter().append('circle')
-      .attr('class', 'word-dot')
-      .attr('cx', (d, i) => wordXY(d, i)[0]).attr('cy', (d, i) => wordXY(d, i)[1])
-      .attr('r', 3.5).attr('fill', COLORS.point);
-
-    const labelEls = mainG.selectAll('text.word-label').data(wordData).enter().append('text')
-      .attr('class', 'word-label')
-      .attr('x', (d, i) => wordXY(d, i)[0]).attr('y', (d, i) => wordXY(d, i)[1] - 8)
-      .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
-      .text(d => d.word);
-
-    // --- Step controls ---
-    let currentStep = 0;
-    const km = (tex) => katex.renderToString(tex, { throwOnError: false });
-    const stepDescs = [
-      `Each arrow connects a word pair \u2014 e.g. ${km('\\overrightarrow{\\text{woman}}')} to ${km('\\overrightarrow{\\text{man}}')}.`,
-      `Translate each pair\u2019s difference vector ${km('d_i = \\overrightarrow{w}_i^+ - \\overrightarrow{w}_i^-')} to a common origin. They point in roughly the same direction.`,
-      `The top eigenvector of ${km('C = \\tfrac{1}{2}\\sum d_i\\,d_i^T')} gives the direction that best explains these differences.`,
-      `Each word\u2019s component along the direction (its \u201cgender component\u201d ${km('\\overrightarrow{w}_{\\mathcal{B}}')}) is shown as a dashed line.`,
-      `Project out: ${km('\\overrightarrow{w}_{\\text{steered}} = \\overrightarrow{w} - \\overrightarrow{w}_{\\mathcal{B}}')}`,
-    ];
-
-    const descFO = svg.append('foreignObject')
-      .attr('x', margin.left).attr('y', height - margin.bottom - 6)
-      .attr('width', w).attr('height', margin.bottom + 6);
-    const descDiv = descFO.append('xhtml:div')
-      .style('font-size', '13px').style('color', '#555').style('line-height', '1.3')
-      .style('padding', '2px 4px').style('border-radius', '3px');
-
-    const ctrlDiv = d3.select(el).append('div').attr('class', 'anim-controls')
-      .style('margin-top', '4px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
-    const btn = ctrlDiv.append('button')
-      .style('background', COLORS.point).style('color', 'white').style('border', 'none')
-      .style('border-radius', '4px').style('padding', '5px 14px').style('font-size', '13px')
-      .style('cursor', 'pointer').text('Next \u25b6');
-    const stepCounter = ctrlDiv.append('span')
-      .style('font-size', '12px').style('color', '#999');
-
-    function updateStatus() {
-      stepCounter.text(`Step ${currentStep + 1} of ${stepDescs.length}`);
-      descDiv.html(stepDescs[currentStep]);
-    }
-    updateStatus();
-
-    // --- goTo: step transitions ---
-    function goTo(s) {
-      currentStep = s;
-      updateStatus();
-      const dur = 800;
-
-      if (dims === 2) {
-        // 2D transitions (original logic)
-        if (s === 0) {
-          btn.text('Next \u25b6').style('background', COLORS.point).style('color', 'white');
-          pairArrows.transition().duration(dur).attr('opacity', 1)
-            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-          transArrows.transition().duration(dur).attr('opacity', 0)
-            .attr('x1', d => xScale(wordData[d.from].coord[0]))
-            .attr('y1', d => yScale(wordData[d.from].coord[1]))
-            .attr('x2', d => xScale(wordData[d.to].coord[0]))
-            .attr('y2', d => yScale(wordData[d.to].coord[1]));
-          dirArrow.transition().duration(dur).attr('opacity', 0);
-          dirLabelEl.transition().duration(dur).attr('opacity', 0);
-          perpAxis.transition().duration(dur).attr('opacity', 0);
-          projLines.transition().duration(dur).attr('opacity', 0)
-            .attr('x1', d => xScale(d.coord[0])).attr('y1', d => yScale(d.coord[1]))
-            .attr('x2', d => xScale(d.coord[0])).attr('y2', d => yScale(d.coord[1]));
-          ghosts.transition().duration(dur).attr('opacity', 0);
-          dots.transition().duration(dur)
-            .attr('cx', d => xScale(d.coord[0])).attr('cy', d => yScale(d.coord[1]));
-          labelEls.transition().duration(dur)
-            .attr('x', d => xScale(d.coord[0])).attr('y', d => yScale(d.coord[1]) - 8);
-        } else if (s === 1) {
-          pairArrows.transition().duration(dur).attr('opacity', 0.3);
-          transArrows
-            .attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
-          transArrows.transition().duration(dur * 1.5).ease(d3.easeCubicInOut)
-            .attr('x1', xScale(centroid[0])).attr('y1', yScale(centroid[1]))
-            .attr('x2', d => xScale(centroid[0] + wordData[d.to].coord[0] - wordData[d.from].coord[0]))
-            .attr('y2', d => yScale(centroid[1] + wordData[d.to].coord[1] - wordData[d.from].coord[1]))
-            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-        } else if (s === 2) {
-          transArrows.transition().duration(dur).attr('opacity', 0.35);
-          dirArrow.transition().duration(dur).attr('opacity', 0.9);
-          dirLabelEl.transition().duration(dur).attr('opacity', 1);
-        } else if (s === 3) {
-          transArrows.transition().duration(dur).attr('opacity', 0);
-          perpAxis.transition().duration(dur).attr('opacity', 0.5);
-          projLines.transition().duration(dur)
-            .attr('x2', d => xScale(d.steeredCoord[0]))
-            .attr('y2', d => yScale(d.steeredCoord[1]))
-            .attr('opacity', 0.6);
-        } else if (s === 4) {
-          btn.text('Reset').style('background', '#ddd').style('color', '#333');
-          ghosts.transition().duration(300).attr('opacity', 0.4);
-          pairArrows.transition().duration(dur).attr('opacity', 0);
-          dots.transition().duration(1200).ease(d3.easeCubicInOut)
-            .attr('cx', d => xScale(d.steeredCoord[0]))
-            .attr('cy', d => yScale(d.steeredCoord[1]));
-          labelEls.transition().duration(1200).ease(d3.easeCubicInOut)
-            .attr('x', d => xScale(d.steeredCoord[0]))
-            .attr('y', d => yScale(d.steeredCoord[1]) - 8);
-          perpAxis.transition().delay(800).duration(600).attr('opacity', 0);
-          projLines.transition().delay(500).duration(800)
-            .attr('x1', d => xScale(d.steeredCoord[0]))
-            .attr('y1', d => yScale(d.steeredCoord[1]))
-            .attr('opacity', 0);
-        }
-      } else {
-        // 3D: update opacities/button; rotation loop handles positions
-        if (s === 0) {
-          btn.text('Next \u25b6').style('background', COLORS.point).style('color', 'white');
-          pairArrows.transition().duration(dur).attr('opacity', 1)
-            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-          transArrows.transition().duration(dur).attr('opacity', 0);
-          dirArrow.transition().duration(dur).attr('opacity', 0);
-          dirLabelEl.transition().duration(dur).attr('opacity', 0);
-          projLines.transition().duration(dur).attr('opacity', 0);
-          ghosts.transition().duration(dur).attr('opacity', 0);
-          if (perpPlane) perpPlane.transition().duration(dur).attr('opacity', 0);
-        } else if (s === 1) {
-          pairArrows.transition().duration(dur).attr('opacity', 0.3);
-          transArrows.attr('stroke', COLORS.highlight).attr('stroke-width', 2).attr('opacity', 1);
-          transArrows.transition().duration(dur * 1.5).ease(d3.easeCubicInOut)
-            .attr('stroke', COLORS.arrow).attr('stroke-width', 1.5);
-        } else if (s === 2) {
-          transArrows.transition().duration(dur).attr('opacity', 0.35);
-          dirArrow.transition().duration(dur).attr('opacity', 0.9);
-          dirLabelEl.transition().duration(dur).attr('opacity', 1);
-        } else if (s === 3) {
-          transArrows.transition().duration(dur).attr('opacity', 0);
-          projLines.transition().duration(dur).attr('opacity', 0.6);
-          if (perpPlane) perpPlane.transition().duration(dur).attr('opacity', 1);
-        } else if (s === 4) {
-          btn.text('Reset').style('background', '#ddd').style('color', '#333');
-          ghosts.transition().duration(300).attr('opacity', 0.4);
-          pairArrows.transition().duration(dur).attr('opacity', 0);
-          // Keep projection lines and plane visible so the viewer can see
-          // where points came from and that they landed on the plane
-        }
-      }
-    }
-
-    btn.on('click', () => {
-      if (currentStep >= 4) goTo(0);
-      else goTo(currentStep + 1);
-    });
-
-    // --- 3D rotation loop ---
-    if (dims === 3) {
-      let dragging = false, dragStartX = 0, dragStartY = 0;
-      let dragStartAngle = 0, dragStartTilt = 0;
-      let autoRotate = true, resumeTimeout = null;
-      const svgNode = svg.node();
-      // Touch: a horizontal drag rotates; a vertical swipe still scrolls the page.
-      svgNode.style.touchAction = 'pan-y pinch-zoom';
-
-      svgNode.addEventListener('pointerdown', (e) => {
-        if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
-        dragging = true; dragStartX = e.clientX; dragStartY = e.clientY;
-        dragStartAngle = rotationAngle; dragStartTilt = tiltAngle;
-        autoRotate = false; clearTimeout(resumeTimeout);
-        svgNode.style.cursor = 'grabbing';
-        svgNode.setPointerCapture(e.pointerId);
-      });
-      svgNode.addEventListener('pointermove', (e) => {
-        if (!dragging) return;
-        rotationAngle = dragStartAngle + (e.clientX - dragStartX) * 0.01;
-        tiltAngle = Math.max(-Math.PI/2, Math.min(Math.PI/2,
-          dragStartTilt + (e.clientY - dragStartY) * 0.01));
-      });
-      // pointercancel: the browser took over the gesture (e.g. to scroll the page).
-      const endDrag = () => {
-        if (!dragging) return;
-        dragging = false; svgNode.style.cursor = 'grab';
-        resumeTimeout = setTimeout(() => { autoRotate = true; }, 3000);
-      };
-      svgNode.addEventListener('pointerup', endDrag);
-      svgNode.addEventListener('pointercancel', endDrag);
-
-      // Smooth blend targets for step transitions
-      let targetBlend = 0, currentBlend = 0;       // 0=orig, 1=steered
-      let targetTransBlend = 0, currentTransBlend = 0; // 0=pair pos, 1=centroid
-
-      function tick() {
-        if (autoRotate && !dragging) rotationAngle += 0.005;
-        const blendSpeed = 0.04;
-        targetBlend = currentStep === 4 ? 1 : 0;
-        currentBlend += (targetBlend - currentBlend) * blendSpeed;
-        targetTransBlend = currentStep >= 1 ? 1 : 0;
-        currentTransBlend += (targetTransBlend - currentTransBlend) * blendSpeed;
-
-        const proj = getProjected();
-
-        // Word dots: blend orig to steered
-        dots.each(function(d, i) {
-          const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
-          const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
-          d3.select(this).attr('cx', ox + (sx - ox) * currentBlend)
-            .attr('cy', oy + (sy - oy) * currentBlend);
-        });
-        labelEls.each(function(d, i) {
-          const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
-          const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
-          d3.select(this).attr('x', ox + (sx - ox) * currentBlend)
-            .attr('y', (oy + (sy - oy) * currentBlend) - 8);
-        });
-        ghosts.each(function(d, i) {
-          d3.select(this).attr('cx', xScale(proj.words[i][0]))
-            .attr('cy', yScale(proj.words[i][1]));
-        });
-
-        // Pair arrows
-        pairArrows.each(function(d) {
-          d3.select(this)
-            .attr('x1', xScale(proj.words[d.from][0])).attr('y1', yScale(proj.words[d.from][1]))
-            .attr('x2', xScale(proj.words[d.to][0])).attr('y2', yScale(proj.words[d.to][1]));
-        });
-
-        // Translated arrows: blend from pair position to centroid
-        transArrows.each(function(d, pi) {
-          const fx = xScale(proj.words[d.from][0]), fy = yScale(proj.words[d.from][1]);
-          const tx = xScale(proj.words[d.to][0]), ty = yScale(proj.words[d.to][1]);
-          const ccx = xScale(proj.centroid[0]), ccy = yScale(proj.centroid[1]);
-          const dx = xScale(proj.diffs[pi][0]), dy = yScale(proj.diffs[pi][1]);
-          d3.select(this)
-            .attr('x1', fx + (ccx - fx) * currentTransBlend)
-            .attr('y1', fy + (ccy - fy) * currentTransBlend)
-            .attr('x2', tx + (dx - tx) * currentTransBlend)
-            .attr('y2', ty + (dy - ty) * currentTransBlend);
-        });
-
-        // Direction arrow + label
-        dirArrow
-          .attr('x1', xScale(proj.dirStart[0])).attr('y1', yScale(proj.dirStart[1]))
-          .attr('x2', xScale(proj.dirEnd[0])).attr('y2', yScale(proj.dirEnd[1]));
-        dirLabelEl
-          .attr('x', xScale(proj.dirEnd[0])).attr('y', yScale(proj.dirEnd[1]) - 10);
-
-        // Projection lines: always from original to steered
-        projLines.each(function(d, i) {
-          const ox = xScale(proj.words[i][0]), oy = yScale(proj.words[i][1]);
-          const sx = xScale(proj.steered[i][0]), sy = yScale(proj.steered[i][1]);
-          d3.select(this)
-            .attr('x1', ox).attr('y1', oy)
-            .attr('x2', sx).attr('y2', sy);
-        });
-
-        // Perpendicular plane polygon
-        if (perpPlane && proj.planeCorners) {
-          const pts = proj.planeCorners.map(c => `${xScale(c[0])},${yScale(c[1])}`).join(' ');
-          perpPlane.attr('points', pts);
-        }
-
-        rotationAnim = requestAnimationFrame(tick);
-      }
-      rotationAnim = requestAnimationFrame(tick);
-    }
-  } // end buildScene
-
-  // --- Eigenvalue selector ---
-  if (mdsData && eigenContainer) {
-    const eigenEl = typeof eigenContainer === 'string'
-      ? document.getElementById(eigenContainer) : eigenContainer;
+    const eigenEl = typeof eigenContainer === 'string' ? document.getElementById(eigenContainer) : eigenContainer;
     if (eigenEl) {
       eigenEl.innerHTML = '';
-      const selector = createEigenSelector(eigenEl, mdsData.eigenvalues, dims, (newDims) => {
-        if (newDims === 1 || newDims === dims) return; // 1D not supported
-        dims = newDims;
-        selector.update(dims, mdsData.variance[dims]);
-        buildScene();
-      });
-      // Gray out bar 1 (1D not supported for this animation)
-      const bars = d3.select(eigenEl).selectAll('rect.bar');
-      bars.filter((d, i) => i === 0)
+      this._selector = createEigenSelector(eigenEl, mdsData.eigenvalues, this.dims, d => this._switchDims(d));
+      d3.select(eigenEl).selectAll('g.eigen-col').filter((d, i) => i === 0)
         .style('opacity', 0.4).style('cursor', 'not-allowed');
-      selector.update(dims, mdsData.variance[dims]);
+      this._selector.update(this.dims, mdsData.variance[this.dims]);
     }
+
+    this._geom = this._geometry();
+    const svg = this._build();
+    this._view.attach(svg.node());
+    this._view.set(this.dims, this._geom);
   }
 
-  // Initial build
-  buildScene();
+  _sceneAt(w2, w3) {
+    return subspaceScene(this._P2.map((p2, i) => add3(mul3(p2, w2), mul3(this._P3[i], w3))), this.pairs);
+  }
+
+  // One scale for 2D and 3D, fitted to the words and arrows the 2D steps draw (12% padding,
+  // equal aspect; the perpendicular line may run off the edge), the canvas height, and the
+  // 3D zoom-out k3 that keeps the spinning scene, plane included, inside.
+  _geometry() {
+    const plotW = getResponsiveWidth(this.el), innerW = plotW - 20;  // 10px side margins
+    const s2 = this._sceneAt(1, 0);
+    const pts = [...s2.Q, ...s2.steered, s2.dirStart, s2.dirEnd, ...s2.diffEnds];
+    const [xMin, xMax] = d3.extent(pts, p => p[0]), [yMin, yMax] = d3.extent(pts, p => p[1]);
+    const pad = 0.12;
+    const spanX = ((xMax - xMin) || 0.2) * (1 + 2 * pad), spanY = ((yMax - yMin) || 0.2) * (1 + 2 * pad);
+    const H = Math.max(Math.round(plotW * 0.35), Math.min(Math.round(plotW * 0.65), Math.round(innerW * spanY / spanX)));
+    const px = Math.min(innerW / spanX, H / spanY);
+    const xmid = (xMin + xMax) / 2, ymid = (yMin + yMax) / 2;
+    const s3 = this._sceneAt(0, 1);
+    const k3 = spinFitZoom([...s3.Q, ...s3.steered, s3.dirStart, s3.dirEnd, ...s3.diffEnds, ...s3.plane],
+      innerW / (2 * px) - Math.abs(xmid), H / (2 * px) - Math.abs(ymid));
+    return { plotW, innerW, H, H1: H, H2: H, px, xmid, ymid, k3 };
+  }
+
+  _build() {
+    const el = this.el, G = this._geom, pairs = this.pairs, words = this.words;
+    d3.select(el).selectAll('svg.plot, .anim-desc, .anim-controls').remove();
+    const svg = d3.select(el).append('svg').attr('class', 'plot')
+      .attr('width', G.plotW).attr('height', G.H);
+    const g = svg.append('g').attr('transform', 'translate(10,0)');
+    // Arrow sets are drawn opaque inside a group that carries the transparency, so a line
+    // doesn't show darker where it runs under its own head.
+    const plane = g.append('polygon').attr('class', 'perp-plane')
+      .attr('fill', '#999').attr('fill-opacity', 0.08)
+      .attr('stroke', '#999').attr('stroke-width', 0.5).attr('stroke-dasharray', '4,3');
+    const axis = g.append('line').attr('class', 'perp-axis')
+      .attr('stroke', '#999').attr('stroke-width', 1).attr('stroke-dasharray', '6,4');
+    const pairG = g.append('g').attr('class', 'pair-arrows');
+    pairG.selectAll('line').data(pairs).enter().append('line')
+      .attr('stroke', COLORS.point).attr('stroke-width', 1.5);
+    pairG.selectAll('path').data(pairs).enter().append('path').attr('fill', COLORS.point);
+    const transG = g.append('g').attr('class', 'trans-arrows');
+    transG.selectAll('line').data(pairs).enter().append('line');
+    transG.selectAll('path').data(pairs).enter().append('path');
+    const dirG = g.append('g').attr('class', 'dir-arrow');
+    const dirLine = dirG.append('line')
+      .attr('stroke', COLORS.direction).attr('stroke-width', 2.5).attr('stroke-dasharray', '8,4');
+    const dirHead = dirG.append('path').attr('fill', COLORS.direction);
+    const projG = g.append('g').attr('class', 'proj-lines');
+    projG.selectAll('line').data(words).enter().append('line')
+      .attr('stroke', COLORS.direction).attr('stroke-width', 1).attr('stroke-dasharray', '3,2');
+    const ghostG = g.append('g').attr('class', 'ghosts');
+    ghostG.selectAll('circle').data(words).enter().append('circle')
+      .attr('class', 'ghost').attr('r', 3).attr('fill', COLORS.point);
+    g.selectAll('circle.word-dot').data(words).enter().append('circle')
+      .attr('class', 'word-dot').attr('r', 3.5).attr('fill', COLORS.point);
+    g.selectAll('text.word-label').data(words).enter().append('text')
+      .attr('class', 'word-label')
+      .attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', '#333')
+      .text(d => d);
+    const dirLabel = g.append('text').attr('class', 'dir-label')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '12px').attr('font-weight', 'bold').attr('font-style', 'italic')
+      .attr('fill', COLORS.direction).text(this.directionLabel);
+
+    // Step text: all steps share one grid cell, so the box is as tall as the longest and the
+    // page below doesn't shift between steps; the current one fades in.
+    const km = (tex) => katex.renderToString(tex, { throwOnError: false });
+    const stepDescs = [
+      `Each arrow connects a word pair — e.g. ${km('\\overrightarrow{\\text{woman}}')} to ${km('\\overrightarrow{\\text{man}}')}.`,
+      `Translate each pair’s difference vector ${km('d_i = \\overrightarrow{w}_i^+ - \\overrightarrow{w}_i^-')} to a common origin. They point in roughly the same direction.`,
+      `The top eigenvector of ${km('C = \\tfrac{1}{2}\\sum d_i\\,d_i^T')} gives the direction that best explains these differences.`,
+      `Each word’s component along the direction (its “gender component” ${km('\\overrightarrow{w}_{\\mathcal{B}}')}) is shown as a dashed line.`,
+      `Project out: ${km('\\overrightarrow{w}_{\\text{steered}} = \\overrightarrow{w} - \\overrightarrow{w}_{\\mathcal{B}}')}`,
+    ];
+    const desc = d3.select(el).append('div').attr('class', 'anim-desc')
+      .style('display', 'grid').style('font-size', '13px').style('color', '#555')
+      .style('line-height', '1.3').style('padding', '2px 14px 0');
+    const descs = desc.selectAll('div').data(stepDescs).enter().append('div')
+      .style('grid-area', '1 / 1').style('transition', 'opacity 0.3s').html(d => d);
+
+    const ctrl = d3.select(el).append('div').attr('class', 'anim-controls')
+      .style('margin-top', '6px').style('display', 'flex').style('gap', '8px').style('align-items', 'center');
+    const btn = ctrl.append('button')
+      .style('border', 'none').style('border-radius', '4px').style('padding', '5px 14px')
+      .style('font-size', '13px').style('cursor', 'pointer');
+    const counter = ctrl.append('span').style('font-size', '12px').style('color', '#999');
+    btn.on('click', () => this._goTo(this.step >= 4 ? 0 : this.step + 1));
+
+    this._sel = {
+      svg, plane, axis, pairG, transG, dirG, dirLine, dirHead, dirLabel, projG, ghostG,
+      pairLines: pairG.selectAll('line'), pairHeads: pairG.selectAll('path'),
+      transLines: transG.selectAll('line'), transHeads: transG.selectAll('path'),
+      projLines: projG.selectAll('line'), ghosts: ghostG.selectAll('circle'),
+      dots: g.selectAll('circle.word-dot'), labels: g.selectAll('text.word-label'),
+      descs, btn, counter,
+    };
+    this._showStep();
+    return svg;
+  }
+
+  _showStep() {
+    const S = this._sel, s = this.step;
+    S.descs.style('opacity', (d, i) => i === s ? 1 : 0).attr('aria-hidden', (d, i) => i === s ? null : 'true');
+    S.counter.text(`Step ${s + 1} of 5`);
+    const last = s === 4;
+    S.btn.text(last ? 'Reset' : 'Next ▶')
+      .style('background', last ? '#ddd' : COLORS.point).style('color', last ? '#333' : 'white');
+  }
+
+  // Value of an eased step quantity now.
+  _val(k, now) {
+    const t = this._tw[k];
+    const u = Math.min(1, Math.max(0, (now - t.t0 - t.delay) / t.dur));
+    return t.from + (t.to - t.from) * smooth(u);
+  }
+
+  // Ease quantity k from where it is now to `to`.
+  _tween(k, to, dur = 800, delay = 0) {
+    const now = performance.now();
+    this._tw[k] = { from: this._val(k, now), to, t0: now, delay, dur };
+  }
+
+  _goTo(s) {
+    this.step = s;
+    this._showStep();
+    const T = (k, to, dur, delay) => this._tween(k, to, dur, delay);
+    if (s === 0) {
+      for (const k of ['transA', 'transT', 'dirA', 'perpA', 'projT', 'projA', 'ghostA', 'steerT']) T(k, 0);
+      T('pairA', 1);
+    } else if (s === 1) {
+      T('pairA', 0.3); T('transA', 1, 200); T('transT', 1, 1200);
+    } else if (s === 2) {
+      T('transA', 0.35); T('dirA', 1);
+    } else if (s === 3) {
+      T('transA', 0); T('perpA', 1); T('projT', 1); T('projA', 1);
+    } else {
+      T('ghostA', 1, 300); T('pairA', 0); T('steerT', 1, 1200);
+    }
+    this._kick();
+  }
+
+  // Redraw every frame until the step quantities settle (the 3D spin redraws on its own).
+  _kick() {
+    if (this._raf) return;
+    const loop = () => {
+      this._raf = null;
+      const now = performance.now();
+      const busy = Object.values(this._tw).some(t => now < t.t0 + t.delay + t.dur);
+      if (!this._view.running || !busy) this._view.redraw();
+      if (busy) this._raf = requestAnimationFrame(loop);
+    };
+    this._raf = requestAnimationFrame(loop);
+  }
+
+  _draw(st) {
+    const S = this._sel;
+    if (!S) return;
+    const G = this._geom, now = performance.now(), a = k => this._val(k, now);
+    const sc = this._sceneAt(st.w2, st.w3);
+    const P = p => {
+      const [x, y] = project3Dto2D([mul3(p, st.k)], st.angle, st.tilt)[0];
+      return [G.innerW / 2 + (x - G.xmid) * G.px, G.H / 2 - (y - G.ymid) * G.px];
+    };
+    const word = sc.Q.map(P), steered = sc.steered.map(P);
+    const steerT = a('steerT'), transT = a('transT'), projT = a('projT');
+    const at = word.map((w, i) => lerp2(w, steered[i], steerT));
+
+    S.dots.attr('cx', (d, i) => at[i][0]).attr('cy', (d, i) => at[i][1]);
+    S.labels.attr('x', (d, i) => at[i][0]).attr('y', (d, i) => at[i][1] - 8);
+    S.ghosts.attr('cx', (d, i) => word[i][0]).attr('cy', (d, i) => word[i][1]);
+    S.ghostG.attr('opacity', 0.4 * a('ghostA'));
+
+    S.pairLines
+      .attr('x1', d => word[d.from][0]).attr('y1', d => word[d.from][1])
+      .attr('x2', d => word[d.to][0]).attr('y2', d => word[d.to][1]);
+    S.pairHeads.attr('d', d => arrowHeadPath(...word[d.from], ...word[d.to], 1.5));
+    S.pairG.attr('opacity', 0.45 * a('pairA'));
+
+    // Differences slide from their pair to the centroid, turning from green to the arrow color.
+    const c = P(sc.c), ends = sc.diffEnds.map(P);
+    const t0 = this.pairs.map(d => lerp2(word[d.from], c, transT));
+    const t1 = this.pairs.map((d, i) => lerp2(word[d.to], ends[i], transT));
+    const transColor = d3.interpolateRgb(COLORS.highlight, COLORS.point)(transT), transW = 2 - 0.5 * transT;
+    S.transLines.attr('stroke', transColor).attr('stroke-width', transW)
+      .attr('x1', (d, i) => t0[i][0]).attr('y1', (d, i) => t0[i][1])
+      .attr('x2', (d, i) => t1[i][0]).attr('y2', (d, i) => t1[i][1]);
+    S.transHeads.attr('fill', transColor).attr('d', (d, i) => arrowHeadPath(...t0[i], ...t1[i], transW));
+    S.transG.attr('opacity', a('transA') * (1 - 0.55 * transT));
+
+    const ds = P(sc.dirStart), de = P(sc.dirEnd);
+    S.dirLine.attr('x1', ds[0]).attr('y1', ds[1]).attr('x2', de[0]).attr('y2', de[1]);
+    S.dirHead.attr('d', arrowHeadPath(...ds, ...de, 2.5));
+    S.dirG.attr('opacity', 0.9 * a('dirA'));
+    S.dirLabel.attr('x', de[0]).attr('y', de[1] - 10).attr('opacity', a('dirA'));
+
+    // Each word's component along the direction grows from the word to its steered position.
+    S.projLines
+      .attr('x1', (d, i) => word[i][0]).attr('y1', (d, i) => word[i][1])
+      .attr('x2', (d, i) => lerp2(word[i], steered[i], projT)[0])
+      .attr('y2', (d, i) => lerp2(word[i], steered[i], projT)[1]);
+    S.projG.attr('opacity', 0.6 * a('projA'));
+
+    const perpA = a('perpA'), ax = sc.axis.map(P);
+    S.axis.attr('x1', ax[0][0]).attr('y1', ax[0][1]).attr('x2', ax[1][0]).attr('y2', ax[1][1])
+      .attr('opacity', 0.5 * perpA * (1 - st.w3));
+    S.plane.attr('points', sc.plane.map(P).map(q => q.join(',')).join(' '))
+      .attr('opacity', perpA * st.w3);
+  }
+
+  _switchDims(newDims) {
+    if (newDims === 1 || newDims === this.dims) {  // 1D is disabled
+      if (this._selector) this._selector.update(this.dims, this.mdsData.variance[this.dims]);
+      return;
+    }
+    this.dims = newDims;
+    if (this._selector) this._selector.update(newDims, this.mdsData.variance[newDims]);
+    this._sel.svg.style('cursor', newDims === 3 ? 'grab' : null);
+    this._view.go(newDims, this._geom);
+  }
+}
+
+function renderSubspaceAnimation(container, wordData, options = {}) {
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
+  if (!el) return null;
+  return new SubspaceAnimation(el, wordData, options);
 }
 
 
